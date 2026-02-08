@@ -11,6 +11,12 @@ function paramId(req: Request): string {
   return Array.isArray(id) ? id[0] : id;
 }
 
+// Reject branch names with shell metacharacters or git-invalid patterns
+const GIT_REF_RE = /^[a-zA-Z0-9_/][a-zA-Z0-9_./-]*$/;
+function isValidGitRef(ref: string): boolean {
+  return GIT_REF_RE.test(ref) && !ref.includes('..') && !ref.endsWith('.lock') && ref.length <= 200;
+}
+
 function broadcastTaskUpdate(task: Task): void {
   broadcast({ type: 'task_updated', payload: task });
 }
@@ -163,11 +169,14 @@ export function createTaskRouter(repo: TaskRepository): Router {
   // DELETE /api/tasks/:id
   router.delete('/:id', (req: Request, res: Response) => {
     const id = paramId(req);
-    if (!repo.delete(id)) {
+    if (!repo.getById(id)) {
       res.status(404).json({ error: 'task not found' });
       return;
     }
+    stopAgent(id);
+    repo.delete(id);
     clearEvents(id);
+    broadcast({ type: 'task_deleted', payload: { id } });
     res.status(204).send();
   });
 
@@ -196,6 +205,18 @@ export function createTaskRouter(repo: TaskRepository): Router {
     }
     if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
       res.status(400).json({ error: 'useWorktree must be a boolean' });
+      return;
+    }
+    if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
+      res.status(400).json({ error: 'branchName contains invalid characters' });
+      return;
+    }
+    if (typeof baseBranch === 'string' && !isValidGitRef(baseBranch)) {
+      res.status(400).json({ error: 'baseBranch contains invalid characters' });
+      return;
+    }
+    if (typeof repoPath === 'string' && !repoPath.startsWith('/')) {
+      res.status(400).json({ error: 'repoPath must be an absolute path' });
       return;
     }
 

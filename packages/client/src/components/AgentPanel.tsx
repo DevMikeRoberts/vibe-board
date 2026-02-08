@@ -196,22 +196,30 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [task, onClose]);
 
+  const taskId = task?.id ?? null;
+
   useEffect(() => {
-    if (!task) {
+    if (!taskId) {
       setEvents([]);
+      setPrUrl(null);
+      setPrLoading(false);
       return;
     }
 
-    // Load existing events from server
-    api.getEvents(task.id).then(setEvents).catch(console.error);
+    // Reset state for new task
+    setPrUrl(null);
+    setPrLoading(false);
 
-    const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
+    // Load existing events from server
+    api.getEvents(taskId).then(setEvents).catch(console.error);
+
+    const isActive = task?.agentStatus === 'executing' || task?.agentStatus === 'planning';
     if (isActive) setStreaming(true);
 
     // Listen for live agent events via WS
     const disconnect = connectWS((msg) => {
       if (msg.type === 'agent_event') {
-        if (msg.payload.taskId === task.id) {
+        if (msg.payload.taskId === taskId) {
           setEvents((prev) => [...prev, msg.payload]);
           if (msg.payload.type === 'complete' || msg.payload.type === 'error') {
             setStreaming(false);
@@ -224,7 +232,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
       disconnect();
       setStreaming(false);
     };
-  }, [task]);
+  }, [taskId]);
 
   // Auto-scroll to bottom
   useEffect(() => {

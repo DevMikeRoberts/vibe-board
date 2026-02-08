@@ -51,4 +51,5 @@ export interface Column {
 
 export type WSMessage =
   | { type: 'agent_event'; payload: AgentEvent }
-  | { type: 'task_updated'; payload: Task };
+  | { type: 'task_updated'; payload: Task }
+  | { type: 'task_deleted'; payload: { id: string } };

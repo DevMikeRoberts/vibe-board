@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import type { Task, AgentEvent } from '../types.js';
 import { broadcast } from '../websocket.js';
 
@@ -90,8 +90,8 @@ export function setupWorktree(task: Task): string | undefined {
   const baseBranch = task.baseBranch || 'main';
 
   try {
-    execSync(
-      `git worktree add -b ${task.branchName} ${worktreePath} ${baseBranch}`,
+    execFileSync(
+      'git', ['worktree', 'add', '-b', task.branchName, worktreePath, baseBranch],
       { cwd: task.repoPath, stdio: 'pipe' }
     );
     console.log(`[worktree] created at ${worktreePath} from ${baseBranch}`);
@@ -99,8 +99,8 @@ export function setupWorktree(task: Task): string | undefined {
   } catch (err: any) {
     // Branch may already exist — try without -b
     try {
-      execSync(
-        `git worktree add ${worktreePath} ${task.branchName}`,
+      execFileSync(
+        'git', ['worktree', 'add', worktreePath, task.branchName],
         { cwd: task.repoPath, stdio: 'pipe' }
       );
       console.log(`[worktree] attached existing branch ${task.branchName} at ${worktreePath}`);
@@ -118,7 +118,7 @@ export function setupWorktree(task: Task): string | undefined {
 export function removeWorktree(task: Task): void {
   if (!task.worktreePath || !task.repoPath) return;
   try {
-    execSync(`git worktree remove ${task.worktreePath} --force`, {
+    execFileSync('git', ['worktree', 'remove', task.worktreePath, '--force'], {
       cwd: task.repoPath,
       stdio: 'pipe',
     });
@@ -141,11 +141,13 @@ export function createPR(task: Task): { url: string } {
 
   try {
     // Push branch first
-    execSync(`git push -u origin ${task.branchName}`, { cwd, stdio: 'pipe' });
+    execFileSync('git', ['push', '-u', 'origin', task.branchName], { cwd, stdio: 'pipe' });
 
     // Create PR
-    const result = execSync(
-      `gh pr create --base ${baseBranch} --head ${task.branchName} --title "${task.title}" --body "Automated PR from Kanban task ${task.id}"`,
+    const result = execFileSync(
+      'gh',
+      ['pr', 'create', '--base', baseBranch, '--head', task.branchName,
+       '--title', task.title, '--body', `Automated PR from Kanban task ${task.id}`],
       { cwd, stdio: 'pipe' }
     );
     const url = result.toString().trim();

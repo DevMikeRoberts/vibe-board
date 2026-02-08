@@ -27,13 +27,19 @@ export function useTasks() {
           return [...prev, msg.payload];
         });
       }
+      if (msg.type === 'task_deleted') {
+        setTasks((prev) => prev.filter((t) => t.id !== msg.payload.id));
+      }
     });
   }, []);
 
   const addTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt' | 'agentStatus'>) => {
     try {
       const newTask = await api.createTask(task);
-      setTasks((prev) => [...prev, newTask]);
+      // Deduplicate: WS broadcast may have already added this task
+      setTasks((prev) =>
+        prev.some((t) => t.id === newTask.id) ? prev : [...prev, newTask]
+      );
       return newTask;
     } catch (err) {
       setError(`Failed to create task: ${(err as Error).message}`);
