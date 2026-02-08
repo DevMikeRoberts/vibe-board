@@ -2,68 +2,28 @@ import { v4 as uuid } from 'uuid';
 import { execFileSync } from 'child_process';
 import type { Task, AgentEvent } from '../types.js';
 import { broadcast } from '../websocket.js';
+import {
+  CopilotClient,
+  type CopilotSession,
+  type SessionEvent,
+} from '@github/copilot-sdk';
+
+// Singleton CopilotClient (lazy-initialized)
+let copilotClient: CopilotClient | null = null;
+
+function getClient(): CopilotClient {
+  if (!copilotClient) {
+    copilotClient = new CopilotClient();
+  }
+  return copilotClient;
+}
 
 // Active agent sessions keyed by taskId
-const sessions = new Map<string, { cancel: () => void }>();
+const sessions = new Map<string, { session: CopilotSession; unsubscribe: () => void }>();
 
 // Event log per task (capped to prevent unbounded growth)
 const MAX_EVENTS_PER_TASK = 100;
 const eventLogs = new Map<string, AgentEvent[]>();
-
-// Simulated agent steps (used when Copilot SDK is not available)
-const simulatedSteps: Omit<AgentEvent, 'id' | 'taskId' | 'timestamp'>[] = [
-  {
-    type: 'thinking',
-    content: 'Analyzing the task requirements and planning implementation approach...',
-  },
-  {
-    type: 'thinking',
-    content: 'Breaking down into sub-tasks:\n1. Identify affected files\n2. Implement changes\n3. Run tests\n4. Verify output',
-  },
-  {
-    type: 'command',
-    content: 'find . -name "*.ts" | head -20',
-    metadata: { command: 'find . -name "*.ts" | head -20' },
-  },
-  {
-    type: 'output',
-    content: './src/index.ts\n./src/routes/tasks.ts\n./src/services/copilot.ts',
-  },
-  {
-    type: 'file_edit',
-    content: 'Implementing the requested changes',
-    metadata: {
-      file: 'src/implementation.ts',
-      language: 'typescript',
-      diff: `+import { Service } from './service';
-+
-+export class Implementation {
-+  private service: Service;
-+
-+  constructor() {
-+    this.service = new Service();
-+  }
-+
-+  async execute(): Promise<void> {
-+    await this.service.run();
-+  }
-+}`,
-    },
-  },
-  {
-    type: 'command',
-    content: 'npx tsc --noEmit',
-    metadata: { command: 'npx tsc --noEmit' },
-  },
-  {
-    type: 'output',
-    content: '✓ No type errors found',
-  },
-  {
-    type: 'complete',
-    content: 'Task implementation complete. All changes have been applied and verified.',
-  },
-];
 
 function emitEvent(taskId: string, event: AgentEvent): void {
   let log = eventLogs.get(taskId) || [];
@@ -159,6 +119,108 @@ export function createPR(task: Task): { url: string } {
   }
 }
 
+/**
+ * Map a Copilot SDK SessionEvent to our AgentEvent and emit it.
+ */
+function mapAndEmitSessionEvent(taskId: string, event: SessionEvent): void {
+  switch (event.type) {
+    case 'assistant.turn_start':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'thinking',
+        content: 'Starting a new turn...',
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'assistant.intent':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'thinking',
+        content: event.data.intent,
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'assistant.reasoning_delta':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'thinking',
+        content: event.data.deltaContent,
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'assistant.message':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'complete',
+        content: event.data.content,
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'assistant.message_delta':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'output',
+        content: event.data.deltaContent,
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'tool.execution_start':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'command',
+        content: `${event.data.toolName}: ${JSON.stringify(event.data.arguments ?? '')}`,
+        timestamp: Date.now(),
+        metadata: { command: event.data.toolName },
+      });
+      break;
+
+    case 'tool.execution_complete':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'output',
+        content: event.data.result?.content ?? event.data.error?.message ?? '',
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'tool.execution_partial_result':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'output',
+        content: event.data.partialOutput,
+        timestamp: Date.now(),
+      });
+      break;
+
+    case 'session.error':
+      emitEvent(taskId, {
+        id: uuid(),
+        taskId,
+        type: 'error',
+        content: event.data.message,
+        timestamp: Date.now(),
+      });
+      break;
+
+    // session.idle is handled in startAgent to trigger status change
+    default:
+      break;
+  }
+}
+
 export function startAgent(
   task: Task,
   onStatusChange: (status: Task['agentStatus']) => void,
@@ -196,53 +258,85 @@ export function startAgent(
     }
   }
 
-  let cancelled = false;
-  let stepIndex = 0;
-  let timer: ReturnType<typeof setTimeout>;
+  // Launch the Copilot session asynchronously
+  (async () => {
+    try {
+      const client = getClient();
+      const workingDirectory = task.worktreePath || task.repoPath || process.cwd();
 
-  const runStep = () => {
-    if (cancelled || stepIndex >= simulatedSteps.length) return;
+      const session = await client.createSession({
+        workingDirectory,
+        onPermissionRequest: () => ({ kind: 'approved' as const }),
+      });
 
-    const step = simulatedSteps[stepIndex];
-    const event: AgentEvent = {
-      ...step,
-      id: uuid(),
-      taskId: task.id,
-      timestamp: Date.now(),
-    };
+      // Subscribe to all session events
+      const unsubscribe = session.on((event: SessionEvent) => {
+        mapAndEmitSessionEvent(task.id, event);
 
-    // Update status based on step
-    if (stepIndex === 0) onStatusChange('planning');
-    if (stepIndex === 2) onStatusChange('executing');
+        // When session goes idle, the agent is done
+        if (event.type === 'session.idle') {
+          onStatusChange('complete');
+          const entry = sessions.get(task.id);
+          if (entry) {
+            entry.unsubscribe();
+            sessions.delete(task.id);
+          }
+          session.destroy().catch(() => {});
+        }
+      });
 
-    emitEvent(task.id, event);
-    stepIndex++;
+      sessions.set(task.id, { session, unsubscribe });
+      onStatusChange('planning');
 
-    if (step.type === 'complete') {
-      onStatusChange('complete');
-      sessions.delete(task.id);
-      return;
+      // Build prompt from task title + description
+      const prompt = `${task.title}\n\n${task.description}`;
+
+      // Send prompt (don't await — events stream via handler above)
+      session.send({ prompt }).catch((err: any) => {
+        emitEvent(task.id, {
+          id: uuid(),
+          taskId: task.id,
+          type: 'error',
+          content: `Failed to send prompt: ${err.message}`,
+          timestamp: Date.now(),
+        });
+        onStatusChange('failed');
+      });
+
+      onStatusChange('executing');
+    } catch (err: any) {
+      const message = err.message || String(err);
+      const isCliMissing =
+        message.includes('ENOENT') ||
+        message.includes('not found') ||
+        message.includes('spawn');
+
+      emitEvent(task.id, {
+        id: uuid(),
+        taskId: task.id,
+        type: 'error',
+        content: isCliMissing
+          ? 'GitHub Copilot CLI is not installed or not found in PATH. Install with: gh extension install github/gh-copilot'
+          : `Failed to start Copilot session: ${message}`,
+        timestamp: Date.now(),
+      });
+      onStatusChange('failed');
     }
-
-    timer = setTimeout(runStep, 1000 + Math.random() * 2000);
-  };
-
-  sessions.set(task.id, {
-    cancel: () => {
-      cancelled = true;
-      clearTimeout(timer);
-    },
-  });
-
-  // Start after a brief delay
-  timer = setTimeout(runStep, 500);
+  })();
 }
 
 export function stopAgent(taskId: string): boolean {
-  const session = sessions.get(taskId);
-  if (!session) return false;
-  session.cancel();
+  const entry = sessions.get(taskId);
+  if (!entry) return false;
+
+  entry.unsubscribe();
   sessions.delete(taskId);
+
+  // Abort and destroy in background
+  (async () => {
+    try { await entry.session.abort(); } catch {}
+    try { await entry.session.destroy(); } catch {}
+  })();
 
   const event: AgentEvent = {
     id: uuid(),
@@ -264,8 +358,20 @@ export function clearEvents(taskId: string): void {
 }
 
 export function shutdownAll(): void {
-  for (const [id, session] of sessions) {
-    session.cancel();
+  for (const [id, entry] of sessions) {
+    entry.unsubscribe();
+    // Fire-and-forget abort + destroy
+    (async () => {
+      try { await entry.session.abort(); } catch {}
+      try { await entry.session.destroy(); } catch {}
+    })();
     sessions.delete(id);
+  }
+
+  if (copilotClient) {
+    const client = copilotClient;
+    copilotClient = null;
+    // Fire-and-forget client shutdown
+    client.stop().catch(() => {});
   }
 }
