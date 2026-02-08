@@ -8,14 +8,24 @@ import {
   type SessionEvent,
 } from '@github/copilot-sdk';
 
-// Singleton CopilotClient (lazy-initialized)
+// Singleton CopilotClient (lazy-initialized with explicit start)
 let copilotClient: CopilotClient | null = null;
+let clientReady: Promise<CopilotClient> | null = null;
 
-function getClient(): CopilotClient {
-  if (!copilotClient) {
-    copilotClient = new CopilotClient();
-  }
-  return copilotClient;
+async function getClient(): Promise<CopilotClient> {
+  if (clientReady) return clientReady;
+
+  clientReady = (async () => {
+    copilotClient = new CopilotClient({
+      logLevel: 'info',
+      autoRestart: true,
+    });
+    await copilotClient.start();
+    console.log('[copilot] SDK client started');
+    return copilotClient;
+  })();
+
+  return clientReady;
 }
 
 // Active agent sessions keyed by taskId
@@ -261,49 +271,64 @@ export function startAgent(
   // Launch the Copilot session asynchronously
   (async () => {
     try {
-      const client = getClient();
+      const client = await getClient();
       const workingDirectory = task.worktreePath || task.repoPath || process.cwd();
 
       const session = await client.createSession({
+        model: process.env.COPILOT_MODEL || 'claude-sonnet-4-20250514',
+        streaming: true,
         workingDirectory,
+        systemMessage: {
+          mode: 'append' as const,
+          content: `
+<context>
+You are a coding agent working on a task in the project directory: ${workingDirectory}
+Task: ${task.title}
+
+Complete the task described in the user prompt. Be thorough — read relevant files,
+make precise edits, and verify your changes compile/pass tests when applicable.
+</context>
+`,
+        },
         onPermissionRequest: () => ({ kind: 'approved' as const }),
       });
 
-      // Subscribe to all session events
+      // Subscribe to all session events — capture unsubscribe for cleanup
       const unsubscribe = session.on((event: SessionEvent) => {
         mapAndEmitSessionEvent(task.id, event);
 
-        // When session goes idle, the agent is done
+        // Backup completion trigger: if sendAndWait somehow misses, idle means done
         if (event.type === 'session.idle') {
-          onStatusChange('complete');
-          const entry = sessions.get(task.id);
-          if (entry) {
-            entry.unsubscribe();
-            sessions.delete(task.id);
+          if (sessions.has(task.id)) {
+            console.log(`[copilot] session.idle for task ${task.id} (backup completion)`);
+            onStatusChange('complete');
+            const entry = sessions.get(task.id);
+            if (entry) {
+              entry.unsubscribe();
+              sessions.delete(task.id);
+            }
+            session.destroy().catch(() => {});
           }
-          session.destroy().catch(() => {});
         }
       });
 
       sessions.set(task.id, { session, unsubscribe });
-      onStatusChange('planning');
-
-      // Build prompt from task title + description
-      const prompt = `${task.title}\n\n${task.description}`;
-
-      // Send prompt (don't await — events stream via handler above)
-      session.send({ prompt }).catch((err: any) => {
-        emitEvent(task.id, {
-          id: uuid(),
-          taskId: task.id,
-          type: 'error',
-          content: `Failed to send prompt: ${err.message}`,
-          timestamp: Date.now(),
-        });
-        onStatusChange('failed');
-      });
-
       onStatusChange('executing');
+
+      // Build prompt and send — sendAndWait blocks until session is idle
+      const prompt = `${task.title}\n\n${task.description}`;
+      console.log(`[copilot] sending prompt for task ${task.id}`);
+      await session.sendAndWait({ prompt });
+      console.log(`[copilot] sendAndWait completed for task ${task.id}`);
+
+      // Primary completion path — clean up and mark done
+      if (sessions.has(task.id)) {
+        const entry = sessions.get(task.id);
+        if (entry) entry.unsubscribe();
+        sessions.delete(task.id);
+        onStatusChange('complete');
+        session.destroy().catch(() => {});
+      }
     } catch (err: any) {
       const message = err.message || String(err);
       const isCliMissing =
@@ -320,6 +345,13 @@ export function startAgent(
           : `Failed to start Copilot session: ${message}`,
         timestamp: Date.now(),
       });
+
+      // Clean up session if it was registered before the error
+      const entry = sessions.get(task.id);
+      if (entry) {
+        entry.unsubscribe();
+        sessions.delete(task.id);
+      }
       onStatusChange('failed');
     }
   })();
@@ -371,6 +403,7 @@ export function shutdownAll(): void {
   if (copilotClient) {
     const client = copilotClient;
     copilotClient = null;
+    clientReady = null;
     // Fire-and-forget client shutdown
     client.stop().catch(() => {});
   }
