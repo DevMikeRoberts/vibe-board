@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import type { Task, ColumnId } from '@/types';
+import type { Task, ColumnId, Priority } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { useTasks } from '@/hooks/useTasks';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -13,8 +13,9 @@ import { WorktreeDialog } from '@/components/WorktreeDialog';
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
-  const { tasks, error, clearError, addTask, moveTask, stopTask, deleteTask, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
+  const { tasks, error, clearError, addTask, updateTask, moveTask, stopTask, deleteTask, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,7 +54,17 @@ export function App() {
 
   const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
+    setEditingTask(null);
   }, []);
+
+  const handleEditTask = useCallback((task: Task) => {
+    setEditingTask(task);
+    setDialogOpen(true);
+  }, []);
+
+  const handleEditSubmit = useCallback((id: string, updates: { title: string; description: string; priority: Priority }) => {
+    updateTask(id, updates);
+  }, [updateTask]);
 
   // Worktree dialog: intercept Run to show config dialog first
   const worktreeDialogTask = useMemo(
@@ -123,6 +134,7 @@ export function App() {
           getTasksByColumn={getFilteredTasksByColumn}
           onMoveTask={moveTask}
           onTaskClick={handleTaskClick}
+          onEditTask={handleEditTask}
           onAddTask={handleOpenDialog}
         />
       </main>
@@ -131,6 +143,8 @@ export function App() {
         open={dialogOpen}
         onClose={handleCloseDialog}
         onSubmit={addTask}
+        editTask={editingTask}
+        onEditSubmit={handleEditSubmit}
       />
 
       <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onDelete={deleteTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} />

@@ -23,6 +23,7 @@ interface BoardProps {
   getTasksByColumn: (columnId: ColumnId) => Task[];
   onMoveTask: (taskId: string, targetColumn: ColumnId) => void;
   onTaskClick: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
   onAddTask: () => void;
 }
 
@@ -39,6 +40,7 @@ export function Board({
   getTasksByColumn,
   onMoveTask,
   onTaskClick,
+  onEditTask,
   onAddTask,
 }: BoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -107,6 +109,7 @@ export function Board({
               column={column}
               tasks={getTasksByColumn(column.id)}
               onTaskClick={onTaskClick}
+              onEditTask={onEditTask}
               onAddTask={column.id === 'backlog' ? onAddTask : undefined}
             />
           </motion.div>

@@ -23,10 +23,11 @@ interface ColumnProps {
   column: ColumnType;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
   onAddTask?: () => void;
 }
 
-export function Column({ column, tasks, onTaskClick, onAddTask }: ColumnProps) {
+export function Column({ column, tasks, onTaskClick, onEditTask, onAddTask }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const Icon = iconMap[column.icon] || Inbox;
 
@@ -79,6 +80,7 @@ export function Column({ column, tasks, onTaskClick, onAddTask }: ColumnProps) {
             key={task.id}
             task={task}
             onClick={() => onTaskClick(task)}
+            onEdit={onEditTask}
           />
         ))}
 

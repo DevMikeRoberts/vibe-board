@@ -1,16 +1,20 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   ChevronDown,
 } from 'lucide-react';
-import type { Priority, ColumnId } from '@/types';
+import type { Task, Priority, ColumnId } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (task: { title: string; description: string; priority: Priority; columnId: ColumnId }) => void;
+  /** When set, dialog is in edit mode with pre-populated fields */
+  editTask?: Task | null;
+  /** Called on save in edit mode */
+  onEditSubmit?: (id: string, updates: { title: string; description: string; priority: Priority }) => void;
 }
 
 const priorities: { value: Priority; label: string; color: string }[] = [
@@ -20,21 +24,46 @@ const priorities: { value: Priority; label: string; color: string }[] = [
   { value: 'critical', label: 'Critical', color: 'bg-red-500' },
 ];
 
-export function TaskDialog({ open, onClose, onSubmit }: TaskDialogProps) {
+export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: TaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
   const [showPriority, setShowPriority] = useState(false);
 
+  const isEditMode = !!editTask;
+
+  // Pre-populate fields when editing
+  useEffect(() => {
+    if (editTask && open) {
+      setTitle(editTask.title);
+      setDescription(editTask.description);
+      setPriority(editTask.priority);
+    } else if (!open) {
+      // Reset when dialog closes
+      setTitle('');
+      setDescription('');
+      setPriority('medium');
+      setShowPriority(false);
+    }
+  }, [editTask, open]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    onSubmit({
-      title: title.trim(),
-      description: description.trim(),
-      priority,
-      columnId: 'backlog',
-    });
+    if (isEditMode && onEditSubmit) {
+      onEditSubmit(editTask!.id, {
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+      });
+    } else {
+      onSubmit({
+        title: title.trim(),
+        description: description.trim(),
+        priority,
+        columnId: 'backlog',
+      });
+    }
     setTitle('');
     setDescription('');
     setPriority('medium');
@@ -66,7 +95,7 @@ export function TaskDialog({ open, onClose, onSubmit }: TaskDialogProps) {
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold">Create Task</h2>
+              <h2 className="text-base font-semibold">{isEditMode ? 'Edit Task' : 'Create Task'}</h2>
               <button
                 onClick={onClose}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
@@ -166,7 +195,7 @@ export function TaskDialog({ open, onClose, onSubmit }: TaskDialogProps) {
                   disabled={!title.trim()}
                   className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  Create Task
+                  {isEditMode ? 'Save Changes' : 'Create Task'}
                 </button>
               </div>
             </form>

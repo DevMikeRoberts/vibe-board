@@ -129,6 +129,15 @@ export function useTasks() {
     }
   }, []);
 
+  const updateTask = useCallback(async (id: string, updates: Partial<Task>) => {
+    try {
+      const updated = await api.updateTask(id, updates);
+      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      setError(`Failed to update task: ${(err as Error).message}`);
+    }
+  }, []);
+
   const deleteTask = useCallback(async (id: string) => {
     try {
       await api.deleteTask(id);
@@ -145,5 +154,5 @@ export function useTasks() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { tasks, error, clearError, addTask, moveTask, runTask, stopTask, deleteTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
+  return { tasks, error, clearError, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
 }

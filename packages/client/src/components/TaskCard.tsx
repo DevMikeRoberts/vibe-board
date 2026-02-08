@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Circle,
+  Pencil,
 } from 'lucide-react';
 import type { Task, Priority, AgentStatus } from '@/types';
 import { cn } from '@/lib/utils';
@@ -43,9 +44,10 @@ function formatElapsed(startedAt?: number): string {
 interface TaskCardProps {
   task: Task;
   onClick: () => void;
+  onEdit?: (task: Task) => void;
 }
 
-export function TaskCard({ task, onClick }: TaskCardProps) {
+export function TaskCard({ task, onClick, onEdit }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id });
 
@@ -92,9 +94,23 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         <GripVertical className="h-4 w-4 text-muted-foreground/40" />
       </div>
 
+      {/* Edit button — top right, visible on hover */}
+      {onEdit && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit(task);
+          }}
+          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/0 transition-all group-hover:text-muted-foreground hover:!bg-accent hover:!text-foreground"
+          aria-label="Edit task"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      )}
+
       <div className="pl-4">
         {/* Title */}
-        <h3 className="text-sm font-medium leading-snug text-card-foreground">
+        <h3 className="pr-6 text-sm font-medium leading-snug text-card-foreground">
           {task.title}
         </h3>
 

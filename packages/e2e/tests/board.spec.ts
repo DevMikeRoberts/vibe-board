@@ -119,6 +119,44 @@ test.describe('Theme Toggle', () => {
   });
 });
 
+test.describe('Task Edit', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/');
+    await waitForBoard(page);
+  });
+
+  test('edit button opens dialog with pre-populated data', async ({ page }) => {
+    const ts = Date.now();
+    const taskTitle = `Editable Task ${ts}`;
+    await createTask(page, taskTitle, 'Original description');
+
+    // Find the card containing our task and hover to reveal the edit button
+    const taskCard = page.locator('.group').filter({ has: page.getByRole('heading', { name: taskTitle }) });
+    await taskCard.hover();
+
+    // Click the edit button (pencil icon) within this specific card
+    const editButton = taskCard.getByRole('button', { name: 'Edit task' });
+    await editButton.click();
+
+    // Dialog should open in edit mode
+    await expect(page.getByRole('heading', { name: 'Edit Task' })).toBeVisible();
+
+    // Fields should be pre-populated
+    const titleInput = page.getByPlaceholder('What needs to be done?');
+    await expect(titleInput).toHaveValue(taskTitle);
+    await expect(page.getByPlaceholder('Describe the task for the Copilot agent...')).toHaveValue('Original description');
+
+    // Edit the title
+    const newTitle = `Edited Task ${ts}`;
+    await titleInput.fill(newTitle);
+    await page.getByRole('button', { name: 'Save Changes' }).click();
+
+    // Dialog should close and updated title should appear
+    await expect(page.getByRole('heading', { name: 'Edit Task' })).not.toBeVisible({ timeout: 2_000 });
+    await expect(page.getByRole('heading', { name: newTitle })).toBeVisible({ timeout: 5_000 });
+  });
+});
+
 test.describe('Priority Selection', () => {
   test('can select different priorities in task dialog', async ({ page }) => {
     await page.goto('/');
