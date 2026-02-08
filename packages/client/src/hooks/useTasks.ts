@@ -129,6 +129,15 @@ export function useTasks() {
     }
   }, []);
 
+  const deleteTask = useCallback(async (id: string) => {
+    try {
+      await api.deleteTask(id);
+      setTasks((prev) => prev.filter((t) => t.id !== id));
+    } catch (err) {
+      setError(`Failed to delete task: ${(err as Error).message}`);
+    }
+  }, []);
+
   const getTasksByColumn = useCallback(
     (columnId: ColumnId) => tasks.filter((t) => t.columnId === columnId),
     [tasks]
@@ -136,5 +145,5 @@ export function useTasks() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { tasks, error, clearError, addTask, moveTask, runTask, stopTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
+  return { tasks, error, clearError, addTask, moveTask, runTask, stopTask, deleteTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
 }

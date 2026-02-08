@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Markdown from 'react-markdown';
 import {
   X,
   Brain,
@@ -51,11 +52,20 @@ const eventLabelMap: Record<AgentEventType, string> = {
   complete: 'Complete',
 };
 
+/** Detect if content looks like code (backticks, common code patterns) */
+function looksLikeCode(text: string): boolean {
+  if (text.includes('`')) return true;
+  const lines = text.split('\n');
+  const codePatterns = /^(import |export |const |let |var |function |class |if \(|for \(|while \(|return |async |await |\/\/|#include|def |package )/;
+  return lines.some((line) => codePatterns.test(line.trimStart()));
+}
+
 interface AgentPanelProps {
   task: Task | null;
   onClose: () => void;
   onRun?: (id: string) => void;
   onStop?: (id: string) => void;
+  onDelete?: (id: string) => void;
   onCreatePR?: (id: string) => Promise<string | undefined>;
   onCleanupWorktree?: (id: string) => Promise<void>;
 }
@@ -130,11 +140,17 @@ function EventItem({ event }: { event: AgentEvent }) {
             className="overflow-hidden"
           >
             <div className="ml-6 mr-2 mb-2">
-              {/* Thinking / text content */}
+              {/* Thinking / text content — render as code block if it looks like code */}
               {(event.type === 'thinking' || event.type === 'complete' || event.type === 'error') && (
-                <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
-                  {event.content}
-                </p>
+                looksLikeCode(event.content) ? (
+                  <div className="rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-300 whitespace-pre-wrap">
+                    {event.content}
+                  </div>
+                ) : (
+                  <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                    {event.content}
+                  </p>
+                )
               )}
 
               {/* Command */}
@@ -180,21 +196,13 @@ function EventItem({ event }: { event: AgentEvent }) {
   );
 }
 
-export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanupWorktree }: AgentPanelProps) {
+export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR, onCleanupWorktree }: AgentPanelProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [prLoading, setPrLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Close on Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && task) onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [task, onClose]);
 
   const taskId = task?.id ?? null;
 
@@ -209,6 +217,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
     // Reset state for new task
     setPrUrl(null);
     setPrLoading(false);
+    setConfirmDelete(false);
 
     // Load existing events from server
     api.getEvents(taskId).then(setEvents).catch(console.error);
@@ -307,6 +316,27 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                   <Square className="h-4 w-4" />
                 </button>
               )}
+              {/* Delete button with confirmation */}
+              {onDelete && !isActive && (
+                confirmDelete ? (
+                  <button
+                    onClick={() => { onDelete(task.id); onClose(); }}
+                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-red-500/50 bg-red-500/10 px-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
+                    title="Confirm delete"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Confirm
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-colors"
+                    title="Delete task"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )
+              )}
               <button
                 onClick={onClose}
                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-foreground hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
@@ -316,6 +346,13 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
               </button>
             </div>
           </div>
+
+          {/* Task description as markdown */}
+          {task.description && (
+            <div className="shrink-0 border-b border-border px-4 py-3 prose prose-xs prose-invert max-w-none text-xs text-muted-foreground leading-relaxed [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_pre]:rounded-md [&_pre]:bg-zinc-900 [&_pre]:p-2 [&_a]:text-primary [&_a]:underline">
+              <Markdown>{task.description}</Markdown>
+            </div>
+          )}
 
           {/* Worktree info bar */}
           {task.branchName && (

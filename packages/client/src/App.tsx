@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import type { Task } from '@/types';
+import type { Task, ColumnId } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { useTasks } from '@/hooks/useTasks';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { Header } from '@/components/Header';
 import { Board } from '@/components/Board';
 import { TaskDialog } from '@/components/TaskDialog';
@@ -12,15 +13,30 @@ import { WorktreeDialog } from '@/components/WorktreeDialog';
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
-  const { tasks, error, clearError, addTask, moveTask, stopTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
+  const { tasks, error, clearError, addTask, moveTask, stopTask, deleteTask, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Derive live task from tasks array so it stays current with WS updates
   const selectedTask = useMemo(
     () => (selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null),
     [selectedTaskId, tasks]
+  );
+
+  // Filter tasks by search query
+  const filteredTasks = useMemo(() => {
+    if (!searchQuery.trim()) return tasks;
+    const q = searchQuery.toLowerCase();
+    return tasks.filter(
+      (t) => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
+    );
+  }, [tasks, searchQuery]);
+
+  const getFilteredTasksByColumn = useCallback(
+    (columnId: ColumnId) => filteredTasks.filter((t) => t.columnId === columnId),
+    [filteredTasks]
   );
 
   const handleTaskClick = useCallback((task: Task) => {
@@ -62,6 +78,28 @@ export function App() {
     setWorktreeDialogTaskId(null);
   }, []);
 
+  // Keyboard shortcuts
+  const handleCloseAll = useCallback(() => {
+    if (worktreeDialogTaskId) {
+      setWorktreeDialogTaskId(null);
+    } else if (dialogOpen) {
+      setDialogOpen(false);
+    } else if (selectedTaskId) {
+      setSelectedTaskId(null);
+    }
+  }, [worktreeDialogTaskId, dialogOpen, selectedTaskId]);
+
+  const isAnyOpen = useCallback(
+    () => dialogOpen || selectedTaskId !== null || worktreeDialogTaskId !== null,
+    [dialogOpen, selectedTaskId, worktreeDialogTaskId]
+  );
+
+  useKeyboardShortcuts({
+    onNewTask: handleOpenDialog,
+    onCloseAll: handleCloseAll,
+    isAnyOpen,
+  });
+
   // Auto-dismiss error toast
   useEffect(() => {
     if (!error) return;
@@ -75,12 +113,14 @@ export function App() {
         theme={theme}
         toggleTheme={toggleTheme}
         taskCount={tasks.length}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       <main className="flex-1 overflow-hidden">
         <Board
-          tasks={tasks}
-          getTasksByColumn={getTasksByColumn}
+          tasks={filteredTasks}
+          getTasksByColumn={getFilteredTasksByColumn}
           onMoveTask={moveTask}
           onTaskClick={handleTaskClick}
           onAddTask={handleOpenDialog}
@@ -93,7 +133,7 @@ export function App() {
         onSubmit={addTask}
       />
 
-      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} />
+      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onDelete={deleteTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} />
 
       <WorktreeDialog
         open={worktreeDialogTaskId !== null}
