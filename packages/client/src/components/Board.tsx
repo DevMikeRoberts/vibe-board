@@ -12,12 +12,11 @@ import {
   CollisionDetection,
 } from '@dnd-kit/core';
 import { motion } from 'framer-motion';
-import { Plus } from 'lucide-react';
 import type { Task, ColumnId } from '@/types';
+import { VALID_TRANSITIONS } from '@/types';
 import { columns } from '@/lib/mock-data';
 import { Column } from './Column';
 import { TaskCard } from './TaskCard';
-import { cn } from '@/lib/utils';
 
 interface BoardProps {
   tasks: Task[];
@@ -81,14 +80,8 @@ export function Board({
       }
 
       // Validate transition before moving
-      const validTransitions: Record<ColumnId, ColumnId[]> = {
-        'backlog': ['in-progress'],
-        'in-progress': ['review'],
-        'review': ['done', 'in-progress'],
-        'done': [],
-      };
       if (targetColumn === activeTask.columnId) return;
-      if (!validTransitions[activeTask.columnId]?.includes(targetColumn)) return;
+      if (!VALID_TRANSITIONS[activeTask.columnId]?.includes(targetColumn)) return;
 
       onMoveTask(taskId, targetColumn);
     },
@@ -124,7 +117,7 @@ export function Board({
       <DragOverlay>
         {activeTask && (
           <div className="w-72 lg:w-80 rotate-3 opacity-90">
-            <TaskCard task={activeTask} index={0} onClick={() => {}} />
+            <TaskCard task={activeTask} onClick={() => {}} />
           </div>
         )}
       </DragOverlay>

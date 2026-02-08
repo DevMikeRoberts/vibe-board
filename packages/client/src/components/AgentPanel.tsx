@@ -204,10 +204,9 @@ export function AgentPanel({ task, onClose, onRun, onStop }: AgentPanelProps) {
     // Listen for live agent events via WS
     const disconnect = connectWS((msg) => {
       if (msg.type === 'agent_event') {
-        const event = msg.payload as AgentEvent;
-        if (event.taskId === task.id) {
-          setEvents((prev) => [...prev, event]);
-          if (event.type === 'complete' || event.type === 'error') {
+        if (msg.payload.taskId === task.id) {
+          setEvents((prev) => [...prev, msg.payload]);
+          if (msg.payload.type === 'complete' || msg.payload.type === 'error') {
             setStreaming(false);
           }
         }

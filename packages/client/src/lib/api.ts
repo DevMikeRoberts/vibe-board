@@ -39,46 +39,59 @@ export const api = {
     request<AgentEvent[]>(`/tasks/${id}/events`),
 };
 
-// --- WebSocket ---
+// --- WebSocket (shared singleton) ---
 
 export type WSMessageHandler = (msg: { type: string; payload: any }) => void;
 
-export function connectWS(onMessage: WSMessageHandler): () => void {
+const listeners = new Set<WSMessageHandler>();
+let ws: WebSocket | null = null;
+let disposed = false;
+let reconnectTimer: ReturnType<typeof setTimeout>;
+
+function ensureConnection() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   const url = `${proto}//${location.host}/ws`;
+  disposed = false;
 
-  let ws: WebSocket;
-  let disposed = false;
-  let reconnectTimer: ReturnType<typeof setTimeout>;
+  ws = new WebSocket(url);
 
-  function connect() {
-    if (disposed) return;
-    ws = new WebSocket(url);
+  ws.onopen = () => console.log('[WS] connected');
 
-    ws.onopen = () => console.log('[WS] connected');
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      listeners.forEach((fn) => fn(msg));
+    } catch { /* ignore */ }
+  };
 
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        onMessage(msg);
-      } catch { /* ignore */ }
-    };
+  ws.onclose = () => {
+    if (!disposed && listeners.size > 0) {
+      console.log('[WS] disconnected, reconnecting in 2s');
+      reconnectTimer = setTimeout(ensureConnection, 2000);
+    }
+  };
 
-    ws.onclose = () => {
-      if (!disposed) {
-        console.log('[WS] disconnected, reconnecting in 2s');
-        reconnectTimer = setTimeout(connect, 2000);
-      }
-    };
+  ws.onerror = () => ws?.close();
+}
 
-    ws.onerror = () => ws.close();
-  }
-
-  connect();
+/**
+ * Subscribe to WebSocket messages. Returns an unsubscribe function.
+ * All callers share a single underlying connection.
+ */
+export function connectWS(onMessage: WSMessageHandler): () => void {
+  listeners.add(onMessage);
+  ensureConnection();
 
   return () => {
-    disposed = true;
-    clearTimeout(reconnectTimer);
-    ws?.close();
+    listeners.delete(onMessage);
+    // Close the socket only when no listeners remain
+    if (listeners.size === 0) {
+      disposed = true;
+      clearTimeout(reconnectTimer);
+      ws?.close();
+      ws = null;
+    }
   };
 }

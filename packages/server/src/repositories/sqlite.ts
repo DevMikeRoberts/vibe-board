@@ -1,14 +1,14 @@
 import Database from 'better-sqlite3';
-import type { Task } from '../types.js';
+import type { Task, Priority, ColumnId, AgentStatus } from '../types.js';
 import type { TaskRepository } from './types.js';
 
 interface TaskRow {
   id: string;
   title: string;
   description: string;
-  priority: string;
-  column_id: string;
-  agent_status: string;
+  priority: Priority;
+  column_id: ColumnId;
+  agent_status: AgentStatus;
   created_at: number;
   started_at: number | null;
   completed_at: number | null;
@@ -19,9 +19,9 @@ function rowToTask(row: TaskRow): Task {
     id: row.id,
     title: row.title,
     description: row.description,
-    priority: row.priority as Task['priority'],
-    columnId: row.column_id as Task['columnId'],
-    agentStatus: row.agent_status as Task['agentStatus'],
+    priority: row.priority,
+    columnId: row.column_id,
+    agentStatus: row.agent_status,
     createdAt: row.created_at,
     startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
@@ -29,7 +29,6 @@ function rowToTask(row: TaskRow): Task {
 }
 
 export class SqliteTaskRepository implements TaskRepository {
-  private db: Database.Database;
   private stmts: {
     getAll: Database.Statement;
     getById: Database.Statement;
@@ -40,7 +39,6 @@ export class SqliteTaskRepository implements TaskRepository {
   };
 
   constructor(db: Database.Database) {
-    this.db = db;
     this.stmts = {
       getAll: db.prepare('SELECT * FROM tasks ORDER BY created_at ASC'),
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),

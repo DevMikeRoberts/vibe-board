@@ -1,5 +1,4 @@
-import { useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -43,11 +42,10 @@ function formatElapsed(startedAt?: number): string {
 
 interface TaskCardProps {
   task: Task;
-  index: number;
   onClick: () => void;
 }
 
-export function TaskCard({ task, index, onClick }: TaskCardProps) {
+export function TaskCard({ task, onClick }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id });
 
@@ -60,9 +58,16 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
   const StatusIcon = agentStatus.icon;
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
 
-  const elapsed = useMemo(() => {
-    if (!isActive || !task.startedAt) return '';
-    return formatElapsed(task.startedAt);
+  const [elapsed, setElapsed] = useState('');
+  useEffect(() => {
+    if (!isActive || !task.startedAt) {
+      setElapsed('');
+      return;
+    }
+    const tick = () => setElapsed(formatElapsed(task.startedAt!));
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
   }, [isActive, task.startedAt]);
 
   return (
@@ -81,6 +86,7 @@ export function TaskCard({ task, index, onClick }: TaskCardProps) {
       <div
         {...attributes}
         {...listeners}
+        aria-label="Drag to reorder"
         className="absolute left-1 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing"
       >
         <GripVertical className="h-4 w-4 text-muted-foreground/40" />

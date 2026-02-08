@@ -74,11 +74,10 @@ export function Column({ column, tasks, onTaskClick, onAddTask }: ColumnProps) {
             : 'bg-muted/40'
         )}
       >
-        {tasks.map((task, index) => (
+        {tasks.map((task) => (
           <TaskCard
             key={task.id}
             task={task}
-            index={index}
             onClick={() => onTaskClick(task)}
           />
         ))}

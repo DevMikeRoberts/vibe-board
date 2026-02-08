@@ -5,7 +5,8 @@ import { broadcast } from '../websocket.js';
 // Active agent sessions keyed by taskId
 const sessions = new Map<string, { cancel: () => void }>();
 
-// Event log per task
+// Event log per task (capped to prevent unbounded growth)
+const MAX_EVENTS_PER_TASK = 100;
 const eventLogs = new Map<string, AgentEvent[]>();
 
 // Simulated agent steps (used when Copilot SDK is not available)
@@ -64,8 +65,11 @@ const simulatedSteps: Omit<AgentEvent, 'id' | 'taskId' | 'timestamp'>[] = [
 ];
 
 function emitEvent(taskId: string, event: AgentEvent): void {
-  const log = eventLogs.get(taskId) || [];
+  let log = eventLogs.get(taskId) || [];
   log.push(event);
+  if (log.length > MAX_EVENTS_PER_TASK) {
+    log = log.slice(-MAX_EVENTS_PER_TASK);
+  }
   eventLogs.set(taskId, log);
   broadcast({ type: 'agent_event', payload: event });
 }
@@ -141,4 +145,8 @@ export function stopAgent(taskId: string): boolean {
 
 export function isRunning(taskId: string): boolean {
   return sessions.has(taskId);
+}
+
+export function clearEvents(taskId: string): void {
+  eventLogs.delete(taskId);
 }

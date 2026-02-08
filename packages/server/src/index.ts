@@ -9,8 +9,9 @@ import { createTaskRouter } from './routes/tasks.js';
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 
-app.use(cors());
-app.use(express.json());
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:4175,http://localhost:4176,http://100.113.87.7:4175,http://100.113.87.7:4176').split(',');
+app.use(cors({ origin: ALLOWED_ORIGINS }));
+app.use(express.json({ limit: '100kb' }));
 
 // Initialize database and repository
 const db = initDatabase();

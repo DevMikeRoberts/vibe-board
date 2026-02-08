@@ -1,4 +1,3 @@
-// Re-export all types and validation utilities from the shared module
 export type {
   Priority,
   ColumnId,
@@ -6,8 +5,9 @@ export type {
   Task,
   AgentEventType,
   AgentEvent,
+  Column,
   WSMessage,
-} from '../../../shared/types.ts';
+} from './types.ts';
 
 export {
   VALID_PRIORITIES,
@@ -17,4 +17,4 @@ export {
   isValidPriority,
   isValidColumnId,
   isValidAgentStatus,
-} from '../../../shared/constants.ts';
+} from './constants.ts';

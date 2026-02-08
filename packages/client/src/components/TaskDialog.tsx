@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
-  AlertTriangle,
   ChevronDown,
 } from 'lucide-react';
-import type { Task, Priority, ColumnId } from '@/types';
+import type { Priority, ColumnId } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface TaskDialogProps {

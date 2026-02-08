@@ -1,4 +1,4 @@
-import type { Task, ColumnId, Priority } from '../types.js';
+import type { Task } from '../types.js';
 
 export interface TaskRepository {
   getAll(): Task[];
