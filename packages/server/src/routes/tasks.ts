@@ -4,7 +4,7 @@ import type { Task } from '../types.js';
 import { VALID_TRANSITIONS, isValidPriority, isValidColumnId, isValidAgentStatus } from '../types.js';
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
-import { startAgent, stopAgent, getEvents, clearEvents, isRunning } from '../services/copilot.js';
+import { startAgent, stopAgent, getEvents, clearEvents, isRunning, createPR, removeWorktree } from '../services/copilot.js';
 
 function paramId(req: Request): string {
   const id = req.params.id;
@@ -171,6 +171,49 @@ export function createTaskRouter(repo: TaskRepository): Router {
     res.status(204).send();
   });
 
+  // POST /api/tasks/:id/configure — store worktree config before running
+  router.post('/:id/configure', (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+
+    const { repoPath, branchName, baseBranch, useWorktree } = req.body;
+
+    if (repoPath !== undefined && typeof repoPath !== 'string') {
+      res.status(400).json({ error: 'repoPath must be a string' });
+      return;
+    }
+    if (branchName !== undefined && typeof branchName !== 'string') {
+      res.status(400).json({ error: 'branchName must be a string' });
+      return;
+    }
+    if (baseBranch !== undefined && typeof baseBranch !== 'string') {
+      res.status(400).json({ error: 'baseBranch must be a string' });
+      return;
+    }
+    if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
+      res.status(400).json({ error: 'useWorktree must be a boolean' });
+      return;
+    }
+
+    const updates: Partial<Task> = {};
+    if (repoPath !== undefined) updates.repoPath = repoPath;
+    if (branchName !== undefined) updates.branchName = branchName;
+    if (baseBranch !== undefined) updates.baseBranch = baseBranch;
+    if (useWorktree !== undefined) updates.useWorktree = useWorktree;
+
+    const updated = repo.update(id, updates);
+    if (!updated) {
+      res.status(500).json({ error: 'failed to update task' });
+      return;
+    }
+    broadcastTaskUpdate(updated);
+    res.json(updated);
+  });
+
   // POST /api/tasks/:id/run
   router.post('/:id/run', (req: Request, res: Response) => {
     const id = paramId(req);
@@ -203,15 +246,23 @@ export function createTaskRouter(repo: TaskRepository): Router {
     }
     broadcastTaskUpdate(updated);
 
-    startAgent(updated, (status) => {
-      const statusUpdates: Partial<Task> = { agentStatus: status };
-      if (status === 'complete') {
-        statusUpdates.completedAt = Date.now();
-        statusUpdates.columnId = 'review';
+    startAgent(
+      updated,
+      (status) => {
+        const statusUpdates: Partial<Task> = { agentStatus: status };
+        if (status === 'complete') {
+          statusUpdates.completedAt = Date.now();
+          statusUpdates.columnId = 'review';
+        }
+        const t = repo.update(task.id, statusUpdates);
+        if (t) broadcastTaskUpdate(t);
+      },
+      (worktreePath) => {
+        // Store the worktree path on the task
+        const t = repo.update(task.id, { worktreePath });
+        if (t) broadcastTaskUpdate(t);
       }
-      const t = repo.update(task.id, statusUpdates);
-      if (t) broadcastTaskUpdate(t);
-    });
+    );
 
     res.json(updated);
   });
@@ -249,6 +300,44 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
     res.json(getEvents(paramId(req)));
+  });
+
+  // POST /api/tasks/:id/create-pr — create a PR from the worktree branch
+  router.post('/:id/create-pr', (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    if (!task.branchName || !task.repoPath) {
+      res.status(400).json({ error: 'task has no branch or repo configured' });
+      return;
+    }
+    try {
+      const result = createPR(task);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/tasks/:id/cleanup-worktree — remove worktree after done
+  router.post('/:id/cleanup-worktree', (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    if (!task.worktreePath) {
+      res.status(400).json({ error: 'no worktree to clean up' });
+      return;
+    }
+    removeWorktree(task);
+    const updated = repo.update(id, { worktreePath: undefined });
+    if (updated) broadcastTaskUpdate(updated);
+    res.json({ success: true });
   });
 
   return router;

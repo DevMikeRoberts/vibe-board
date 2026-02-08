@@ -12,6 +12,11 @@ export interface Task {
   createdAt: number;
   startedAt?: number;
   completedAt?: number;
+  repoPath?: string;
+  branchName?: string;
+  baseBranch?: string;
+  useWorktree?: boolean;
+  worktreePath?: string;
 }
 
 export type AgentEventType =

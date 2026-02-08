@@ -8,12 +8,14 @@ import { Header } from '@/components/Header';
 import { Board } from '@/components/Board';
 import { TaskDialog } from '@/components/TaskDialog';
 import { AgentPanel } from '@/components/AgentPanel';
+import { WorktreeDialog } from '@/components/WorktreeDialog';
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
-  const { tasks, error, clearError, addTask, moveTask, runTask, stopTask, getTasksByColumn } = useTasks();
+  const { tasks, error, clearError, addTask, moveTask, stopTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
 
   // Derive live task from tasks array so it stays current with WS updates
   const selectedTask = useMemo(
@@ -35,6 +37,29 @@ export function App() {
 
   const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
+  }, []);
+
+  // Worktree dialog: intercept Run to show config dialog first
+  const worktreeDialogTask = useMemo(
+    () => (worktreeDialogTaskId ? tasks.find((t) => t.id === worktreeDialogTaskId) ?? null : null),
+    [worktreeDialogTaskId, tasks]
+  );
+
+  const handleRunWithConfig = useCallback((taskId: string) => {
+    setWorktreeDialogTaskId(taskId);
+  }, []);
+
+  const handleWorktreeSubmit = useCallback(
+    async (config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean }) => {
+      if (!worktreeDialogTaskId) return;
+      setWorktreeDialogTaskId(null);
+      await configureAndRunTask(worktreeDialogTaskId, config);
+    },
+    [worktreeDialogTaskId, configureAndRunTask]
+  );
+
+  const handleCloseWorktreeDialog = useCallback(() => {
+    setWorktreeDialogTaskId(null);
   }, []);
 
   // Auto-dismiss error toast
@@ -68,7 +93,14 @@ export function App() {
         onSubmit={addTask}
       />
 
-      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={runTask} onStop={stopTask} />
+      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} />
+
+      <WorktreeDialog
+        open={worktreeDialogTaskId !== null}
+        task={worktreeDialogTask}
+        onClose={handleCloseWorktreeDialog}
+        onSubmit={handleWorktreeSubmit}
+      />
 
       {/* Error toast */}
       <AnimatePresence>

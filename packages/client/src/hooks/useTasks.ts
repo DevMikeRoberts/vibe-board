@@ -81,6 +81,39 @@ export function useTasks() {
     }
   }, []);
 
+  const configureAndRunTask = useCallback(async (
+    id: string,
+    config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean }
+  ) => {
+    try {
+      const configured = await api.configureTask(id, config);
+      setTasks((prev) => prev.map((t) => (t.id === id ? configured : t)));
+      const updated = await api.runTask(id);
+      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      setError(`Failed to start agent: ${(err as Error).message}`);
+    }
+  }, []);
+
+  const createPR = useCallback(async (id: string) => {
+    try {
+      const result = await api.createPR(id);
+      return result.url;
+    } catch (err) {
+      setError(`Failed to create PR: ${(err as Error).message}`);
+      return undefined;
+    }
+  }, []);
+
+  const cleanupWorktree = useCallback(async (id: string) => {
+    try {
+      await api.cleanupWorktree(id);
+      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, worktreePath: undefined } : t)));
+    } catch (err) {
+      setError(`Failed to clean up worktree: ${(err as Error).message}`);
+    }
+  }, []);
+
   const stopTask = useCallback(async (id: string) => {
     try {
       const updated = await api.stopTask(id);
@@ -97,5 +130,5 @@ export function useTasks() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { tasks, error, clearError, addTask, moveTask, runTask, stopTask, getTasksByColumn };
+  return { tasks, error, clearError, addTask, moveTask, runTask, stopTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
 }

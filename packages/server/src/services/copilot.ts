@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import { execSync } from 'child_process';
 import type { Task, AgentEvent } from '../types.js';
 import { broadcast } from '../websocket.js';
 
@@ -78,11 +79,120 @@ export function getEvents(taskId: string): AgentEvent[] {
   return eventLogs.get(taskId) || [];
 }
 
+/**
+ * Set up a git worktree for the task if configured.
+ * Returns the worktree path if created, or undefined.
+ */
+export function setupWorktree(task: Task): string | undefined {
+  if (!task.useWorktree || !task.repoPath || !task.branchName) return undefined;
+
+  const worktreePath = `/tmp/kanban-${task.id}`;
+  const baseBranch = task.baseBranch || 'main';
+
+  try {
+    execSync(
+      `git worktree add -b ${task.branchName} ${worktreePath} ${baseBranch}`,
+      { cwd: task.repoPath, stdio: 'pipe' }
+    );
+    console.log(`[worktree] created at ${worktreePath} from ${baseBranch}`);
+    return worktreePath;
+  } catch (err: any) {
+    // Branch may already exist — try without -b
+    try {
+      execSync(
+        `git worktree add ${worktreePath} ${task.branchName}`,
+        { cwd: task.repoPath, stdio: 'pipe' }
+      );
+      console.log(`[worktree] attached existing branch ${task.branchName} at ${worktreePath}`);
+      return worktreePath;
+    } catch (err2: any) {
+      console.error(`[worktree] failed:`, err2.message);
+      throw new Error(`Failed to create worktree: ${err2.message}`);
+    }
+  }
+}
+
+/**
+ * Remove a git worktree and optionally the branch.
+ */
+export function removeWorktree(task: Task): void {
+  if (!task.worktreePath || !task.repoPath) return;
+  try {
+    execSync(`git worktree remove ${task.worktreePath} --force`, {
+      cwd: task.repoPath,
+      stdio: 'pipe',
+    });
+    console.log(`[worktree] removed ${task.worktreePath}`);
+  } catch (err: any) {
+    console.error(`[worktree] remove failed:`, err.message);
+  }
+}
+
+/**
+ * Create a PR from the worktree branch using gh CLI.
+ */
+export function createPR(task: Task): { url: string } {
+  if (!task.repoPath || !task.branchName) {
+    throw new Error('Task has no repo path or branch name configured');
+  }
+
+  const baseBranch = task.baseBranch || 'main';
+  const cwd = task.worktreePath || task.repoPath;
+
+  try {
+    // Push branch first
+    execSync(`git push -u origin ${task.branchName}`, { cwd, stdio: 'pipe' });
+
+    // Create PR
+    const result = execSync(
+      `gh pr create --base ${baseBranch} --head ${task.branchName} --title "${task.title}" --body "Automated PR from Kanban task ${task.id}"`,
+      { cwd, stdio: 'pipe' }
+    );
+    const url = result.toString().trim();
+    console.log(`[pr] created: ${url}`);
+    return { url };
+  } catch (err: any) {
+    console.error(`[pr] creation failed:`, err.message);
+    throw new Error(`PR creation failed: ${err.stderr?.toString() || err.message}`);
+  }
+}
+
 export function startAgent(
   task: Task,
-  onStatusChange: (status: Task['agentStatus']) => void
+  onStatusChange: (status: Task['agentStatus']) => void,
+  onWorktreeCreated?: (worktreePath: string) => void,
 ): void {
   if (sessions.has(task.id)) return;
+
+  // Set up worktree if configured
+  if (task.useWorktree) {
+    try {
+      const wtPath = setupWorktree(task);
+      if (wtPath && onWorktreeCreated) {
+        onWorktreeCreated(wtPath);
+      }
+      // Emit an event about the worktree
+      if (wtPath) {
+        emitEvent(task.id, {
+          id: uuid(),
+          taskId: task.id,
+          type: 'output',
+          content: `Git worktree created at ${wtPath}\nBranch: ${task.branchName}\nBase: ${task.baseBranch || 'main'}`,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (err: any) {
+      emitEvent(task.id, {
+        id: uuid(),
+        taskId: task.id,
+        type: 'error',
+        content: `Worktree setup failed: ${err.message}`,
+        timestamp: Date.now(),
+      });
+      onStatusChange('failed');
+      return;
+    }
+  }
 
   let cancelled = false;
   let stepIndex = 0;

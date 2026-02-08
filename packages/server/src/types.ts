@@ -7,7 +7,7 @@ export type {
   AgentEventType,
   AgentEvent,
   WSMessage,
-} from '../../../shared/types.ts';
+} from '../../../shared/types.js';
 
 export {
   VALID_PRIORITIES,
@@ -17,4 +17,4 @@ export {
   isValidPriority,
   isValidColumnId,
   isValidAgentStatus,
-} from '../../../shared/constants.ts';
+} from '../../../shared/constants.js';

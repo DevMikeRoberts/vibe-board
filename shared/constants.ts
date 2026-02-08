@@ -1,4 +1,4 @@
-import type { ColumnId, Priority, AgentStatus } from './types.ts';
+import type { ColumnId, Priority, AgentStatus } from './types.js';
 
 export const VALID_PRIORITIES: readonly Priority[] = ['low', 'medium', 'high', 'critical'] as const;
 export const VALID_COLUMNS: readonly ColumnId[] = ['backlog', 'in-progress', 'review', 'done'] as const;

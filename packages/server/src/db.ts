@@ -21,6 +21,25 @@ function migrate(db: Database.Database): void {
       completed_at  INTEGER
     )
   `);
+
+  // Add worktree columns if they don't exist yet
+  const cols = db.pragma('table_info(tasks)') as { name: string }[];
+  const colNames = new Set(cols.map((c) => c.name));
+  if (!colNames.has('repo_path')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN repo_path TEXT`);
+  }
+  if (!colNames.has('branch_name')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN branch_name TEXT`);
+  }
+  if (!colNames.has('base_branch')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN base_branch TEXT`);
+  }
+  if (!colNames.has('use_worktree')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN use_worktree INTEGER`);
+  }
+  if (!colNames.has('worktree_path')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN worktree_path TEXT`);
+  }
 }
 
 const seeds: Omit<Task, 'id'>[] = [

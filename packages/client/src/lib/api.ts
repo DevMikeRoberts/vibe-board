@@ -37,6 +37,15 @@ export const api = {
 
   getEvents: (id: string) =>
     request<AgentEvent[]>(`/tasks/${id}/events`),
+
+  configureTask: (id: string, config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean }) =>
+    request<Task>(`/tasks/${id}/configure`, { method: 'POST', body: JSON.stringify(config) }),
+
+  createPR: (id: string) =>
+    request<{ url: string }>(`/tasks/${id}/create-pr`, { method: 'POST' }),
+
+  cleanupWorktree: (id: string) =>
+    request<{ success: boolean }>(`/tasks/${id}/cleanup-worktree`, { method: 'POST' }),
 };
 
 // --- WebSocket (shared singleton) ---

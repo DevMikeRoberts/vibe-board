@@ -13,6 +13,9 @@ import {
   Check,
   Play,
   Square,
+  GitBranch,
+  ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import type { Task, AgentEvent, AgentEventType } from '@/types';
 import { api, connectWS } from '@/lib/api';
@@ -53,6 +56,8 @@ interface AgentPanelProps {
   onClose: () => void;
   onRun?: (id: string) => void;
   onStop?: (id: string) => void;
+  onCreatePR?: (id: string) => Promise<string | undefined>;
+  onCleanupWorktree?: (id: string) => Promise<void>;
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -175,9 +180,11 @@ function EventItem({ event }: { event: AgentEvent }) {
   );
 }
 
-export function AgentPanel({ task, onClose, onRun, onStop }: AgentPanelProps) {
+export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanupWorktree }: AgentPanelProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [prLoading, setPrLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape key
@@ -301,6 +308,64 @@ export function AgentPanel({ task, onClose, onRun, onStop }: AgentPanelProps) {
               </button>
             </div>
           </div>
+
+          {/* Worktree info bar */}
+          {task.branchName && (
+            <div className="shrink-0 border-b border-border px-4 py-2 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <GitBranch className="h-3 w-3 text-primary" />
+                <span className="font-mono text-foreground">{task.branchName}</span>
+                <span className="text-muted-foreground/50">from</span>
+                <span className="font-mono">{task.baseBranch || 'main'}</span>
+              </div>
+              {task.worktreePath && (
+                <div className="text-[10px] text-muted-foreground font-mono truncate">
+                  {task.worktreePath}
+                </div>
+              )}
+
+              {/* PR / Cleanup actions — show when task is done or complete */}
+              {(task.agentStatus === 'complete' || task.columnId === 'done') && (
+                <div className="flex items-center gap-2 pt-1">
+                  {!prUrl && onCreatePR && (
+                    <button
+                      onClick={async () => {
+                        setPrLoading(true);
+                        const url = await onCreatePR(task.id);
+                        if (url) setPrUrl(url);
+                        setPrLoading(false);
+                      }}
+                      disabled={prLoading}
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {prLoading ? 'Creating...' : 'Create PR'}
+                    </button>
+                  )}
+                  {prUrl && (
+                    <a
+                      href={prUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      View PR
+                    </a>
+                  )}
+                  {task.worktreePath && onCleanupWorktree && (
+                    <button
+                      onClick={() => onCleanupWorktree(task.id)}
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Clean up worktree
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Events list */}
           <div
