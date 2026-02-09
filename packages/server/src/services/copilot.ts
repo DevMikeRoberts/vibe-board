@@ -284,7 +284,7 @@ export function startAgent(
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
 Task: ${task.title}
-
+${task.worktreePath ? `\nIMPORTANT: All file paths MUST be under ${task.worktreePath}. Do NOT reference or edit files at ${task.repoPath} directly.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
 make precise edits, and verify your changes compile/pass tests when applicable.
 </context>
