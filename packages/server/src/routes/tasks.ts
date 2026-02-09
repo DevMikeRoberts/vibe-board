@@ -10,7 +10,7 @@ import { startAgent, stopAgent, getEvents, clearEvents, isRunning, createPR, rem
 
 function paramId(req: Request): string {
   const id = req.params.id;
-  return Array.isArray(id) ? id[0] : id;
+  return typeof id === 'string' ? id : id[0];
 }
 
 // Reject branch names with shell metacharacters or git-invalid patterns
@@ -57,11 +57,9 @@ const agentActionTimestamps = new Map<string, number>();
 
 function isRateLimited(taskId: string): boolean {
   const now = Date.now();
-  // Evict stale entries periodically (when map exceeds 200 entries)
-  if (agentActionTimestamps.size > 200) {
-    for (const [id, ts] of agentActionTimestamps) {
-      if (now - ts > RATE_LIMIT_MS) agentActionTimestamps.delete(id);
-    }
+  // Always evict stale entries to prevent unbounded growth
+  for (const [id, ts] of agentActionTimestamps) {
+    if (now - ts > RATE_LIMIT_MS) agentActionTimestamps.delete(id);
   }
   const last = agentActionTimestamps.get(taskId);
   if (last && now - last < RATE_LIMIT_MS) return true;
@@ -72,6 +70,8 @@ function isRateLimited(taskId: string): boolean {
 const MAX_TITLE_LENGTH = 200;
 const MAX_DESCRIPTION_LENGTH = 5000;
 
+// NOTE: This is a local-only demo app — no authentication is applied to these
+// routes. If deploying beyond localhost, add authentication middleware here.
 export function createTaskRouter(repo: TaskRepository): Router {
   const router = Router();
 
@@ -392,7 +392,12 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(400).json({ error: 'no worktree to clean up' });
       return;
     }
-    removeWorktree(task);
+    try {
+      removeWorktree(task);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
     const updated = repo.update(id, { worktreePath: undefined });
     if (updated) broadcastTaskUpdate(updated);
     res.json({ success: true });

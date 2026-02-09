@@ -7,7 +7,7 @@ import { execSync } from 'child_process';
  * Requires GitHub Copilot CLI installed and authenticated.
  */
 
-const TEST_REPO = '/root/projects/upload-download-app';
+const TEST_REPO = process.env.TEST_REPO || '/root/projects/upload-download-app';
 const AGENT_TIMEOUT = 120_000;
 
 async function waitForBoard(page: Page) {

@@ -147,7 +147,8 @@ export function TaskCard({ task, onClick, onEdit }: TaskCardProps) {
               <StatusIcon
                 className={cn(
                   'h-3.5 w-3.5',
-                  isActive && 'animate-spin'
+                  task.agentStatus === 'executing' && 'animate-spin',
+                  task.agentStatus === 'planning' && 'animate-pulse'
                 )}
               />
             </div>

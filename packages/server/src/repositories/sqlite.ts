@@ -39,6 +39,7 @@ function rowToTask(row: TaskRow): Task {
 }
 
 export class SqliteTaskRepository implements TaskRepository {
+  private db: Database.Database;
   private stmts: {
     getAll: Database.Statement;
     getById: Database.Statement;
@@ -49,6 +50,7 @@ export class SqliteTaskRepository implements TaskRepository {
   };
 
   constructor(db: Database.Database) {
+    this.db = db;
     this.stmts = {
       getAll: db.prepare('SELECT * FROM tasks ORDER BY created_at ASC'),
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
@@ -109,25 +111,27 @@ export class SqliteTaskRepository implements TaskRepository {
   }
 
   update(id: string, updates: Partial<Task>): Task | undefined {
-    const existing = this.getById(id);
-    if (!existing) return undefined;
-    const merged = { ...existing, ...updates };
-    this.stmts.update.run({
-      id,
-      title: merged.title,
-      description: merged.description,
-      priority: merged.priority,
-      column_id: merged.columnId,
-      agent_status: merged.agentStatus,
-      started_at: merged.startedAt ?? null,
-      completed_at: merged.completedAt ?? null,
-      repo_path: merged.repoPath ?? null,
-      branch_name: merged.branchName ?? null,
-      base_branch: merged.baseBranch ?? null,
-      use_worktree: merged.useWorktree != null ? (merged.useWorktree ? 1 : 0) : null,
-      worktree_path: merged.worktreePath ?? null,
-    });
-    return merged;
+    return this.db.transaction(() => {
+      const existing = this.getById(id);
+      if (!existing) return undefined;
+      const merged = { ...existing, ...updates };
+      this.stmts.update.run({
+        id,
+        title: merged.title,
+        description: merged.description,
+        priority: merged.priority,
+        column_id: merged.columnId,
+        agent_status: merged.agentStatus,
+        started_at: merged.startedAt ?? null,
+        completed_at: merged.completedAt ?? null,
+        repo_path: merged.repoPath ?? null,
+        branch_name: merged.branchName ?? null,
+        base_branch: merged.baseBranch ?? null,
+        use_worktree: merged.useWorktree != null ? (merged.useWorktree ? 1 : 0) : null,
+        worktree_path: merged.worktreePath ?? null,
+      });
+      return merged;
+    })();
   }
 
   delete(id: string): boolean {

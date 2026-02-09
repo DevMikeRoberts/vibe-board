@@ -1,5 +1,8 @@
 import { v4 as uuid } from 'uuid';
 import { execFileSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import type { Task, AgentEvent } from '../types.js';
 import { broadcast } from '../websocket.js';
 import {
@@ -7,6 +10,8 @@ import {
   type CopilotSession,
   type SessionEvent,
 } from '@github/copilot-sdk';
+
+const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10); // default 10 min
 
 // Singleton CopilotClient (lazy-initialized with explicit start)
 let copilotClient: CopilotClient | null = null;
@@ -46,7 +51,7 @@ function emitEvent(taskId: string, event: AgentEvent): void {
 }
 
 export function getEvents(taskId: string): AgentEvent[] {
-  return eventLogs.get(taskId) || [];
+  return [...(eventLogs.get(taskId) || [])];
 }
 
 /**
@@ -56,7 +61,7 @@ export function getEvents(taskId: string): AgentEvent[] {
 export function setupWorktree(task: Task): string | undefined {
   if (!task.useWorktree || !task.repoPath || !task.branchName) return undefined;
 
-  const worktreePath = `/tmp/kanban-${task.id}`;
+  const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), `kanban-${task.id}-`));
   const baseBranch = task.baseBranch || 'main';
 
   try {
@@ -95,6 +100,7 @@ export function removeWorktree(task: Task): void {
     console.log(`[worktree] removed ${task.worktreePath}`);
   } catch (err: any) {
     console.error(`[worktree] remove failed:`, err.message);
+    throw new Error(`Failed to remove worktree: ${err.message}`);
   }
 }
 
@@ -117,7 +123,7 @@ export function createPR(task: Task): { url: string } {
     const result = execFileSync(
       'gh',
       ['pr', 'create', '--base', baseBranch, '--head', task.branchName,
-       '--title', task.title, '--body', `Automated PR from Kanban task ${task.id}`],
+       '--title', task.title, '--body', `Automated PR from Kanban task ${task.id}`, '--'],
       { cwd, stdio: 'pipe' }
     );
     const url = result.toString().trim();
@@ -238,6 +244,15 @@ export function startAgent(
 ): void {
   if (sessions.has(task.id)) return;
 
+  // M1: Guard to ensure completion fires only once
+  let completed = false;
+  function completeOnce() {
+    if (completed) return;
+    completed = true;
+    onStatusChange('complete');
+    eventLogs.delete(task.id); // M2: clear event log on completion
+  }
+
   // Set up worktree if configured — capture path locally since the callback
   // updates the DB but not this local task reference
   let worktreePath: string | undefined;
@@ -245,7 +260,7 @@ export function startAgent(
     try {
       worktreePath = setupWorktree(task);
       if (worktreePath) {
-        task.worktreePath = worktreePath; // Also set on task for consistency
+        task.worktreePath = worktreePath;
         if (onWorktreeCreated) onWorktreeCreated(worktreePath);
         emitEvent(task.id, {
           id: uuid(),
@@ -281,7 +296,7 @@ export function startAgent(
         streaming: true,
         workingDirectory,
         systemMessage: {
-          mode: 'append' as const,
+          mode: 'append',
           content: `
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
@@ -292,14 +307,17 @@ make precise edits, and verify your changes compile/pass tests when applicable.
 </context>
 `,
         },
-        onPermissionRequest: () => ({ kind: 'approved' as const }),
+        // C2: Log all approved tool executions for auditability
+        onPermissionRequest: (req) => {
+          console.log(`[copilot] approved tool: ${req.toolName} for task ${task.id}`);
+          return { kind: 'approved' };
+        },
         ...(worktreePath && task.repoPath
           ? {
               hooks: {
                 onPreToolUse: (input: { toolName: string; toolArgs: unknown; cwd: string }) => {
                   const repoPrefix = task.repoPath!;
                   const wtPrefix = worktreePath!;
-                  // Rewrite file paths from original repo to worktree
                   
                   if (!input.toolArgs || typeof input.toolArgs !== 'object') return {};
                   
@@ -307,7 +325,6 @@ make precise edits, and verify your changes compile/pass tests when applicable.
                   const modifiedArgs: Record<string, unknown> = {};
                   let changed = false;
                   
-                  // Deep rewrite: check all string values recursively
                   function rewriteValue(val: unknown): unknown {
                     if (typeof val === 'string' && val.includes(repoPrefix)) {
                       changed = true;
@@ -346,7 +363,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         if (event.type === 'session.idle') {
           if (sessions.has(task.id)) {
             console.log(`[copilot] session.idle for task ${task.id} (backup completion)`);
-            onStatusChange('complete');
+            completeOnce();
             const entry = sessions.get(task.id);
             if (entry) {
               entry.unsubscribe();
@@ -360,18 +377,41 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       sessions.set(task.id, { session, unsubscribe });
       onStatusChange('executing');
 
+      // M5: Timeout guard — abort if agent runs too long
+      const timeoutId = setTimeout(() => {
+        if (!sessions.has(task.id)) return;
+        console.warn(`[copilot] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
+        emitEvent(task.id, {
+          id: uuid(),
+          taskId: task.id,
+          type: 'error',
+          content: `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`,
+          timestamp: Date.now(),
+        });
+        const entry = sessions.get(task.id);
+        if (entry) {
+          entry.unsubscribe();
+          sessions.delete(task.id);
+        }
+        session.abort().catch(() => {});
+        session.destroy().catch(() => {});
+        onStatusChange('failed');
+      }, AGENT_TIMEOUT_MS);
+
       // Build prompt and send — sendAndWait blocks until session is idle
       const prompt = `${task.title}\n\n${task.description}`;
       console.log(`[copilot] sending prompt for task ${task.id}`);
       await session.sendAndWait({ prompt });
       console.log(`[copilot] sendAndWait completed for task ${task.id}`);
 
+      clearTimeout(timeoutId);
+
       // Primary completion path — clean up and mark done
       if (sessions.has(task.id)) {
         const entry = sessions.get(task.id);
         if (entry) entry.unsubscribe();
         sessions.delete(task.id);
-        onStatusChange('complete');
+        completeOnce();
         session.destroy().catch(() => {});
       }
     } catch (err: any) {
@@ -399,7 +439,11 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       }
       onStatusChange('failed');
     }
-  })();
+  })().catch((err) => {
+    // M6: Catch any unhandled errors from the async IIFE
+    console.error(`[copilot] unhandled error for task ${task.id}:`, err);
+    onStatusChange('failed');
+  });
 }
 
 export function stopAgent(taskId: string): boolean {

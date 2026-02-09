@@ -8,6 +8,6 @@ export type {
   AgentEvent,
   Column,
   WSMessage,
-} from '../../../../shared/types.ts';
+} from '../../../../shared/types.js';
 
-export { VALID_TRANSITIONS } from '../../../../shared/constants.ts';
+export { VALID_TRANSITIONS } from '../../../../shared/constants.js';
