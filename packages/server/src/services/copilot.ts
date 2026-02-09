@@ -238,20 +238,20 @@ export function startAgent(
 ): void {
   if (sessions.has(task.id)) return;
 
-  // Set up worktree if configured
+  // Set up worktree if configured — capture path locally since the callback
+  // updates the DB but not this local task reference
+  let worktreePath: string | undefined;
   if (task.useWorktree) {
     try {
-      const wtPath = setupWorktree(task);
-      if (wtPath && onWorktreeCreated) {
-        onWorktreeCreated(wtPath);
-      }
-      // Emit an event about the worktree
-      if (wtPath) {
+      worktreePath = setupWorktree(task);
+      if (worktreePath) {
+        task.worktreePath = worktreePath; // Also set on task for consistency
+        if (onWorktreeCreated) onWorktreeCreated(worktreePath);
         emitEvent(task.id, {
           id: uuid(),
           taskId: task.id,
           type: 'output',
-          content: `Git worktree created at ${wtPath}\nBranch: ${task.branchName}\nBase: ${task.baseBranch || 'main'}`,
+          content: `Git worktree created at ${worktreePath}\nBranch: ${task.branchName}\nBase: ${task.baseBranch || 'main'}`,
           timestamp: Date.now(),
         });
       }
@@ -272,8 +272,10 @@ export function startAgent(
   (async () => {
     try {
       const client = await getClient();
-      const workingDirectory = task.worktreePath || task.repoPath || process.cwd();
+      const workingDirectory = worktreePath || task.repoPath || process.cwd();
 
+      if (worktreePath) console.log(`[copilot] using worktree: ${worktreePath}`);
+      
       const session = await client.createSession({
         model: process.env.COPILOT_MODEL || 'claude-sonnet-4-20250514',
         streaming: true,
@@ -284,13 +286,56 @@ export function startAgent(
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
 Task: ${task.title}
-${task.worktreePath ? `\nIMPORTANT: All file paths MUST be under ${task.worktreePath}. Do NOT reference or edit files at ${task.repoPath} directly.` : ''}
+${worktreePath ? `\nIMPORTANT: All file paths MUST be under ${worktreePath}. Do NOT reference or edit files at ${task.repoPath} directly.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
 make precise edits, and verify your changes compile/pass tests when applicable.
 </context>
 `,
         },
         onPermissionRequest: () => ({ kind: 'approved' as const }),
+        ...(worktreePath && task.repoPath
+          ? {
+              hooks: {
+                onPreToolUse: (input: { toolName: string; toolArgs: unknown; cwd: string }) => {
+                  const repoPrefix = task.repoPath!;
+                  const wtPrefix = worktreePath!;
+                  // Rewrite file paths from original repo to worktree
+                  
+                  if (!input.toolArgs || typeof input.toolArgs !== 'object') return {};
+                  
+                  const args = input.toolArgs as Record<string, unknown>;
+                  const modifiedArgs: Record<string, unknown> = {};
+                  let changed = false;
+                  
+                  // Deep rewrite: check all string values recursively
+                  function rewriteValue(val: unknown): unknown {
+                    if (typeof val === 'string' && val.includes(repoPrefix)) {
+                      changed = true;
+                      return val.replaceAll(repoPrefix, wtPrefix);
+                    }
+                    if (Array.isArray(val)) return val.map(rewriteValue);
+                    if (val && typeof val === 'object') {
+                      const obj: Record<string, unknown> = {};
+                      for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+                        obj[k] = rewriteValue(v);
+                      }
+                      return obj;
+                    }
+                    return val;
+                  }
+                  
+                  for (const [key, value] of Object.entries(args)) {
+                    modifiedArgs[key] = rewriteValue(value);
+                  }
+                  
+                  if (changed) {
+                    return { modifiedArgs };
+                  }
+                  return {};
+                },
+              },
+            }
+          : {}),
       });
 
       // Subscribe to all session events — capture unsubscribe for cleanup
