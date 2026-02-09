@@ -38,6 +38,7 @@ const sessions = new Map<string, { session: CopilotSession; unsubscribe: () => v
 
 // Event log per task (capped to prevent unbounded growth)
 const MAX_EVENTS_PER_TASK = 100;
+const MAX_EVENT_LOG_TASKS = 200; // M2: cap total tracked tasks
 const eventLogs = new Map<string, AgentEvent[]>();
 
 function emitEvent(taskId: string, event: AgentEvent): void {
@@ -47,6 +48,11 @@ function emitEvent(taskId: string, event: AgentEvent): void {
     log = log.slice(-MAX_EVENTS_PER_TASK);
   }
   eventLogs.set(taskId, log);
+  // M2: evict oldest task logs when map grows too large
+  if (eventLogs.size > MAX_EVENT_LOG_TASKS) {
+    const oldest = eventLogs.keys().next().value;
+    if (oldest) eventLogs.delete(oldest);
+  }
   broadcast({ type: 'agent_event', payload: event });
 }
 
@@ -250,7 +256,8 @@ export function startAgent(
     if (completed) return;
     completed = true;
     onStatusChange('complete');
-    eventLogs.delete(task.id); // M2: clear event log on completion
+    // M2: Events kept until task deletion (clearEvents called from DELETE route)
+    // This allows users to review agent activity after completion
   }
 
   // Set up worktree if configured — capture path locally since the callback
