@@ -89,6 +89,24 @@ test.describe('Task CRUD', () => {
     const taskTitle = `Panel Task ${Date.now()}`;
     await createTask(page, taskTitle);
 
+    // Move task to in-progress via API (clicking backlog cards doesn't open agent panel)
+    const taskId = await page.evaluate(async (title) => {
+      const res = await fetch('/api/tasks');
+      const tasks = await res.json();
+      return tasks.find((t: any) => t.title === title)?.id;
+    }, taskTitle);
+    await page.evaluate(async (id) => {
+      await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columnId: 'in-progress' }),
+      });
+    }, taskId);
+
+    // Reload so the board reflects the move
+    await page.reload();
+    await waitForBoard(page);
+
     // Click the task card
     await page.getByRole('heading', { name: taskTitle }).click();
 
@@ -164,8 +182,9 @@ test.describe('Priority Selection', () => {
 
     await openCreateDialog(page);
 
-    // Click priority dropdown button (the one in the dialog with role=button and name=Medium)
-    await page.getByRole('button', { name: 'Medium' }).click();
+    // Click priority dropdown button — scope to dialog to avoid matching Medium badges on task cards
+    const dialog = page.locator('.fixed').filter({ has: page.getByRole('heading', { name: 'Create Task' }) });
+    await dialog.getByRole('button', { name: 'Medium' }).click();
 
     // Should show all priority options in the dropdown
     const dropdown = page.locator('.absolute');
