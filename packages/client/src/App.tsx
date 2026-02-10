@@ -10,6 +10,7 @@ import { Board } from '@/components/Board';
 import { TaskDialog } from '@/components/TaskDialog';
 import { AgentPanel } from '@/components/AgentPanel';
 import { WorktreeDialog } from '@/components/WorktreeDialog';
+import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
@@ -19,6 +20,7 @@ export function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
 
   // Derive live task from tasks array so it stays current with WS updates
   const selectedTask = useMemo(
@@ -41,6 +43,7 @@ export function App() {
   );
 
   const handleTaskClick = useCallback((task: Task) => {
+    if (task.columnId === 'backlog') return;
     setSelectedTaskId(task.id);
   }, []);
 
@@ -66,6 +69,21 @@ export function App() {
     updateTask(id, updates);
   }, [updateTask]);
 
+  const handleDeleteTask = useCallback((task: Task) => {
+    setDeletingTask(task);
+  }, []);
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deletingTask) {
+      deleteTask(deletingTask.id);
+      setDeletingTask(null);
+    }
+  }, [deletingTask, deleteTask]);
+
+  const handleCancelDelete = useCallback(() => {
+    setDeletingTask(null);
+  }, []);
+
   // Worktree dialog: intercept Run to show config dialog first
   const worktreeDialogTask = useMemo(
     () => (worktreeDialogTaskId ? tasks.find((t) => t.id === worktreeDialogTaskId) ?? null : null),
@@ -79,8 +97,10 @@ export function App() {
   const handleWorktreeSubmit = useCallback(
     async (config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean }) => {
       if (!worktreeDialogTaskId) return;
+      const taskId = worktreeDialogTaskId;
+      setSelectedTaskId(taskId);
       setWorktreeDialogTaskId(null);
-      await configureAndRunTask(worktreeDialogTaskId, config);
+      await configureAndRunTask(taskId, config);
     },
     [worktreeDialogTaskId, configureAndRunTask]
   );
@@ -91,18 +111,20 @@ export function App() {
 
   // Keyboard shortcuts
   const handleCloseAll = useCallback(() => {
-    if (worktreeDialogTaskId) {
+    if (deletingTask) {
+      setDeletingTask(null);
+    } else if (worktreeDialogTaskId) {
       setWorktreeDialogTaskId(null);
     } else if (dialogOpen) {
       setDialogOpen(false);
     } else if (selectedTaskId) {
       setSelectedTaskId(null);
     }
-  }, [worktreeDialogTaskId, dialogOpen, selectedTaskId]);
+  }, [deletingTask, worktreeDialogTaskId, dialogOpen, selectedTaskId]);
 
   const isAnyOpen = useCallback(
-    () => dialogOpen || selectedTaskId !== null || worktreeDialogTaskId !== null,
-    [dialogOpen, selectedTaskId, worktreeDialogTaskId]
+    () => dialogOpen || selectedTaskId !== null || worktreeDialogTaskId !== null || deletingTask !== null,
+    [dialogOpen, selectedTaskId, worktreeDialogTaskId, deletingTask]
   );
 
   useKeyboardShortcuts({
@@ -135,7 +157,12 @@ export function App() {
           onMoveTask={moveTask}
           onTaskClick={handleTaskClick}
           onEditTask={handleEditTask}
+          onDeleteTask={handleDeleteTask}
           onAddTask={handleOpenDialog}
+          // onDropInProgress receives the pre-move task object, but task.id is stable.
+          // React batches this setState with the WS-driven tasks array update from moveTask,
+          // so selectedTask (derived via useMemo) resolves to the already-moved task.
+          onDropInProgress={(task) => setSelectedTaskId(task.id)}
         />
       </main>
 
@@ -147,13 +174,20 @@ export function App() {
         onEditSubmit={handleEditSubmit}
       />
 
-      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onDelete={deleteTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} />
+      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} />
 
       <WorktreeDialog
         open={worktreeDialogTaskId !== null}
         task={worktreeDialogTask}
         onClose={handleCloseWorktreeDialog}
         onSubmit={handleWorktreeSubmit}
+      />
+
+      <DeleteConfirmDialog
+        open={deletingTask !== null}
+        taskTitle={deletingTask?.title ?? ''}
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
       />
 
       {/* Error toast */}

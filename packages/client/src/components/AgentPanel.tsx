@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Markdown from 'react-markdown';
 import {
@@ -52,6 +52,72 @@ const eventLabelMap: Record<AgentEventType, string> = {
   complete: 'Complete',
 };
 
+/** A coalesced event merges consecutive events of the same type */
+interface CoalescedEvent extends AgentEvent {
+  /** Parsed label for command events (e.g. "bash") */
+  toolLabel?: string;
+  /** Parsed arguments for command events */
+  toolArgs?: string;
+}
+
+/** Merge consecutive events of the same mergeable type */
+function coalesceEvents(events: AgentEvent[], streaming: boolean): CoalescedEvent[] {
+  const result: CoalescedEvent[] = [];
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+
+    // Hide thinking events that are still actively streaming
+    // (i.e. the last run of thinking events with no non-thinking event after them)
+    if (event.type === 'thinking' && streaming) {
+      // Check if there's a non-thinking event after this run of thinking events
+      let hasFollowUp = false;
+      for (let j = i + 1; j < events.length; j++) {
+        if (events[j].type !== 'thinking') { hasFollowUp = true; break; }
+      }
+      if (!hasFollowUp) continue; // skip — still streaming thinking
+    }
+
+    // Mergeable types: thinking, output
+    if (event.type === 'thinking' || event.type === 'output') {
+      // Check if last coalesced entry is the same type — merge
+      const last = result[result.length - 1];
+      if (last && last.type === event.type) {
+        last.content += event.content;
+        continue;
+      }
+    }
+
+    // Parse command events: content is like 'bash: {"command":"...","description":"..."}'
+    if (event.type === 'command') {
+      const parsed = parseCommandEvent(event);
+      result.push(parsed);
+      continue;
+    }
+
+    result.push({ ...event });
+  }
+  return result;
+}
+
+/** Parse command event content like 'bash: {"command":"python3 hello.py","description":"Run hello"}' */
+function parseCommandEvent(event: AgentEvent): CoalescedEvent {
+  const colonIdx = event.content.indexOf(': ');
+  if (colonIdx === -1) return { ...event };
+
+  const toolLabel = event.content.slice(0, colonIdx);
+  const jsonStr = event.content.slice(colonIdx + 2);
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    // Show the actual command or a description
+    const display = parsed.command || parsed.description || jsonStr;
+    return { ...event, toolLabel, toolArgs: display };
+  } catch {
+    // Not valid JSON — just show the raw content after the tool name
+    return { ...event, toolLabel, toolArgs: jsonStr };
+  }
+}
+
 /** Detect if content looks like code (backticks, common code patterns) */
 function looksLikeCode(text: string): boolean {
   if (text.includes('`')) return true;
@@ -89,14 +155,22 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function EventItem({ event }: { event: AgentEvent }) {
-  const [expanded, setExpanded] = useState(true);
+function EventItem({ event }: { event: CoalescedEvent }) {
+  // Thinking events default to collapsed; everything else expanded
+  const [expanded, setExpanded] = useState(event.type !== 'thinking');
   const Icon = eventIconMap[event.type];
   const color = eventColorMap[event.type];
-  const label = eventLabelMap[event.type];
+  const label = event.toolLabel
+    ? event.toolLabel.charAt(0).toUpperCase() + event.toolLabel.slice(1)
+    : eventLabelMap[event.type];
 
   const hasDiff = event.metadata?.diff;
   const hasFile = event.metadata?.file;
+
+  // For parsed commands, show the command string in the header
+  const headerSummary = event.toolArgs
+    ? event.toolArgs.length > 80 ? event.toolArgs.slice(0, 80) + '...' : event.toolArgs
+    : null;
 
   return (
     <motion.div
@@ -117,7 +191,12 @@ function EventItem({ event }: { event: AgentEvent }) {
             <span className="text-xs font-medium text-foreground">
               {label}
             </span>
-            {hasFile && (
+            {headerSummary && (
+              <span className="truncate text-[10px] text-muted-foreground font-mono">
+                {headerSummary}
+              </span>
+            )}
+            {!headerSummary && hasFile && (
               <span className="truncate text-[10px] text-muted-foreground font-mono">
                 {event.metadata!.file}
               </span>
@@ -155,18 +234,18 @@ function EventItem({ event }: { event: AgentEvent }) {
                 )
               )}
 
-              {/* Command */}
+              {/* Command — show parsed command cleanly */}
               {event.type === 'command' && (
                 <div className="flex items-center gap-1 rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-emerald-400">
                   <span className="text-muted-foreground select-none">$</span>
-                  <span className="flex-1">{event.content}</span>
-                  <CopyButton text={event.content} />
+                  <span className="flex-1">{event.toolArgs || event.content}</span>
+                  <CopyButton text={event.toolArgs || event.content} />
                 </div>
               )}
 
               {/* Output */}
               {event.type === 'output' && (
-                <div className="rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-300">
+                <div className="rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-300 whitespace-pre-wrap">
                   {event.content}
                 </div>
               )}
@@ -198,12 +277,11 @@ function EventItem({ event }: { event: AgentEvent }) {
   );
 }
 
-export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR, onCleanupWorktree }: AgentPanelProps) {
+export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanupWorktree }: AgentPanelProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [prLoading, setPrLoading] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const taskId = task?.id ?? null;
@@ -220,7 +298,6 @@ export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR,
     // Reset state for new task
     setPrUrl(null);
     setPrLoading(false);
-    setConfirmDelete(false);
 
     // Load existing events from server
     api.getEvents(taskId).then(setEvents).catch(console.error);
@@ -262,6 +339,11 @@ export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR,
   }, [events]);
 
   const isActive = task?.agentStatus === 'executing' || task?.agentStatus === 'planning';
+
+  const coalescedEvents = useMemo(
+    () => coalesceEvents(events, streaming),
+    [events, streaming]
+  );
 
   return (
     <AnimatePresence>
@@ -342,27 +424,6 @@ export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR,
                 >
                   <Square className="h-4 w-4" />
                 </button>
-              )}
-              {/* Delete button with confirmation */}
-              {onDelete && !isActive && (
-                confirmDelete ? (
-                  <button
-                    onClick={() => { onDelete(task.id); onClose(); }}
-                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg border border-red-500/50 bg-red-500/10 px-2 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors"
-                    title="Confirm delete"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Confirm
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setConfirmDelete(true)}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-colors"
-                    title="Delete task"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )
               )}
               <button
                 onClick={onClose}
@@ -453,7 +514,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR,
             ref={scrollRef}
             className="flex-1 overflow-y-auto p-2 space-y-0.5"
           >
-            {events.length === 0 && !streaming && (
+            {coalescedEvents.length === 0 && !streaming && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center">
                   <Brain className="mx-auto h-10 w-10 text-muted-foreground/20" />
@@ -467,12 +528,12 @@ export function AgentPanel({ task, onClose, onRun, onStop, onDelete, onCreatePR,
               </div>
             )}
 
-            {events.map((event) => (
+            {coalescedEvents.map((event) => (
               <EventItem key={event.id} event={event} />
             ))}
 
             {/* Streaming indicator */}
-            {streaming && events.length > 0 && (
+            {streaming && coalescedEvents.length > 0 && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
