@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { Task, AgentEvent } from '../types.js';
+import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
 import {
   CopilotClient,
@@ -34,30 +35,72 @@ async function getClient(): Promise<CopilotClient> {
 }
 
 // Active agent sessions keyed by taskId
-const sessions = new Map<string, { session: CopilotSession; unsubscribe: () => void }>();
+const sessions = new Map<string, { session: CopilotSession; unsubscribe: () => void; timeoutId?: ReturnType<typeof setTimeout> }>();
+
+// Tasks that have been deleted — guards emitEvent from persisting/broadcasting
+// events for tasks that no longer exist (race with in-flight session teardown).
+// Entries are auto-removed after 60s to prevent unbounded growth.
+const deletedTasks = new Set<string>();
+const DELETED_TASK_TTL_MS = 60_000;
 
 // Event log per task (capped to prevent unbounded growth)
 const MAX_EVENTS_PER_TASK = 100;
 const MAX_EVENT_LOG_TASKS = 200; // M2: cap total tracked tasks
 const eventLogs = new Map<string, AgentEvent[]>();
 
+// Reference to the repository for persisting events to SQLite
+let eventRepo: TaskRepository | null = null;
+
+/** Call once at startup to enable event persistence. */
+export function initEventPersistence(repo: TaskRepository): void {
+  eventRepo = repo;
+}
+
 function emitEvent(taskId: string, event: AgentEvent): void {
+  // Guard: skip events for deleted tasks (race with in-flight session teardown)
+  if (deletedTasks.has(taskId)) return;
+
   let log = eventLogs.get(taskId) || [];
   log.push(event);
   if (log.length > MAX_EVENTS_PER_TASK) {
     log = log.slice(-MAX_EVENTS_PER_TASK);
   }
+  // LRU touch: delete + re-insert so active tasks stay at end of iteration order
+  eventLogs.delete(taskId);
   eventLogs.set(taskId, log);
-  // M2: evict oldest task logs when map grows too large
+  // M2: evict least-recently-inserted task logs when map grows too large
   if (eventLogs.size > MAX_EVENT_LOG_TASKS) {
     const oldest = eventLogs.keys().next().value;
     if (oldest) eventLogs.delete(oldest);
+  }
+  // Write-through to SQLite
+  if (eventRepo) {
+    try {
+      eventRepo.insertEvent(event);
+    } catch (err: any) {
+      console.error(`[copilot] failed to persist event: ${err.message}`);
+    }
   }
   broadcast({ type: 'agent_event', payload: event });
 }
 
 export function getEvents(taskId: string): AgentEvent[] {
-  return [...(eventLogs.get(taskId) || [])];
+  const memEvents = eventLogs.get(taskId);
+  if (memEvents && memEvents.length > 0) {
+    // LRU touch: delete and re-insert so this key moves to end of iteration order
+    eventLogs.delete(taskId);
+    eventLogs.set(taskId, memEvents);
+    return [...memEvents];
+  }
+  // Fall back to DB for tasks whose in-memory logs were evicted (e.g. after restart)
+  if (eventRepo) {
+    const dbEvents = eventRepo.getEventsByTaskId(taskId);
+    if (dbEvents.length > 0) {
+      eventLogs.set(taskId, dbEvents);
+    }
+    return dbEvents;
+  }
+  return [];
 }
 
 /**
@@ -255,6 +298,9 @@ export function startAgent(
   function completeOnce() {
     if (completed) return;
     completed = true;
+    // Clear the timeout from whichever completion path fires first
+    const entry = sessions.get(task.id);
+    if (entry?.timeoutId) clearTimeout(entry.timeoutId);
     onStatusChange('complete');
     // M2: Events kept until task deletion (clearEvents called from DELETE route)
     // This allows users to review agent activity after completion
@@ -316,7 +362,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         },
         // C2: Log all approved tool executions for auditability
         onPermissionRequest: (req) => {
-          console.log(`[copilot] approved tool: ${req.toolName} for task ${task.id}`);
+          console.log(`[copilot] approved tool: ${req.kind} for task ${task.id}`);
           return { kind: 'approved' };
         },
         ...(worktreePath && task.repoPath
@@ -385,7 +431,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       onStatusChange('executing');
 
       // M5: Timeout guard — abort if agent runs too long
-      const timeoutId = setTimeout(() => {
+      const timeoutId: ReturnType<typeof setTimeout> = setTimeout(() => {
         if (!sessions.has(task.id)) return;
         console.warn(`[copilot] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
         emitEvent(task.id, {
@@ -404,6 +450,10 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         session.destroy().catch(() => {});
         onStatusChange('failed');
       }, AGENT_TIMEOUT_MS);
+
+      // Store timeoutId so stopAgent / completeOnce can clear it
+      const sessionEntry = sessions.get(task.id);
+      if (sessionEntry) sessionEntry.timeoutId = timeoutId;
 
       // Build prompt and send — sendAndWait blocks until session is idle
       const prompt = `${task.title}\n\n${task.description}`;
@@ -457,6 +507,7 @@ export function stopAgent(taskId: string): boolean {
   const entry = sessions.get(taskId);
   if (!entry) return false;
 
+  if (entry.timeoutId) clearTimeout(entry.timeoutId);
   entry.unsubscribe();
   sessions.delete(taskId);
 
@@ -482,7 +533,18 @@ export function isRunning(taskId: string): boolean {
 }
 
 export function clearEvents(taskId: string): void {
+  // Mark as deleted so in-flight emitEvent calls are suppressed.
+  // Auto-remove after TTL to prevent unbounded Set growth.
+  deletedTasks.add(taskId);
+  setTimeout(() => deletedTasks.delete(taskId), DELETED_TASK_TTL_MS);
   eventLogs.delete(taskId);
+  if (eventRepo) {
+    try {
+      eventRepo.deleteEventsByTaskId(taskId);
+    } catch (err: any) {
+      console.error(`[copilot] failed to delete persisted events: ${err.message}`);
+    }
+  }
 }
 
 export function shutdownAll(): void {

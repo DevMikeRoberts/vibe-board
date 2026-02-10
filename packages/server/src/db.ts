@@ -22,6 +22,21 @@ function migrate(db: Database.Database): void {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS events (
+      id         TEXT PRIMARY KEY,
+      task_id    TEXT NOT NULL,
+      type       TEXT NOT NULL,
+      content    TEXT NOT NULL,
+      timestamp  INTEGER NOT NULL,
+      metadata   TEXT,
+      FOREIGN KEY (task_id) REFERENCES tasks(id)
+    )
+  `);
+
+  // Index for fast lookups by task_id + ordering by timestamp
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id, timestamp ASC)`);
+
   // Add worktree columns if they don't exist yet
   const cols = db.pragma('table_info(tasks)') as { name: string }[];
   const colNames = new Set(cols.map((c) => c.name));

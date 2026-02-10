@@ -24,10 +24,11 @@ interface ColumnProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onEditTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
   onAddTask?: () => void;
 }
 
-export function Column({ column, tasks, onTaskClick, onEditTask, onAddTask }: ColumnProps) {
+export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onAddTask }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const Icon = iconMap[column.icon] || Inbox;
 
@@ -47,7 +48,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onAddTask }: Co
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
           <span className={cn('h-2 w-2 rounded-full', dotColor)} />
-          <h2 className="text-sm font-medium text-foreground">
+          <h2 className="text-base font-medium text-foreground">
             {column.title}
           </h2>
           <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
@@ -81,6 +82,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onAddTask }: Co
             task={task}
             onClick={() => onTaskClick(task)}
             onEdit={onEditTask}
+            onDelete={onDeleteTask}
           />
         ))}
 

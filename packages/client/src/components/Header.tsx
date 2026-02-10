@@ -18,10 +18,10 @@ export function Header({ theme, toggleTheme, taskCount, searchQuery, onSearchCha
             <Kanban className="h-4 w-4 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold tracking-tight">
+            <h1 className="text-lg font-semibold tracking-tight">
               Copilot Kanban
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               {taskCount} tasks
             </p>
           </div>

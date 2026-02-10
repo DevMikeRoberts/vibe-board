@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
-import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import type { Task } from '../types.js';
 import { VALID_TRANSITIONS, isValidPriority, isValidColumnId, isValidAgentStatus } from '../types.js';
@@ -20,7 +20,7 @@ function isValidGitRef(ref: string): boolean {
 }
 
 // Allowed repo root directories — prevents path traversal to /etc, /root/.ssh, etc.
-const ALLOWED_REPO_ROOTS = (process.env.ALLOWED_REPO_ROOTS || '/root/projects,/tmp')
+const ALLOWED_REPO_ROOTS = (process.env.ALLOWED_REPO_ROOTS || `${os.homedir()},/tmp`)
   .split(',')
   .map((p) => p.trim())
   .filter(Boolean);
@@ -29,22 +29,20 @@ function isAllowedRepoPath(repoPath: string): string | null {
   const resolved = path.resolve(repoPath);
   // Must be under one of the allowed roots
   const underAllowedRoot = ALLOWED_REPO_ROOTS.some(
-    (root) => resolved === root || resolved.startsWith(root + '/')
+    (root) => resolved === root || resolved.startsWith(root + path.sep)
   );
   if (!underAllowedRoot) {
     return `repoPath must be under one of: ${ALLOWED_REPO_ROOTS.join(', ')}`;
   }
-  // Must contain a .git directory (i.e. be a git repo)
-  try {
-    const gitDir = path.join(resolved, '.git');
-    const stat = fs.statSync(gitDir);
-    if (!stat.isDirectory()) {
-      return 'repoPath does not appear to be a git repository (no .git directory)';
-    }
-  } catch {
-    return 'repoPath does not appear to be a git repository (no .git directory)';
-  }
+  // If the directory exists, warn (but don't block) if it's not a git repo.
+  // The agent may need to create the project and init git itself.
   return null;
+}
+
+function expandTilde(p: string): string {
+  if (!p.startsWith('~')) return p;
+  const rest = p.slice(p.startsWith('~/') || p.startsWith('~\\') ? 2 : 1);
+  return path.join(os.homedir(), rest);
 }
 
 function broadcastTaskUpdate(task: Task): void {
@@ -84,8 +82,8 @@ export function createTaskRouter(repo: TaskRepository): Router {
   router.post('/', (req: Request, res: Response) => {
     const { title, description, priority, columnId } = req.body;
 
-    if (!title || typeof title !== 'string') {
-      res.status(400).json({ error: 'title is required and must be a string' });
+    if (!title || typeof title !== 'string' || !title.trim()) {
+      res.status(400).json({ error: 'title is required and must be a non-empty string' });
       return;
     }
     if (title.length > MAX_TITLE_LENGTH) {
@@ -134,8 +132,8 @@ export function createTaskRouter(repo: TaskRepository): Router {
     const { title, description, priority, columnId, agentStatus } = req.body;
 
     // Validate types of all incoming fields
-    if (title !== undefined && typeof title !== 'string') {
-      res.status(400).json({ error: 'title must be a string' });
+    if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
+      res.status(400).json({ error: 'title must be a non-empty string' });
       return;
     }
     if (typeof title === 'string' && title.length > MAX_TITLE_LENGTH) {
@@ -204,8 +202,8 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
     stopAgent(id);
+    clearEvents(id); // Mark deleted before repo.delete so in-flight events are suppressed
     repo.delete(id);
-    clearEvents(id);
     broadcast({ type: 'task_deleted', payload: { id } });
     res.status(204).send();
   });
@@ -246,11 +244,12 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
     if (typeof repoPath === 'string') {
-      if (!repoPath.startsWith('/')) {
-        res.status(400).json({ error: 'repoPath must be an absolute path' });
+      const expandedRepoPath = expandTilde(repoPath);
+      if (!path.isAbsolute(expandedRepoPath)) {
+        res.status(400).json({ error: 'repoPath must be an absolute path (e.g. ~/projects/my-app or C:\\Users\\you\\projects\\my-app)' });
         return;
       }
-      const repoErr = isAllowedRepoPath(repoPath);
+      const repoErr = isAllowedRepoPath(expandedRepoPath);
       if (repoErr) {
         res.status(400).json({ error: repoErr });
         return;
@@ -258,7 +257,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
     }
 
     const updates: Partial<Task> = {};
-    if (repoPath !== undefined) updates.repoPath = repoPath;
+    if (repoPath !== undefined) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
     if (branchName !== undefined) updates.branchName = branchName;
     if (baseBranch !== undefined) updates.baseBranch = baseBranch;
     if (useWorktree !== undefined) updates.useWorktree = useWorktree;

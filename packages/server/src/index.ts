@@ -5,7 +5,7 @@ import { createWSS } from './websocket.js';
 import { initDatabase } from './db.js';
 import { SqliteTaskRepository } from './repositories/sqlite.js';
 import { createTaskRouter } from './routes/tasks.js';
-import { shutdownAll } from './services/copilot.js';
+import { shutdownAll, initEventPersistence } from './services/copilot.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -17,6 +17,7 @@ app.use(express.json({ limit: '100kb' }));
 // Initialize database and repository
 const db = initDatabase();
 const taskRepo = new SqliteTaskRepository(db);
+initEventPersistence(taskRepo);
 app.use('/api/tasks', createTaskRouter(taskRepo));
 
 // Health check
@@ -38,6 +39,11 @@ function shutdown() {
   shutdownAll();
   db.close();
   server.close(() => process.exit(0));
+  // Force exit if connections don't close within 5 seconds
+  setTimeout(() => {
+    console.warn('[server] force exit after timeout');
+    process.exit(1);
+  }, 5_000).unref();
 }
 
 process.on('SIGTERM', shutdown);

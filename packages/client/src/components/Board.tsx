@@ -24,7 +24,9 @@ interface BoardProps {
   onMoveTask: (taskId: string, targetColumn: ColumnId) => void;
   onTaskClick: (task: Task) => void;
   onEditTask?: (task: Task) => void;
+  onDeleteTask?: (task: Task) => void;
   onAddTask: () => void;
+  onDropInProgress?: (task: Task) => void;
 }
 
 // Use pointerWithin first (ideal for dropping into columns),
@@ -41,7 +43,9 @@ export function Board({
   onMoveTask,
   onTaskClick,
   onEditTask,
+  onDeleteTask,
   onAddTask,
+  onDropInProgress,
 }: BoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
@@ -67,8 +71,8 @@ export function Board({
 
       const taskId = active.id as string;
       const overId = over.id as string;
-      const activeTask = tasks.find((t) => t.id === taskId);
-      if (!activeTask) return;
+      const draggedTask = tasks.find((t) => t.id === taskId);
+      if (!draggedTask) return;
 
       // Resolve target column
       const isColumn = columns.some((c) => c.id === overId);
@@ -82,12 +86,17 @@ export function Board({
       }
 
       // Validate transition before moving
-      if (targetColumn === activeTask.columnId) return;
-      if (!VALID_TRANSITIONS[activeTask.columnId]?.includes(targetColumn)) return;
+      if (targetColumn === draggedTask.columnId) return;
+      if (!VALID_TRANSITIONS[draggedTask.columnId]?.includes(targetColumn)) return;
 
       onMoveTask(taskId, targetColumn);
+
+      // Auto-open agent panel when dropped into in-progress
+      if (targetColumn === 'in-progress' && onDropInProgress) {
+        onDropInProgress(draggedTask);
+      }
     },
-    [onMoveTask, tasks]
+    [onMoveTask, onDropInProgress, tasks]
   );
 
   return (
@@ -110,6 +119,7 @@ export function Board({
               tasks={getTasksByColumn(column.id)}
               onTaskClick={onTaskClick}
               onEditTask={onEditTask}
+              onDeleteTask={onDeleteTask}
               onAddTask={column.id === 'backlog' ? onAddTask : undefined}
             />
           </motion.div>

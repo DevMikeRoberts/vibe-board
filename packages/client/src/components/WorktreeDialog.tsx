@@ -67,6 +67,8 @@ export function WorktreeDialog({ open, task, onClose, onSubmit }: WorktreeDialog
           />
 
           <motion.div
+            role="dialog"
+            aria-modal="true"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -94,13 +96,13 @@ export function WorktreeDialog({ open, task, onClose, onSubmit }: WorktreeDialog
               {/* Repo path */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Target Repository Path
+                  Local Repository Path
                 </label>
                 <input
                   type="text"
                   value={repoPath}
                   onChange={(e) => setRepoPath(e.target.value)}
-                  placeholder="/home/user/my-project"
+                  placeholder="~/projects/my-app"
                   autoFocus
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { Task, Priority, ColumnId, AgentStatus } from '../types.js';
+import type { Task, Priority, ColumnId, AgentStatus, AgentEvent } from '../types.js';
 import type { TaskRepository } from './types.js';
 
 interface TaskRow {
@@ -47,6 +47,9 @@ export class SqliteTaskRepository implements TaskRepository {
     update: Database.Statement;
     delete: Database.Statement;
     count: Database.Statement;
+    insertEvent: Database.Statement;
+    getEventsByTaskId: Database.Statement;
+    deleteEventsByTaskId: Database.Statement;
   };
 
   constructor(db: Database.Database) {
@@ -78,6 +81,12 @@ export class SqliteTaskRepository implements TaskRepository {
       `),
       delete: db.prepare('DELETE FROM tasks WHERE id = ?'),
       count: db.prepare('SELECT COUNT(*) as cnt FROM tasks'),
+      insertEvent: db.prepare(`
+        INSERT INTO events (id, task_id, type, content, timestamp, metadata)
+        VALUES (@id, @task_id, @type, @content, @timestamp, @metadata)
+      `),
+      getEventsByTaskId: db.prepare('SELECT * FROM events WHERE task_id = ? ORDER BY timestamp ASC'),
+      deleteEventsByTaskId: db.prepare('DELETE FROM events WHERE task_id = ?'),
     };
   }
 
@@ -142,5 +151,49 @@ export class SqliteTaskRepository implements TaskRepository {
   count(): number {
     const row = this.stmts.count.get() as { cnt: number };
     return row.cnt;
+  }
+
+  insertEvent(event: AgentEvent): void {
+    this.stmts.insertEvent.run({
+      id: event.id,
+      task_id: event.taskId,
+      type: event.type,
+      content: event.content,
+      timestamp: event.timestamp,
+      metadata: event.metadata ? JSON.stringify(event.metadata) : null,
+    });
+  }
+
+  getEventsByTaskId(taskId: string): AgentEvent[] {
+    const rows = this.stmts.getEventsByTaskId.all(taskId) as Array<{
+      id: string;
+      task_id: string;
+      type: string;
+      content: string;
+      timestamp: number;
+      metadata: string | null;
+    }>;
+    return rows.map((row) => {
+      let metadata: AgentEvent['metadata'] | undefined;
+      if (row.metadata) {
+        try {
+          metadata = JSON.parse(row.metadata);
+        } catch {
+          // Ignore malformed metadata
+        }
+      }
+      return {
+        id: row.id,
+        taskId: row.task_id,
+        type: row.type as AgentEvent['type'],
+        content: row.content,
+        timestamp: row.timestamp,
+        ...(metadata ? { metadata } : {}),
+      };
+    });
+  }
+
+  deleteEventsByTaskId(taskId: string): void {
+    this.stmts.deleteEventsByTaskId.run(taskId);
   }
 }

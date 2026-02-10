@@ -131,7 +131,6 @@ interface AgentPanelProps {
   onClose: () => void;
   onRun?: (id: string) => void;
   onStop?: (id: string) => void;
-  onDelete?: (id: string) => void;
   onCreatePR?: (id: string) => Promise<string | undefined>;
   onCleanupWorktree?: (id: string) => Promise<void>;
 }
@@ -139,11 +138,12 @@ interface AgentPanelProps {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = () => {
-    navigator.clipboard.writeText(text).catch((err) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch((err) => {
       console.warn('[clipboard] copy failed:', err);
     });
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
   };
   return (
     <button

@@ -1,8 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
-  GripVertical,
   Clock,
   Brain,
   Cog,
@@ -10,6 +9,7 @@ import {
   AlertCircle,
   Circle,
   Pencil,
+  Trash2,
 } from 'lucide-react';
 import type { Task, Priority, AgentStatus } from '@/types';
 import { cn } from '@/lib/utils';
@@ -45,11 +45,24 @@ interface TaskCardProps {
   task: Task;
   onClick: () => void;
   onEdit?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
 }
 
-export function TaskCard({ task, onClick, onEdit }: TaskCardProps) {
+export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: task.id });
+
+  // Suppress click that fires immediately after a drag ends
+  const wasDragging = useRef(false);
+  useEffect(() => {
+    if (isDragging) {
+      wasDragging.current = true;
+    } else if (wasDragging.current) {
+      // Clear on next frame so the click event from drag-end is suppressed
+      const id = requestAnimationFrame(() => { wasDragging.current = false; });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [isDragging]);
 
   const style = isDragging && transform
     ? { transform: CSS.Translate.toString(transform) }
@@ -76,46 +89,58 @@ export function TaskCard({ task, onClick, onEdit }: TaskCardProps) {
     <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
       className={cn(
-        'group relative cursor-pointer rounded-lg border border-border bg-card p-3 shadow-sm transition-all',
+        'group relative cursor-grab active:cursor-grabbing rounded-lg border border-border bg-card p-3 shadow-sm transition-all',
         'hover:border-primary/30 hover:shadow-md',
         isDragging && 'z-50 rotate-2 scale-105 shadow-xl opacity-90',
         isActive && 'border-primary/20'
       )}
-      onClick={onClick}
+      onClick={() => { if (!wasDragging.current) onClick(); }}
     >
-      {/* Drag handle */}
-      <div
-        {...attributes}
-        {...listeners}
-        aria-label="Drag to reorder"
-        className="absolute left-1 top-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing"
-      >
-        <GripVertical className="h-4 w-4 text-muted-foreground/40" />
-      </div>
 
-      {/* Edit button — top right, visible on hover */}
-      {onEdit && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(task);
-          }}
-          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/0 transition-all group-hover:text-muted-foreground hover:!bg-accent hover:!text-foreground"
-          aria-label="Edit task"
+      {/* Action buttons — top right, visible on hover */}
+      {(onEdit || onDelete) && (
+        <div
+          className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          onPointerDown={(e) => e.stopPropagation()}
         >
-          <Pencil className="h-3 w-3" />
-        </button>
+          {onEdit && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(task);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Edit task"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(task);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-red-400"
+              aria-label="Delete task"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       )}
 
-      <div className="pl-4">
-        {/* Title */}
-        <h3 className="pr-6 text-sm font-medium leading-snug text-card-foreground">
+      <div>
+        {/* Title — truncated with ellipsis to avoid icon overlap */}
+        <h3 className="truncate pr-14 text-base font-medium leading-snug text-card-foreground">
           {task.title}
         </h3>
 
         {/* Description preview */}
-        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
           {task.description}
         </p>
 
