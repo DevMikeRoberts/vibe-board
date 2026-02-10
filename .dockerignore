@@ -1,0 +1,7 @@
+node_modules
+packages/*/node_modules
+packages/server/data
+packages/e2e/test-results
+.git
+*.md
+.github

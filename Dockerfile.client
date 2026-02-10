@@ -1,0 +1,27 @@
+FROM node:24-slim
+
+WORKDIR /app
+
+# Copy workspace root package files for npm workspace resolution
+COPY package.json package-lock.json ./
+
+# Copy all workspace package.json files (needed for npm install)
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+COPY packages/e2e/package.json packages/e2e/
+COPY shared/package.json shared/
+
+# Install all dependencies (workspace root)
+RUN npm ci
+
+# Copy shared types (client may import from shared)
+COPY shared/ shared/
+
+# Client source is bind-mounted at runtime for HMR,
+# but copy here as fallback for non-dev builds
+COPY packages/client/ packages/client/
+
+EXPOSE 4175
+
+# Vite dev server with HMR
+CMD ["npx", "--workspace=packages/client", "vite", "--host"]

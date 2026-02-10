@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
+// In Docker, the server runs as a separate container named "server"
+const apiTarget = process.env.API_URL || 'http://localhost:3001';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -14,9 +17,9 @@ export default defineConfig({
     host: true,
     port: 4175,
     proxy: {
-      '/api': 'http://localhost:3001',
+      '/api': apiTarget,
       '/ws': {
-        target: 'ws://localhost:3001',
+        target: apiTarget.replace('http', 'ws'),
         ws: true,
       },
     },

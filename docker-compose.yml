@@ -1,0 +1,49 @@
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    ports:
+      - "3001:3001"
+    volumes:
+      # Live-reload: mount server source (tsx watch picks up changes)
+      - ./packages/server/src:/app/packages/server/src
+      # Persist SQLite database across container restarts
+      - ./packages/server/data:/app/packages/server/data
+      # Shared types (live changes)
+      - ./shared:/app/shared
+      # Mount host projects so the Copilot agent can read/write files
+      - ${PROJECTS_DIR:-~/projects}:/host-projects
+      # GitHub auth for Copilot SDK (reads credentials from home)
+      - ~/.config/github-copilot:/root/.config/github-copilot:ro
+    environment:
+      - PORT=3001
+      - NODE_ENV=development
+      # Tell the server where host projects are mounted inside the container
+      - ALLOWED_REPO_ROOTS=/host-projects,/tmp
+      - ALLOWED_ORIGINS=http://localhost:4175,http://localhost:4176
+      # Copilot SDK model (override if needed)
+      - COPILOT_MODEL=${COPILOT_MODEL:-claude-sonnet-4-20250514}
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    ports:
+      - "4175:4175"
+    volumes:
+      # Live-reload: mount client source (Vite HMR picks up changes)
+      - ./packages/client/src:/app/packages/client/src
+      # Mount vite config and tailwind so config changes are live too
+      - ./packages/client/vite.config.ts:/app/packages/client/vite.config.ts
+      - ./packages/client/index.html:/app/packages/client/index.html
+      # Shared types (live changes)
+      - ./shared:/app/shared
+    environment:
+      - NODE_ENV=development
+      # Proxy API/WS requests to the server container
+      - API_URL=http://server:3001
+    depends_on:
+      - server
+    restart: unless-stopped

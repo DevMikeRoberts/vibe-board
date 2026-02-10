@@ -1,0 +1,32 @@
+FROM node:24-slim
+
+# Install git (needed for worktree operations and Copilot SDK)
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy workspace root package files for npm workspace resolution
+COPY package.json package-lock.json ./
+
+# Copy all workspace package.json files (needed for npm install)
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+COPY packages/e2e/package.json packages/e2e/
+COPY shared/package.json shared/
+
+# Install all dependencies (workspace root)
+RUN npm ci
+
+# Copy shared types (server imports from ../../shared)
+COPY shared/ shared/
+
+# Server source is bind-mounted at runtime for live reload,
+# but copy it here as fallback for non-dev builds
+COPY packages/server/src/ packages/server/src/
+COPY packages/server/tsconfig.json packages/server/
+COPY packages/server/tsconfig.build.json packages/server/
+
+EXPOSE 3001
+
+# tsx watch for live reload
+CMD ["npx", "--workspace=packages/server", "tsx", "watch", "src/index.ts"]
