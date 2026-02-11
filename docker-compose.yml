@@ -23,10 +23,10 @@ services:
       # GitHub auth for Copilot SDK
       - ~/.config/github-copilot:/root/.config/github-copilot:ro
       - ~/.config/gh:/root/.config/gh:ro
-      # Claude Code auth
-      - ~/.claude:/root/.claude:ro
-      # Codex (OpenAI) auth
-      - ~/.codex:/root/.codex:ro
+      # Claude Code auth + debug logs (rw needed for SDK debug writes)
+      - ~/.claude:/root/.claude
+      # Codex (OpenAI) auth + skills (rw needed for skills loader)
+      - ~/.codex:/root/.codex
     environment:
       - PORT=3001
       - NODE_ENV=development
