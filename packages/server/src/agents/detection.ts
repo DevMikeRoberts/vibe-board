@@ -3,17 +3,11 @@ import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import type { AgentType } from '../types.js';
+import type { AgentInfo } from '../../../../shared/types.js';
+
+export type { AgentInfo };
 
 const execFileAsync = promisify(execFile);
-
-export interface AgentInfo {
-  name: AgentType;
-  displayName: string;
-  available: boolean;
-  version?: string;
-  reason?: string;
-}
 
 async function checkCLI(command: string): Promise<{ installed: boolean; version?: string }> {
   try {

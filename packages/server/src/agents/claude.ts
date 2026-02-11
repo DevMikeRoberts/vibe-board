@@ -22,6 +22,7 @@ export class ClaudeProvider implements AgentProvider {
   }
 
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+    const model = this.model;
     let sessionId: string | null = null;
     let aborted = false;
 
@@ -36,7 +37,7 @@ export class ClaudeProvider implements AgentProvider {
         const response = query({
           prompt: messageGenerator,
           options: {
-            model: config.workingDirectory ? undefined : undefined, // model selection handled by SDK
+            model,
             cwd: config.workingDirectory,
             permissionMode: 'acceptEdits',
             systemPrompt: config.systemPrompt,

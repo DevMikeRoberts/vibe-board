@@ -3,6 +3,14 @@ export type ColumnId = 'backlog' | 'in-progress' | 'review' | 'done';
 export type AgentStatus = 'idle' | 'planning' | 'executing' | 'complete' | 'failed';
 export type AgentType = 'copilot' | 'claude' | 'codex';
 
+export interface AgentInfo {
+  name: AgentType;
+  displayName: string;
+  available: boolean;
+  version?: string;
+  reason?: string;
+}
+
 export interface Task {
   id: string;
   title: string;

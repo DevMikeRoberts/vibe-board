@@ -4,6 +4,7 @@ export type {
   ColumnId,
   AgentStatus,
   AgentType,
+  AgentInfo,
   Task,
   AgentEventType,
   AgentEvent,

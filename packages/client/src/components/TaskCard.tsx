@@ -11,7 +11,8 @@ import {
   Pencil,
   Trash2,
 } from 'lucide-react';
-import type { Task, Priority, AgentStatus, AgentType } from '@/types';
+import type { Task, Priority, AgentStatus } from '@/types';
+import { getAgentDisplay } from '@/lib/agent-config';
 import { cn } from '@/lib/utils';
 
 const priorityConfig: Record<Priority, { label: string; className: string }> = {
@@ -21,11 +22,6 @@ const priorityConfig: Record<Priority, { label: string; className: string }> = {
   critical: { label: 'Critical', className: 'bg-red-500/10 text-red-500' },
 };
 
-const agentBadgeMap: Record<AgentType, { emoji: string; label: string }> = {
-  copilot: { emoji: '\u2699\uFE0F', label: 'Copilot' },
-  claude: { emoji: '\uD83D\uDFE0', label: 'Claude' },
-  codex: { emoji: '\uD83D\uDFE2', label: 'Codex' },
-};
 
 const agentStatusConfig: Record<
   AgentStatus,
@@ -166,7 +162,7 @@ export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
             {/* Agent type badge */}
             {task.agentType && task.columnId !== 'backlog' && (
               <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {agentBadgeMap[task.agentType].emoji} {agentBadgeMap[task.agentType].label}
+                {getAgentDisplay(task.agentType)?.emoji} {getAgentDisplay(task.agentType)?.label}
               </span>
             )}
           </div>

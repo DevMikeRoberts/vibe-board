@@ -237,14 +237,14 @@ export class AgentManager {
       return;
     }
 
-    // Guard for single completion
-    let completed = false;
-    const completeOnce = () => {
-      if (completed) return;
-      completed = true;
+    // Guard for single terminal state (complete OR failed — prevents races)
+    let terminated = false;
+    const terminateOnce = (status: 'complete' | 'failed') => {
+      if (terminated) return;
+      terminated = true;
       const entry = this.sessions.get(task.id);
       if (entry?.timeoutId) clearTimeout(entry.timeoutId);
-      onStatusChange('complete');
+      onStatusChange(status);
     };
 
     // Set up worktree if configured
@@ -298,7 +298,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
             if (this.sessions.has(task.id)) {
               console.log(`[agent-manager] onIdle backup completion for task ${task.id}`);
               this.sessions.delete(task.id);
-              completeOnce();
+              terminateOnce('complete');
               session.destroy().catch(() => {});
             }
           },
@@ -322,7 +322,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
             entry.session.abort().catch(() => {});
             entry.session.destroy().catch(() => {});
           }
-          onStatusChange('failed');
+          terminateOnce('failed');
         }, AGENT_TIMEOUT_MS);
 
         const entry = this.sessions.get(task.id);
@@ -339,7 +339,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         // Primary completion path
         if (this.sessions.has(task.id)) {
           this.sessions.delete(task.id);
-          completeOnce();
+          terminateOnce('complete');
           session.destroy().catch(() => {});
         }
       } catch (err: any) {
@@ -359,11 +359,11 @@ make precise edits, and verify your changes compile/pass tests when applicable.
 
         const entry = this.sessions.get(task.id);
         if (entry) this.sessions.delete(task.id);
-        onStatusChange('failed');
+        terminateOnce('failed');
       }
     })().catch((err) => {
       console.error(`[agent-manager] unhandled error for task ${task.id}:`, err);
-      onStatusChange('failed');
+      terminateOnce('failed');
     });
   }
 
@@ -392,13 +392,15 @@ make precise edits, and verify your changes compile/pass tests when applicable.
   }
 
   shutdownAll(): void {
-    for (const [id, entry] of this.sessions) {
+    const entries = [...this.sessions.entries()];
+    this.sessions.clear();
+
+    for (const [, entry] of entries) {
       if (entry.timeoutId) clearTimeout(entry.timeoutId);
       (async () => {
         try { await entry.session.abort(); } catch { /* ignore */ }
         try { await entry.session.destroy(); } catch { /* ignore */ }
       })();
-      this.sessions.delete(id);
     }
 
     for (const provider of this.providers.values()) {

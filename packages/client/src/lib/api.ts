@@ -1,12 +1,6 @@
-import type { Task, AgentEvent, AgentType, ColumnId, Priority } from '@/types';
+import type { Task, AgentEvent, AgentInfo, AgentType, ColumnId, Priority } from '@/types';
 
-export interface AgentInfo {
-  name: AgentType;
-  displayName: string;
-  available: boolean;
-  version?: string;
-  reason?: string;
-}
+export type { AgentInfo };
 
 const BASE = '/api';
 

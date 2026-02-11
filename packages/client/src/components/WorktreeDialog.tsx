@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, GitBranch } from 'lucide-react';
 import type { Task, AgentType } from '@/types';
 import { api, type AgentInfo } from '@/lib/api';
+import { AGENT_DISPLAY } from '@/lib/agent-config';
 import { cn } from '@/lib/utils';
 
 interface WorktreeDialogProps {
@@ -38,8 +39,8 @@ export function WorktreeDialog({ open, task, onClose, onSubmit }: WorktreeDialog
 
   // Fetch available agents on mount
   useEffect(() => {
-    api.getAgents().then(setAgents).catch(console.error);
-  }, []);
+    if (open) api.getAgents().then(setAgents).catch(console.error);
+  }, [open]);
 
   // Initialize fields when dialog opens
   useEffect(() => {
@@ -146,7 +147,7 @@ export function WorktreeDialog({ open, task, onClose, onSubmit }: WorktreeDialog
                       )}
                     >
                       <span className="text-sm">
-                        {agent.name === 'copilot' ? '\u2699\uFE0F' : agent.name === 'claude' ? '\uD83D\uDFE0' : '\uD83D\uDFE2'}
+                        {AGENT_DISPLAY[agent.name]?.emoji}
                       </span>
                       <span className="truncate">{agent.displayName.split(' ').pop()}</span>
                     </button>

@@ -18,7 +18,8 @@ import {
   ExternalLink,
   Trash2,
 } from 'lucide-react';
-import type { Task, AgentEvent, AgentEventType, AgentType } from '@/types';
+import type { Task, AgentEvent, AgentEventType } from '@/types';
+import { getAgentDisplay } from '@/lib/agent-config';
 import { api, connectWS } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -126,11 +127,6 @@ function looksLikeCode(text: string): boolean {
   return lines.some((line) => codePatterns.test(line.trimStart()));
 }
 
-const agentDisplayMap: Record<AgentType, { emoji: string; label: string }> = {
-  copilot: { emoji: '\u2699\uFE0F', label: 'Copilot' },
-  claude: { emoji: '\uD83D\uDFE0', label: 'Claude' },
-  codex: { emoji: '\uD83D\uDFE2', label: 'Codex' },
-};
 
 interface AgentPanelProps {
   task: Task | null;
@@ -393,7 +389,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
               <div className="mt-0.5 flex items-center gap-2">
                 {task.agentType && (
                   <span className="text-[10px] text-muted-foreground">
-                    {agentDisplayMap[task.agentType].emoji} {agentDisplayMap[task.agentType].label}
+                    {getAgentDisplay(task.agentType)?.emoji} {getAgentDisplay(task.agentType)?.label}
                   </span>
                 )}
                 {isActive && (

@@ -110,7 +110,7 @@ export class SqliteTaskRepository implements TaskRepository {
       priority: task.priority,
       column_id: task.columnId,
       agent_status: task.agentStatus,
-      agent_type: task.agentType,
+      agent_type: task.agentType ?? 'copilot',
       created_at: task.createdAt,
       started_at: task.startedAt ?? null,
       completed_at: task.completedAt ?? null,
