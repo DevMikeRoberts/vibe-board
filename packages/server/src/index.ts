@@ -5,7 +5,8 @@ import { createWSS } from './websocket.js';
 import { initDatabase } from './db.js';
 import { SqliteTaskRepository } from './repositories/sqlite.js';
 import { createTaskRouter } from './routes/tasks.js';
-import { shutdownAll, initEventPersistence } from './services/copilot.js';
+import { AgentManager } from './services/agent-manager.js';
+import { setAgentManager } from './services/copilot.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -17,8 +18,18 @@ app.use(express.json({ limit: '100kb' }));
 // Initialize database and repository
 const db = initDatabase();
 const taskRepo = new SqliteTaskRepository(db);
-initEventPersistence(taskRepo);
-app.use('/api/tasks', createTaskRouter(taskRepo));
+
+// Initialize AgentManager
+const agentManager = new AgentManager();
+agentManager.initEventPersistence(taskRepo);
+setAgentManager(agentManager); // backward compat shim
+
+app.use('/api/tasks', createTaskRouter(taskRepo, agentManager));
+
+// GET /api/agents — list available agents
+app.get('/api/agents', (_req, res) => {
+  res.json(agentManager.getAvailableAgents());
+});
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -28,15 +39,20 @@ app.get('/api/health', (_req, res) => {
 const server = createServer(app);
 createWSS(server);
 
-server.listen(PORT, () => {
-  console.log(`[server] listening on http://localhost:${PORT}`);
-  console.log(`[server] WebSocket at ws://localhost:${PORT}/ws`);
-});
+// Start server after agent detection
+(async () => {
+  await agentManager.initialize();
+
+  server.listen(PORT, () => {
+    console.log(`[server] listening on http://localhost:${PORT}`);
+    console.log(`[server] WebSocket at ws://localhost:${PORT}/ws`);
+  });
+})();
 
 // Graceful shutdown
 function shutdown() {
   console.log('[server] shutting down...');
-  shutdownAll();
+  agentManager.shutdownAll();
   db.close();
   server.close(() => process.exit(0));
   // Force exit if connections don't close within 5 seconds

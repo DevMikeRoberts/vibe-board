@@ -55,6 +55,9 @@ function migrate(db: Database.Database): void {
   if (!colNames.has('worktree_path')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN worktree_path TEXT`);
   }
+  if (!colNames.has('agent_type')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'copilot'`);
+  }
 }
 
 const seeds: Omit<Task, 'id'>[] = [
@@ -64,6 +67,7 @@ const seeds: Omit<Task, 'id'>[] = [
     priority: 'high',
     columnId: 'backlog',
     agentStatus: 'idle',
+    agentType: 'copilot',
     createdAt: Date.now() - 86400000 * 3,
   },
   {
@@ -72,6 +76,7 @@ const seeds: Omit<Task, 'id'>[] = [
     priority: 'medium',
     columnId: 'backlog',
     agentStatus: 'idle',
+    agentType: 'copilot',
     createdAt: Date.now() - 86400000 * 2,
   },
   {
@@ -80,6 +85,7 @@ const seeds: Omit<Task, 'id'>[] = [
     priority: 'critical',
     columnId: 'in-progress',
     agentStatus: 'idle',
+    agentType: 'copilot',
     createdAt: Date.now() - 86400000,
   },
   {
@@ -88,6 +94,7 @@ const seeds: Omit<Task, 'id'>[] = [
     priority: 'medium',
     columnId: 'review',
     agentStatus: 'complete',
+    agentType: 'copilot',
     createdAt: Date.now() - 86400000 * 4,
     startedAt: Date.now() - 86400000,
     completedAt: Date.now() - 3600000,
@@ -98,6 +105,7 @@ const seeds: Omit<Task, 'id'>[] = [
     priority: 'high',
     columnId: 'done',
     agentStatus: 'complete',
+    agentType: 'copilot',
     createdAt: Date.now() - 86400000 * 5,
     startedAt: Date.now() - 86400000 * 2,
     completedAt: Date.now() - 86400000,
@@ -109,8 +117,8 @@ function seed(db: Database.Database): void {
   if (row.cnt > 0) return;
 
   const insert = db.prepare(`
-    INSERT INTO tasks (id, title, description, priority, column_id, agent_status, created_at, started_at, completed_at)
-    VALUES (@id, @title, @description, @priority, @column_id, @agent_status, @created_at, @started_at, @completed_at)
+    INSERT INTO tasks (id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at)
+    VALUES (@id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at)
   `);
 
   const insertMany = db.transaction((items: typeof seeds) => {
@@ -122,6 +130,7 @@ function seed(db: Database.Database): void {
         priority: s.priority,
         column_id: s.columnId,
         agent_status: s.agentStatus,
+        agent_type: s.agentType,
         created_at: s.createdAt,
         started_at: s.startedAt ?? null,
         completed_at: s.completedAt ?? null,

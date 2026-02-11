@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { Task, Priority, ColumnId, AgentStatus, AgentEvent } from '../types.js';
+import type { Task, Priority, ColumnId, AgentStatus, AgentType, AgentEvent } from '../types.js';
 import type { TaskRepository } from './types.js';
 
 interface TaskRow {
@@ -17,6 +17,7 @@ interface TaskRow {
   base_branch: string | null;
   use_worktree: number | null;
   worktree_path: string | null;
+  agent_type: AgentType;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -35,6 +36,7 @@ function rowToTask(row: TaskRow): Task {
     baseBranch: row.base_branch ?? undefined,
     useWorktree: row.use_worktree != null ? Boolean(row.use_worktree) : undefined,
     worktreePath: row.worktree_path ?? undefined,
+    agentType: row.agent_type,
   };
 }
 
@@ -58,9 +60,9 @@ export class SqliteTaskRepository implements TaskRepository {
       getAll: db.prepare('SELECT * FROM tasks ORDER BY created_at ASC'),
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
       insert: db.prepare(`
-        INSERT INTO tasks (id, title, description, priority, column_id, agent_status, created_at, started_at, completed_at,
+        INSERT INTO tasks (id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at,
           repo_path, branch_name, base_branch, use_worktree, worktree_path)
-        VALUES (@id, @title, @description, @priority, @column_id, @agent_status, @created_at, @started_at, @completed_at,
+        VALUES (@id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at,
           @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path)
       `),
       update: db.prepare(`
@@ -70,6 +72,7 @@ export class SqliteTaskRepository implements TaskRepository {
           priority = @priority,
           column_id = @column_id,
           agent_status = @agent_status,
+          agent_type = @agent_type,
           started_at = @started_at,
           completed_at = @completed_at,
           repo_path = @repo_path,
@@ -107,6 +110,7 @@ export class SqliteTaskRepository implements TaskRepository {
       priority: task.priority,
       column_id: task.columnId,
       agent_status: task.agentStatus,
+      agent_type: task.agentType,
       created_at: task.createdAt,
       started_at: task.startedAt ?? null,
       completed_at: task.completedAt ?? null,
@@ -131,6 +135,7 @@ export class SqliteTaskRepository implements TaskRepository {
         priority: merged.priority,
         column_id: merged.columnId,
         agent_status: merged.agentStatus,
+        agent_type: merged.agentType,
         started_at: merged.startedAt ?? null,
         completed_at: merged.completedAt ?? null,
         repo_path: merged.repoPath ?? null,

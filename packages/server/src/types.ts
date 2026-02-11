@@ -3,6 +3,7 @@ export type {
   Priority,
   ColumnId,
   AgentStatus,
+  AgentType,
   Task,
   AgentEventType,
   AgentEvent,
@@ -13,8 +14,10 @@ export {
   VALID_PRIORITIES,
   VALID_COLUMNS,
   VALID_AGENT_STATUSES,
+  VALID_AGENT_TYPES,
   VALID_TRANSITIONS,
   isValidPriority,
   isValidColumnId,
   isValidAgentStatus,
+  isValidAgentType,
 } from '../../../shared/constants.js';

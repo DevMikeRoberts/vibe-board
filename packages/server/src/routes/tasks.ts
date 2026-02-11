@@ -3,10 +3,10 @@ import { v4 as uuid } from 'uuid';
 import os from 'os';
 import path from 'path';
 import type { Task } from '../types.js';
-import { VALID_TRANSITIONS, isValidPriority, isValidColumnId, isValidAgentStatus } from '../types.js';
+import { VALID_TRANSITIONS, isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType } from '../types.js';
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
-import { startAgent, stopAgent, getEvents, clearEvents, isRunning, createPR, removeWorktree } from '../services/copilot.js';
+import type { AgentManager } from '../services/agent-manager.js';
 
 function paramId(req: Request): string {
   const id = req.params.id;
@@ -34,8 +34,6 @@ function isAllowedRepoPath(repoPath: string): string | null {
   if (!underAllowedRoot) {
     return `repoPath must be under one of: ${ALLOWED_REPO_ROOTS.join(', ')}`;
   }
-  // If the directory exists, warn (but don't block) if it's not a git repo.
-  // The agent may need to create the project and init git itself.
   return null;
 }
 
@@ -70,7 +68,7 @@ const MAX_DESCRIPTION_LENGTH = 5000;
 
 // NOTE: This is a local-only demo app — no authentication is applied to these
 // routes. If deploying beyond localhost, add authentication middleware here.
-export function createTaskRouter(repo: TaskRepository): Router {
+export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager): Router {
   const router = Router();
 
   // GET /api/tasks
@@ -80,7 +78,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
 
   // POST /api/tasks
   router.post('/', (req: Request, res: Response) => {
-    const { title, description, priority, columnId } = req.body;
+    const { title, description, priority, columnId, agentType } = req.body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
       res.status(400).json({ error: 'title is required and must be a non-empty string' });
@@ -106,6 +104,10 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(400).json({ error: `invalid columnId: must be one of backlog, in-progress, review, done` });
       return;
     }
+    if (agentType !== undefined && !isValidAgentType(agentType)) {
+      res.status(400).json({ error: `invalid agentType: must be one of copilot, claude, codex` });
+      return;
+    }
 
     const task: Task = {
       id: uuid(),
@@ -114,6 +116,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       priority: priority || 'medium',
       columnId: columnId || 'backlog',
       agentStatus: 'idle',
+      agentType: agentType || 'copilot',
       createdAt: Date.now(),
     };
     repo.create(task);
@@ -129,7 +132,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
 
-    const { title, description, priority, columnId, agentStatus } = req.body;
+    const { title, description, priority, columnId, agentStatus, agentType } = req.body;
 
     // Validate types of all incoming fields
     if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
@@ -160,6 +163,10 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(400).json({ error: 'invalid agentStatus: must be one of idle, planning, executing, complete, failed' });
       return;
     }
+    if (agentType !== undefined && !isValidAgentType(agentType)) {
+      res.status(400).json({ error: 'invalid agentType: must be one of copilot, claude, codex' });
+      return;
+    }
 
     // Validate column transition if columnId is changing
     if (columnId && columnId !== task.columnId) {
@@ -170,13 +177,14 @@ export function createTaskRouter(repo: TaskRepository): Router {
       }
     }
 
-    // Build updates from validated fields (no `as any` needed)
+    // Build updates from validated fields
     const updates: Partial<Task> = {};
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if (priority !== undefined) updates.priority = priority;
     if (columnId !== undefined) updates.columnId = columnId;
     if (agentStatus !== undefined) updates.agentStatus = agentStatus;
+    if (agentType !== undefined) updates.agentType = agentType;
 
     // Reset agent state when moved to in-progress
     if (columnId === 'in-progress') {
@@ -201,8 +209,8 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(404).json({ error: 'task not found' });
       return;
     }
-    stopAgent(id);
-    clearEvents(id); // Mark deleted before repo.delete so in-flight events are suppressed
+    agentManager.stopAgent(id);
+    agentManager.clearEvents(id);
     repo.delete(id);
     broadcast({ type: 'task_deleted', payload: { id } });
     res.status(204).send();
@@ -217,7 +225,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
 
-    const { repoPath, branchName, baseBranch, useWorktree } = req.body;
+    const { repoPath, branchName, baseBranch, useWorktree, agentType } = req.body;
 
     if (repoPath !== undefined && typeof repoPath !== 'string') {
       res.status(400).json({ error: 'repoPath must be a string' });
@@ -233,6 +241,10 @@ export function createTaskRouter(repo: TaskRepository): Router {
     }
     if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
       res.status(400).json({ error: 'useWorktree must be a boolean' });
+      return;
+    }
+    if (agentType !== undefined && !isValidAgentType(agentType)) {
+      res.status(400).json({ error: 'invalid agentType: must be one of copilot, claude, codex' });
       return;
     }
     if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
@@ -261,6 +273,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
     if (branchName !== undefined) updates.branchName = branchName;
     if (baseBranch !== undefined) updates.baseBranch = baseBranch;
     if (useWorktree !== undefined) updates.useWorktree = useWorktree;
+    if (agentType !== undefined) updates.agentType = agentType;
 
     const updated = repo.update(id, updates);
     if (!updated) {
@@ -283,7 +296,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(404).json({ error: 'task not found' });
       return;
     }
-    if (isRunning(task.id)) {
+    if (agentManager.isRunning(task.id)) {
       res.status(409).json({ error: 'agent already running for this task' });
       return;
     }
@@ -303,7 +316,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
     }
     broadcastTaskUpdate(updated);
 
-    startAgent(
+    agentManager.startAgent(
       updated,
       (status) => {
         const statusUpdates: Partial<Task> = { agentStatus: status };
@@ -315,7 +328,6 @@ export function createTaskRouter(repo: TaskRepository): Router {
         if (t) broadcastTaskUpdate(t);
       },
       (worktreePath) => {
-        // Store the worktree path on the task
         const t = repo.update(task.id, { worktreePath });
         if (t) broadcastTaskUpdate(t);
       }
@@ -336,7 +348,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(404).json({ error: 'task not found' });
       return;
     }
-    const stopped = stopAgent(task.id);
+    const stopped = agentManager.stopAgent(task.id);
     if (!stopped) {
       res.status(409).json({ error: 'no running agent for this task' });
       return;
@@ -356,7 +368,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       res.status(404).json({ error: 'task not found' });
       return;
     }
-    res.json(getEvents(paramId(req)));
+    res.json(agentManager.getEvents(paramId(req)));
   });
 
   // POST /api/tasks/:id/create-pr — create a PR from the worktree branch
@@ -372,7 +384,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
     try {
-      const result = createPR(task);
+      const result = agentManager.createPR(task);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -392,7 +404,7 @@ export function createTaskRouter(repo: TaskRepository): Router {
       return;
     }
     try {
-      removeWorktree(task);
+      agentManager.removeWorktree(task);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
       return;

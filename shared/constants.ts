@@ -1,8 +1,9 @@
-import type { ColumnId, Priority, AgentStatus } from './types.js';
+import type { ColumnId, Priority, AgentStatus, AgentType } from './types.js';
 
 export const VALID_PRIORITIES: readonly Priority[] = ['low', 'medium', 'high', 'critical'] as const;
 export const VALID_COLUMNS: readonly ColumnId[] = ['backlog', 'in-progress', 'review', 'done'] as const;
 export const VALID_AGENT_STATUSES: readonly AgentStatus[] = ['idle', 'planning', 'executing', 'complete', 'failed'] as const;
+export const VALID_AGENT_TYPES: readonly AgentType[] = ['copilot', 'claude', 'codex'] as const;
 
 /** Allowed column transitions. Key = current column, value = columns you can move to. */
 export const VALID_TRANSITIONS: Record<ColumnId, readonly ColumnId[]> = {
@@ -22,4 +23,8 @@ export function isValidColumnId(value: unknown): value is ColumnId {
 
 export function isValidAgentStatus(value: unknown): value is AgentStatus {
   return typeof value === 'string' && (VALID_AGENT_STATUSES as readonly string[]).includes(value);
+}
+
+export function isValidAgentType(value: unknown): value is AgentType {
+  return typeof value === 'string' && (VALID_AGENT_TYPES as readonly string[]).includes(value);
 }

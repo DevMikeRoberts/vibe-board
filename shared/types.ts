@@ -1,6 +1,7 @@
 export type Priority = 'low' | 'medium' | 'high' | 'critical';
 export type ColumnId = 'backlog' | 'in-progress' | 'review' | 'done';
 export type AgentStatus = 'idle' | 'planning' | 'executing' | 'complete' | 'failed';
+export type AgentType = 'copilot' | 'claude' | 'codex';
 
 export interface Task {
   id: string;
@@ -17,6 +18,7 @@ export interface Task {
   baseBranch?: string;
   useWorktree?: boolean;
   worktreePath?: string;
+  agentType?: AgentType;
 }
 
 export type AgentEventType =
