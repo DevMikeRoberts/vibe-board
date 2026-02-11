@@ -535,6 +535,34 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     res.json(updated);
   });
 
+  // POST /api/tasks/:id/message — send a follow-up message to a running agent
+  router.post('/:id/message', async (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+
+    const { message } = req.body;
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      res.status(400).json({ error: 'message is required and must be a non-empty string' });
+      return;
+    }
+
+    if (!agentManager.isRunning(task.id)) {
+      res.status(409).json({ error: 'no running agent for this task' });
+      return;
+    }
+
+    try {
+      await agentManager.sendMessage(task.id, message);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'failed to send message' });
+    }
+  });
+
   // GET /api/tasks/:id/events
   router.get('/:id/events', (req: Request, res: Response) => {
     if (!repo.getById(paramId(req))) {

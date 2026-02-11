@@ -104,6 +104,76 @@ export class ClaudeProvider implements AgentProvider {
         }
       },
 
+      async send(message: string): Promise<void> {
+        if (!sessionId) {
+          throw new Error('Claude session not initialized — execute() must be called first');
+        }
+
+        const messageGenerator = createMessageGenerator(message);
+
+        const response = query({
+          prompt: messageGenerator,
+          options: {
+            model,
+            cwd: config.workingDirectory,
+            permissionMode: 'acceptEdits',
+            systemPrompt: config.systemPrompt,
+            resume: sessionId,
+          },
+        });
+
+        for await (const msg of response) {
+          if (aborted) break;
+
+          switch (msg.type) {
+            case 'assistant':
+              if ('message' in msg && msg.message && 'content' in msg.message) {
+                const content = msg.message.content;
+                if (Array.isArray(content)) {
+                  for (const block of content) {
+                    if (block.type === 'text' && block.text) {
+                      config.onEvent({
+                        id: uuid(), taskId: config.taskId, type: 'output',
+                        content: block.text, timestamp: Date.now(),
+                      });
+                    }
+                  }
+                }
+              }
+              break;
+
+            case 'stream_event':
+              if (msg.event?.type === 'content_block_delta') {
+                const delta = msg.event.delta;
+                if (delta && 'text' in delta) {
+                  config.onEvent({
+                    id: uuid(), taskId: config.taskId, type: 'output',
+                    content: delta.text, timestamp: Date.now(),
+                  });
+                }
+              }
+              break;
+
+            case 'tool_progress':
+              config.onEvent({
+                id: uuid(), taskId: config.taskId, type: 'command',
+                content: `Tool: ${msg.tool_name}`,
+                timestamp: Date.now(),
+                metadata: { command: msg.tool_name },
+              });
+              break;
+
+            case 'result':
+              config.onEvent({
+                id: uuid(), taskId: config.taskId, type: 'complete',
+                content: 'Claude Code completed the follow-up.',
+                timestamp: Date.now(),
+              });
+              break;
+          }
+        }
+      },
+
       async abort(): Promise<void> {
         aborted = true;
       },

@@ -135,6 +135,10 @@ export class CopilotProvider implements AgentProvider {
         await session.sendAndWait({ prompt });
       },
 
+      async send(message: string): Promise<void> {
+        await session.sendAndWait({ prompt: message });
+      },
+
       async abort(): Promise<void> {
         try { await session.abort(); } catch { /* ignore */ }
       },

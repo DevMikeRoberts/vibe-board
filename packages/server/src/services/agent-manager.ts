@@ -410,6 +410,20 @@ make precise edits, and verify your changes compile/pass tests when applicable.
     });
   }
 
+  async sendMessage(taskId: string, message: string): Promise<boolean> {
+    const entry = this.sessions.get(taskId);
+    if (!entry) return false;
+
+    this.emitEvent(taskId, {
+      id: uuid(), taskId, type: 'command',
+      content: `Follow-up message sent: ${message}`,
+      timestamp: Date.now(),
+    });
+
+    await entry.session.send(message);
+    return true;
+  }
+
   stopAgent(taskId: string): boolean {
     const entry = this.sessions.get(taskId);
     if (!entry) return false;

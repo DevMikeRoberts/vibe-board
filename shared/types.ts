@@ -70,8 +70,14 @@ export interface AgentCompletePayload {
   eventCount: number;
 }
 
+export interface AgentFollowUpPayload {
+  taskId: string;
+  message: string;
+}
+
 export type WSMessage =
   | { type: 'agent_event'; payload: AgentEvent }
   | { type: 'task_updated'; payload: Task }
   | { type: 'task_deleted'; payload: { id: string } }
-  | { type: 'agent_complete'; payload: AgentCompletePayload };
+  | { type: 'agent_complete'; payload: AgentCompletePayload }
+  | { type: 'agent_follow_up'; payload: AgentFollowUpPayload };

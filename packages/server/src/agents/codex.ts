@@ -133,6 +133,69 @@ export class CodexProvider implements AgentProvider {
         }
       },
 
+      async send(message: string): Promise<void> {
+        const input = [{ type: 'text' as const, text: message }];
+        const { events } = await thread.runStreamed(input);
+
+        for await (const event of events) {
+          if (abortController?.signal.aborted) break;
+
+          switch (event.type) {
+            case 'item.completed':
+              if (event.item) {
+                switch (event.item.type) {
+                  case 'agent_message':
+                    config.onEvent({
+                      id: uuid(), taskId: config.taskId, type: 'output',
+                      content: event.item.text + '\n',
+                      timestamp: Date.now(),
+                    });
+                    break;
+                  case 'command_execution':
+                    config.onEvent({
+                      id: uuid(), taskId: config.taskId, type: 'command',
+                      content: `$ ${event.item.command}`,
+                      timestamp: Date.now(),
+                      metadata: { command: event.item.command },
+                    });
+                    config.onEvent({
+                      id: uuid(), taskId: config.taskId, type: 'output',
+                      content: event.item.aggregated_output,
+                      timestamp: Date.now(),
+                    });
+                    break;
+                  case 'file_change': {
+                    const files = event.item.changes.map((c: { kind: string; path: string }) => `${c.kind}: ${c.path}`).join(', ');
+                    config.onEvent({
+                      id: uuid(), taskId: config.taskId, type: 'output',
+                      content: `Files changed: ${files}`,
+                      timestamp: Date.now(),
+                    });
+                    break;
+                  }
+                }
+              }
+              break;
+
+            case 'turn.completed':
+              config.onEvent({
+                id: uuid(), taskId: config.taskId, type: 'complete',
+                content: 'Codex completed the follow-up.',
+                timestamp: Date.now(),
+              });
+              break;
+
+            case 'error':
+              config.onEvent({
+                id: uuid(), taskId: config.taskId, type: 'error',
+                content: event.message || 'Unknown Codex error',
+                timestamp: Date.now(),
+              });
+              break;
+          }
+        }
+      },
+
       async abort(): Promise<void> {
         if (abortController) {
           abortController.abort();

@@ -379,6 +379,70 @@ test.describe('Task result summary events', () => {
 // Existing API backward compatibility
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Item 6: POST /api/tasks/:id/message — follow-up messages
+// ---------------------------------------------------------------------------
+
+test.describe('Follow-up message endpoint', () => {
+  test('POST /message returns 404 for unknown task', async ({ request }) => {
+    const res = await request.post(`${API}/api/tasks/nonexistent-id/message`, {
+      data: { message: 'hello' },
+    });
+    expect(res.status()).toBe(404);
+  });
+
+  test('POST /message returns 400 with empty message', async ({ request }) => {
+    // Create a task first
+    const createRes = await request.post(`${API}/api/tasks`, {
+      data: { title: 'Message validation test' },
+    });
+    const task = await createRes.json();
+
+    // Empty string
+    const res1 = await request.post(`${API}/api/tasks/${task.id}/message`, {
+      data: { message: '' },
+    });
+    expect(res1.status()).toBe(400);
+    const body1 = await res1.json();
+    expect(body1.error).toContain('message');
+
+    // Missing message field
+    const res2 = await request.post(`${API}/api/tasks/${task.id}/message`, {
+      data: {},
+    });
+    expect(res2.status()).toBe(400);
+
+    // Whitespace-only message
+    const res3 = await request.post(`${API}/api/tasks/${task.id}/message`, {
+      data: { message: '   ' },
+    });
+    expect(res3.status()).toBe(400);
+
+    await deleteTask(request, task.id);
+  });
+
+  test('POST /message returns 409 when no agent is running', async ({ request }) => {
+    // Create a task (no agent running)
+    const createRes = await request.post(`${API}/api/tasks`, {
+      data: { title: 'No agent running test' },
+    });
+    const task = await createRes.json();
+
+    const res = await request.post(`${API}/api/tasks/${task.id}/message`, {
+      data: { message: 'This should fail because no agent is running' },
+    });
+    expect(res.status()).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain('no running agent');
+
+    await deleteTask(request, task.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Existing API backward compatibility
+// ---------------------------------------------------------------------------
+
 test.describe('Backward compatibility', () => {
   test('existing POST /api/tasks without new fields works as before', async ({ request }) => {
     const res = await request.post(`${API}/api/tasks`, {
