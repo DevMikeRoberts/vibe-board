@@ -289,8 +289,19 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         const session = await provider.createSession({
           taskId: task.id,
           workingDirectory,
+          repoPath: task.repoPath,
           systemPrompt,
           onEvent: (event) => this.emitEvent(task.id, event),
+          onIdle: () => {
+            // Backup completion path: if the provider signals idle but
+            // execute() hasn't resolved yet, trigger completion from here.
+            if (this.sessions.has(task.id)) {
+              console.log(`[agent-manager] onIdle backup completion for task ${task.id}`);
+              this.sessions.delete(task.id);
+              completeOnce();
+              session.destroy().catch(() => {});
+            }
+          },
         });
 
         this.sessions.set(task.id, { session });

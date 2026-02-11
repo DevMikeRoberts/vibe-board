@@ -1,11 +1,11 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import type { AgentType } from '../types.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface AgentInfo {
   name: AgentType;
@@ -17,7 +17,7 @@ export interface AgentInfo {
 
 async function checkCLI(command: string): Promise<{ installed: boolean; version?: string }> {
   try {
-    const { stdout } = await execAsync(`${command} --version`, {
+    const { stdout } = await execFileAsync(command, ['--version'], {
       encoding: 'utf-8',
       timeout: 5000,
     });

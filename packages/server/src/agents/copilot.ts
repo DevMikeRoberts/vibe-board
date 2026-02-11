@@ -7,6 +7,12 @@ import {
 import type { AgentProvider, AgentSession, AgentSessionConfig } from './base.js';
 import type { AgentType } from '../types.js';
 
+// Configurable deny-list for high-risk tool kinds (comma-separated env var).
+// Example: COPILOT_DENIED_TOOLS="dangerous_tool,rm_rf"
+const DENIED_TOOLS = new Set(
+  (process.env.COPILOT_DENIED_TOOLS || '').split(',').map(s => s.trim()).filter(Boolean)
+);
+
 export class CopilotProvider implements AgentProvider {
   readonly name: AgentType = 'copilot';
   readonly displayName = 'GitHub Copilot';
@@ -39,6 +45,11 @@ export class CopilotProvider implements AgentProvider {
       throw new Error('Copilot client not initialized — call start() first');
     }
 
+    const repoPath = config.repoPath;
+    const worktreePath = repoPath && config.workingDirectory !== repoPath
+      ? config.workingDirectory
+      : undefined;
+
     const session: CopilotSession = await this.client.createSession({
       model: this.model,
       streaming: true,
@@ -48,9 +59,58 @@ export class CopilotProvider implements AgentProvider {
         content: config.systemPrompt,
       },
       onPermissionRequest: (req) => {
-        console.log(`[copilot-provider] approved tool: ${req.kind} for task ${config.taskId}`);
+        // Deny tools on the deny-list
+        if (DENIED_TOOLS.size > 0 && DENIED_TOOLS.has(req.kind)) {
+          console.warn(`[copilot-provider] DENIED tool: ${req.kind} for task ${config.taskId}`);
+          return { kind: 'denied-by-rules' };
+        }
+        console.log(
+          `[copilot-provider] approved tool: ${req.kind} for task ${config.taskId}`,
+          JSON.stringify(req),
+        );
         return { kind: 'approved' };
       },
+      // Worktree path sandboxing: rewrite any file paths that reference
+      // the original repo to point into the worktree instead.
+      ...(worktreePath && repoPath
+        ? {
+            hooks: {
+              onPreToolUse: (input: { toolName: string; toolArgs: unknown; cwd: string }) => {
+                if (!input.toolArgs || typeof input.toolArgs !== 'object') return {};
+
+                const args = input.toolArgs as Record<string, unknown>;
+                let changed = false;
+
+                function rewriteValue(val: unknown): unknown {
+                  if (typeof val === 'string' && val.includes(repoPath!)) {
+                    changed = true;
+                    return val.replaceAll(repoPath!, worktreePath!);
+                  }
+                  if (Array.isArray(val)) return val.map(rewriteValue);
+                  if (val && typeof val === 'object') {
+                    const obj: Record<string, unknown> = {};
+                    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+                      obj[k] = rewriteValue(v);
+                    }
+                    return obj;
+                  }
+                  return val;
+                }
+
+                const modifiedArgs: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(args)) {
+                  modifiedArgs[key] = rewriteValue(value);
+                }
+
+                if (changed) {
+                  console.log(`[copilot-provider] rewrote paths for task ${config.taskId}: ${repoPath} → ${worktreePath}`);
+                  return { modifiedArgs };
+                }
+                return {};
+              },
+            },
+          }
+        : {}),
     });
 
     let unsubscribe: (() => void) | null = null;
@@ -64,6 +124,12 @@ export class CopilotProvider implements AgentProvider {
         // Subscribe to session events and map to AgentEvents
         unsubscribe = session.on((event: SessionEvent) => {
           mapSessionEvent(config.taskId, event, config.onEvent);
+
+          // Backup completion: if session becomes idle, signal the manager
+          if (event.type === 'session.idle' && config.onIdle) {
+            console.log(`[copilot-provider] session.idle for task ${config.taskId} (backup completion)`);
+            config.onIdle();
+          }
         });
 
         await session.sendAndWait({ prompt });
