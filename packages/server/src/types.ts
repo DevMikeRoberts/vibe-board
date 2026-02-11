@@ -7,6 +7,7 @@ export type {
   Task,
   AgentEventType,
   AgentEvent,
+  AgentCompletePayload,
   WSMessage,
 } from '../../../shared/types.js';
 

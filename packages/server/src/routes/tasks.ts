@@ -76,40 +76,67 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     res.json(repo.getAll());
   });
 
-  // POST /api/tasks
-  router.post('/', (req: Request, res: Response) => {
-    const { title, description, priority, columnId, agentType } = req.body;
+  // Shared validation for task creation fields — returns error string or null
+  function validateTaskFields(body: Record<string, any>): string | null {
+    const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, useWorktree, autoRun } = body;
 
     if (!title || typeof title !== 'string' || !title.trim()) {
-      res.status(400).json({ error: 'title is required and must be a non-empty string' });
-      return;
+      return 'title is required and must be a non-empty string';
     }
     if (title.length > MAX_TITLE_LENGTH) {
-      res.status(400).json({ error: `title must be at most ${MAX_TITLE_LENGTH} characters` });
-      return;
+      return `title must be at most ${MAX_TITLE_LENGTH} characters`;
     }
     if (description !== undefined && typeof description !== 'string') {
-      res.status(400).json({ error: 'description must be a string' });
-      return;
+      return 'description must be a string';
     }
     if (typeof description === 'string' && description.length > MAX_DESCRIPTION_LENGTH) {
-      res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION_LENGTH} characters` });
-      return;
+      return `description must be at most ${MAX_DESCRIPTION_LENGTH} characters`;
     }
     if (priority !== undefined && !isValidPriority(priority)) {
-      res.status(400).json({ error: `invalid priority: must be one of low, medium, high, critical` });
-      return;
+      return 'invalid priority: must be one of low, medium, high, critical';
     }
     if (columnId !== undefined && !isValidColumnId(columnId)) {
-      res.status(400).json({ error: `invalid columnId: must be one of backlog, in-progress, review, done` });
-      return;
+      return 'invalid columnId: must be one of backlog, in-progress, review, done';
     }
     if (agentType !== undefined && !isValidAgentType(agentType)) {
-      res.status(400).json({ error: `invalid agentType: must be one of copilot, claude, codex` });
-      return;
+      return 'invalid agentType: must be one of copilot, claude, codex';
     }
+    if (repoPath !== undefined && typeof repoPath !== 'string') {
+      return 'repoPath must be a string';
+    }
+    if (typeof repoPath === 'string') {
+      const expandedRepoPath = expandTilde(repoPath);
+      if (!path.isAbsolute(expandedRepoPath)) {
+        return 'repoPath must be an absolute path';
+      }
+      const repoErr = isAllowedRepoPath(expandedRepoPath);
+      if (repoErr) return repoErr;
+    }
+    if (branchName !== undefined && typeof branchName !== 'string') {
+      return 'branchName must be a string';
+    }
+    if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
+      return 'branchName contains invalid characters';
+    }
+    if (baseBranch !== undefined && typeof baseBranch !== 'string') {
+      return 'baseBranch must be a string';
+    }
+    if (typeof baseBranch === 'string' && !isValidGitRef(baseBranch)) {
+      return 'baseBranch contains invalid characters';
+    }
+    if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
+      return 'useWorktree must be a boolean';
+    }
+    if (autoRun !== undefined && typeof autoRun !== 'boolean') {
+      return 'autoRun must be a boolean';
+    }
+    return null;
+  }
 
-    const task: Task = {
+  // Build a Task object from validated request body
+  function buildTask(body: Record<string, any>): Task {
+    const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, useWorktree } = body;
+    return {
       id: uuid(),
       title,
       description: description || '',
@@ -118,10 +145,151 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       agentStatus: 'idle',
       agentType: agentType || 'copilot',
       createdAt: Date.now(),
+      repoPath: typeof repoPath === 'string' ? expandTilde(repoPath) : undefined,
+      branchName: branchName || undefined,
+      baseBranch: baseBranch || undefined,
+      useWorktree: useWorktree || undefined,
     };
+  }
+
+  // Start an agent for a task (shared by create+autoRun and batch)
+  function startAgentForTask(task: Task): void {
+    const updates: Partial<Task> = {
+      agentStatus: 'planning',
+      startedAt: Date.now(),
+      completedAt: undefined,
+    };
+    if (task.columnId === 'backlog') {
+      updates.columnId = 'in-progress';
+    }
+    const updated = repo.update(task.id, updates);
+    if (updated) {
+      broadcastTaskUpdate(updated);
+      agentManager.startAgent(
+        updated,
+        (status) => {
+          const statusUpdates: Partial<Task> = { agentStatus: status };
+          if (status === 'complete') {
+            statusUpdates.completedAt = Date.now();
+            statusUpdates.columnId = 'review';
+          }
+          const t = repo.update(task.id, statusUpdates);
+          if (t) broadcastTaskUpdate(t);
+        },
+        (worktreePath) => {
+          const t = repo.update(task.id, { worktreePath });
+          if (t) broadcastTaskUpdate(t);
+        }
+      );
+    }
+  }
+
+  // POST /api/tasks
+  router.post('/', (req: Request, res: Response) => {
+    const validationError = validateTaskFields(req.body);
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
+    const task = buildTask(req.body);
     repo.create(task);
     broadcastTaskUpdate(task);
+
+    const { autoRun } = req.body;
+
+    // autoRun: true — immediately start agent if columnId is in-progress
+    if (autoRun === true && task.columnId === 'in-progress') {
+      // Validate agent is available before auto-running
+      const agents = agentManager.getAvailableAgents();
+      const agentInfo = agents.find(a => a.name === task.agentType);
+      if (!agentInfo?.available) {
+        // Create task but mark as failed
+        const failed = repo.update(task.id, { agentStatus: 'failed' });
+        if (failed) broadcastTaskUpdate(failed);
+        res.status(201).json(failed || { ...task, agentStatus: 'failed' });
+        return;
+      }
+      startAgentForTask(task);
+      // Re-fetch the task to get updated status
+      const latest = repo.getById(task.id);
+      res.status(201).json(latest || task);
+      return;
+    }
+
     res.status(201).json(task);
+  });
+
+  // POST /api/tasks/batch — create multiple tasks, optionally auto-run them
+  router.post('/batch', (req: Request, res: Response) => {
+    const { tasks: taskDefs } = req.body;
+
+    if (!Array.isArray(taskDefs) || taskDefs.length === 0) {
+      res.status(400).json({ error: 'tasks must be a non-empty array' });
+      return;
+    }
+
+    if (taskDefs.length > 50) {
+      res.status(400).json({ error: 'batch limit is 50 tasks' });
+      return;
+    }
+
+    // Validate ALL tasks first (atomic — fail fast)
+    for (let i = 0; i < taskDefs.length; i++) {
+      const err = validateTaskFields(taskDefs[i]);
+      if (err) {
+        res.status(400).json({ error: `task[${i}]: ${err}` });
+        return;
+      }
+    }
+
+    // Create all tasks
+    const created: Task[] = [];
+    for (const def of taskDefs) {
+      const task = buildTask(def);
+      repo.create(task);
+      broadcastTaskUpdate(task);
+      created.push(task);
+    }
+
+    // Auto-run tasks that requested it
+    for (let i = 0; i < created.length; i++) {
+      const task = created[i];
+      const def = taskDefs[i];
+      if (def.autoRun === true && task.columnId === 'in-progress') {
+        const agents = agentManager.getAvailableAgents();
+        const agentInfo = agents.find(a => a.name === task.agentType);
+        if (!agentInfo?.available) {
+          const failed = repo.update(task.id, { agentStatus: 'failed' });
+          if (failed) {
+            broadcastTaskUpdate(failed);
+            created[i] = failed;
+          }
+        } else {
+          startAgentForTask(task);
+          const latest = repo.getById(task.id);
+          if (latest) created[i] = latest;
+        }
+      }
+    }
+
+    res.status(201).json({ tasks: created });
+  });
+
+  // GET /api/tasks/:id/status — lightweight polling endpoint
+  router.get('/:id/status', (req: Request, res: Response) => {
+    const task = repo.getById(paramId(req));
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    res.json({
+      id: task.id,
+      agentStatus: task.agentStatus,
+      agentType: task.agentType,
+      columnId: task.columnId,
+      isRunning: agentManager.isRunning(task.id),
+    });
   });
 
   // PATCH /api/tasks/:id

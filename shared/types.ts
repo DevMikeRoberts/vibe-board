@@ -49,6 +49,9 @@ export interface AgentEvent {
     language?: string;
     command?: string;
     diff?: string;
+    agentType?: AgentType;
+    duration?: number;
+    error?: string;
   };
 }
 
@@ -59,7 +62,16 @@ export interface Column {
   icon: string;
 }
 
+export interface AgentCompletePayload {
+  taskId: string;
+  status: 'complete' | 'failed';
+  agentType?: AgentType;
+  duration: number;
+  eventCount: number;
+}
+
 export type WSMessage =
   | { type: 'agent_event'; payload: AgentEvent }
   | { type: 'task_updated'; payload: Task }
-  | { type: 'task_deleted'; payload: { id: string } };
+  | { type: 'task_deleted'; payload: { id: string } }
+  | { type: 'agent_complete'; payload: AgentCompletePayload };

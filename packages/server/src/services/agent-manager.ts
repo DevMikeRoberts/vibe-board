@@ -18,6 +18,8 @@ const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
 interface ManagedSession {
   session: AgentSession;
   timeoutId?: ReturnType<typeof setTimeout>;
+  startTime: number;
+  agentType: AgentType;
 }
 
 // Event log per task (capped to prevent unbounded growth)
@@ -31,6 +33,8 @@ export class AgentManager {
   private providers = new Map<AgentType, AgentProvider>();
   private sessions = new Map<string, ManagedSession>();
   private deletedTasks = new Set<string>();
+  /** Tasks stopped by user — prevents duplicate agent_complete from terminateOnce */
+  private stoppedTasks = new Set<string>();
   private eventLogs = new Map<string, AgentEvent[]>();
   private eventRepo: TaskRepository | null = null;
   private availableAgents: AgentInfo[] = [];
@@ -237,13 +241,49 @@ export class AgentManager {
       return;
     }
 
+    // Track start time for duration reporting
+    const sessionStartTime = Date.now();
+
     // Guard for single terminal state (complete OR failed — prevents races)
     let terminated = false;
-    const terminateOnce = (status: 'complete' | 'failed') => {
+    const terminateOnce = (status: 'complete' | 'failed', errorMessage?: string) => {
       if (terminated) return;
+      // If the task was stopped by the user, stopAgent already handled cleanup
+      if (this.stoppedTasks.has(task.id)) { terminated = true; return; }
       terminated = true;
       const entry = this.sessions.get(task.id);
       if (entry?.timeoutId) clearTimeout(entry.timeoutId);
+      const duration = Date.now() - sessionStartTime;
+
+      // Item 5: Emit structured summary event
+      if (status === 'complete') {
+        this.emitEvent(task.id, {
+          id: uuid(), taskId: task.id, type: 'complete',
+          content: 'Task completed successfully.',
+          timestamp: Date.now(),
+          metadata: { agentType, duration },
+        });
+      } else {
+        this.emitEvent(task.id, {
+          id: uuid(), taskId: task.id, type: 'error',
+          content: errorMessage || 'Task failed.',
+          timestamp: Date.now(),
+          metadata: { agentType, duration, error: errorMessage },
+        });
+      }
+
+      // Item 2: Broadcast agent_complete WS event
+      broadcast({
+        type: 'agent_complete',
+        payload: {
+          taskId: task.id,
+          status,
+          agentType,
+          duration,
+          eventCount: this.getEvents(task.id).length,
+        },
+      });
+
       onStatusChange(status);
     };
 
@@ -267,7 +307,7 @@ export class AgentManager {
           content: `Worktree setup failed: ${err.message}`,
           timestamp: Date.now(),
         });
-        onStatusChange('failed');
+        terminateOnce('failed', `Worktree setup failed: ${err.message}`);
         return;
       }
     }
@@ -304,16 +344,17 @@ make precise edits, and verify your changes compile/pass tests when applicable.
           },
         });
 
-        this.sessions.set(task.id, { session });
+        this.sessions.set(task.id, { session, startTime: sessionStartTime, agentType });
         onStatusChange('executing');
 
         // Timeout guard
         const timeoutId = setTimeout(() => {
           if (!this.sessions.has(task.id)) return;
+          const timeoutMsg = `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`;
           console.warn(`[agent-manager] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
           this.emitEvent(task.id, {
             id: uuid(), taskId: task.id, type: 'error',
-            content: `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`,
+            content: timeoutMsg,
             timestamp: Date.now(),
           });
           const entry = this.sessions.get(task.id);
@@ -322,7 +363,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
             entry.session.abort().catch(() => {});
             entry.session.destroy().catch(() => {});
           }
-          terminateOnce('failed');
+          terminateOnce('failed', timeoutMsg);
         }, AGENT_TIMEOUT_MS);
 
         const entry = this.sessions.get(task.id);
@@ -349,17 +390,19 @@ make precise edits, and verify your changes compile/pass tests when applicable.
           message.includes('not found') ||
           message.includes('spawn');
 
+        const errorContent = isCliMissing
+          ? `${provider.displayName} CLI is not installed or not found in PATH.`
+          : `Failed to start ${provider.displayName} session: ${message}`;
+
         this.emitEvent(task.id, {
           id: uuid(), taskId: task.id, type: 'error',
-          content: isCliMissing
-            ? `${provider.displayName} CLI is not installed or not found in PATH.`
-            : `Failed to start ${provider.displayName} session: ${message}`,
+          content: errorContent,
           timestamp: Date.now(),
         });
 
         const entry = this.sessions.get(task.id);
         if (entry) this.sessions.delete(task.id);
-        terminateOnce('failed');
+        terminateOnce('failed', errorContent);
       }
     })().catch((err) => {
       console.error(`[agent-manager] unhandled error for task ${task.id}:`, err);
@@ -372,7 +415,12 @@ make precise edits, and verify your changes compile/pass tests when applicable.
     if (!entry) return false;
 
     if (entry.timeoutId) clearTimeout(entry.timeoutId);
+    const duration = Date.now() - entry.startTime;
+    const { agentType } = entry;
     this.sessions.delete(taskId);
+    // Mark as stopped so terminateOnce (from the catch block) won't double-broadcast
+    this.stoppedTasks.add(taskId);
+    setTimeout(() => this.stoppedTasks.delete(taskId), 30_000);
 
     (async () => {
       try { await entry.session.abort(); } catch { /* ignore */ }
@@ -383,7 +431,21 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       id: uuid(), taskId, type: 'error',
       content: 'Agent stopped by user.',
       timestamp: Date.now(),
+      metadata: { agentType, duration, error: 'Agent stopped by user.' },
     });
+
+    // Broadcast agent_complete so WS listeners know the agent finished
+    broadcast({
+      type: 'agent_complete',
+      payload: {
+        taskId,
+        status: 'failed',
+        agentType,
+        duration,
+        eventCount: this.getEvents(taskId).length,
+      },
+    });
+
     return true;
   }
 
