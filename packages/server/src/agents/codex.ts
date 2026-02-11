@@ -29,6 +29,7 @@ export class CodexProvider implements AgentProvider {
     }
 
     const thread = this.codex.startThread({
+      model: this.model,
       workingDirectory: config.workingDirectory,
     });
 
