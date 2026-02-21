@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
-import { v4 as uuid } from 'uuid';
+import { Pool } from 'pg';
 import path from 'path';
 import fs from 'fs';
-import type { Task } from './types.js';
+
+// ─── SQLite ──────────────────────────────────────────────────────────────────
 
 const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'kanban.db');
 const DATA_DIR = path.dirname(DB_PATH);
@@ -37,6 +38,11 @@ function migrate(db: Database.Database): void {
   // Index for fast lookups by task_id + ordering by timestamp
   db.exec(`CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id, timestamp ASC)`);
 
+  // Add indexes for tasks table
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_column_id ON tasks(column_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_agent_status ON tasks(agent_status)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_column_created ON tasks(column_id, created_at)`);
+
   // Add worktree columns if they don't exist yet
   const cols = db.pragma('table_info(tasks)') as { name: string }[];
   const colNames = new Set(cols.map((c) => c.name));
@@ -58,88 +64,9 @@ function migrate(db: Database.Database): void {
   if (!colNames.has('agent_type')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'copilot'`);
   }
-}
-
-const seeds: Omit<Task, 'id'>[] = [
-  {
-    title: 'Set up authentication middleware',
-    description: 'Implement JWT-based authentication middleware for the Express API. Should validate tokens on protected routes and attach user info to the request object.',
-    priority: 'high',
-    columnId: 'backlog',
-    agentStatus: 'idle',
-    agentType: 'copilot',
-    createdAt: Date.now() - 86400000 * 3,
-  },
-  {
-    title: 'Create user profile API endpoint',
-    description: 'Build GET /api/users/:id and PATCH /api/users/:id endpoints. Include validation with zod schemas and proper error responses.',
-    priority: 'medium',
-    columnId: 'backlog',
-    agentStatus: 'idle',
-    agentType: 'copilot',
-    createdAt: Date.now() - 86400000 * 2,
-  },
-  {
-    title: 'Implement WebSocket event streaming',
-    description: 'Set up WebSocket server with ws library. Broadcast agent events to connected clients in real-time. Handle reconnection and error states.',
-    priority: 'critical',
-    columnId: 'in-progress',
-    agentStatus: 'idle',
-    agentType: 'copilot',
-    createdAt: Date.now() - 86400000,
-  },
-  {
-    title: 'Write integration tests for task CRUD',
-    description: 'Create comprehensive integration tests for all task endpoints using supertest. Cover edge cases and error scenarios.',
-    priority: 'medium',
-    columnId: 'review',
-    agentStatus: 'complete',
-    agentType: 'copilot',
-    createdAt: Date.now() - 86400000 * 4,
-    startedAt: Date.now() - 86400000,
-    completedAt: Date.now() - 3600000,
-  },
-  {
-    title: 'Configure Docker multi-stage build',
-    description: 'Create Dockerfile with multi-stage build for production. Optimize image size with Alpine base. Add docker-compose for local development.',
-    priority: 'high',
-    columnId: 'done',
-    agentStatus: 'complete',
-    agentType: 'copilot',
-    createdAt: Date.now() - 86400000 * 5,
-    startedAt: Date.now() - 86400000 * 2,
-    completedAt: Date.now() - 86400000,
-  },
-];
-
-function seed(db: Database.Database): void {
-  const row = db.prepare('SELECT COUNT(*) as cnt FROM tasks').get() as { cnt: number };
-  if (row.cnt > 0) return;
-
-  const insert = db.prepare(`
-    INSERT INTO tasks (id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at)
-    VALUES (@id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at)
-  `);
-
-  const insertMany = db.transaction((items: typeof seeds) => {
-    for (const s of items) {
-      insert.run({
-        id: uuid(),
-        title: s.title,
-        description: s.description,
-        priority: s.priority,
-        column_id: s.columnId,
-        agent_status: s.agentStatus,
-        agent_type: s.agentType,
-        created_at: s.createdAt,
-        started_at: s.startedAt ?? null,
-        completed_at: s.completedAt ?? null,
-      });
-    }
-  });
-
-  insertMany(seeds);
-  console.log(`[db] seeded ${seeds.length} tasks`);
+  if (!colNames.has('archived')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
+  }
 }
 
 export function initDatabase(): Database.Database {
@@ -148,7 +75,70 @@ export function initDatabase(): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   migrate(db);
-  seed(db);
   console.log(`[db] initialized at ${DB_PATH}`);
   return db;
+}
+
+// ─── PostgreSQL ──────────────────────────────────────────────────────────────
+
+export async function initPostgresDatabase(pool: Pool): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id            TEXT PRIMARY KEY,
+      title         TEXT NOT NULL,
+      description   TEXT NOT NULL DEFAULT '',
+      priority      TEXT NOT NULL DEFAULT 'medium',
+      column_id     TEXT NOT NULL DEFAULT 'backlog',
+      agent_status  TEXT NOT NULL DEFAULT 'idle',
+      created_at    BIGINT NOT NULL,
+      started_at    BIGINT,
+      completed_at  BIGINT,
+      repo_path     TEXT,
+      branch_name   TEXT,
+      base_branch   TEXT,
+      use_worktree  BOOLEAN,
+      worktree_path TEXT,
+      agent_type    TEXT NOT NULL DEFAULT 'copilot',
+      archived      BOOLEAN NOT NULL DEFAULT FALSE
+    )
+  `);
+
+  // Incremental column migrations — same pattern as SQLite migrate()
+  const { rows } = await pool.query(`
+    SELECT column_name FROM information_schema.columns WHERE table_name = 'tasks'
+  `);
+  const colNames = new Set(rows.map((r: { column_name: string }) => r.column_name));
+  const addCol = async (name: string, def: string) => {
+    if (!colNames.has(name)) {
+      await pool.query(`ALTER TABLE tasks ADD COLUMN ${name} ${def}`);
+    }
+  };
+  await addCol('repo_path', 'TEXT');
+  await addCol('branch_name', 'TEXT');
+  await addCol('base_branch', 'TEXT');
+  await addCol('use_worktree', 'BOOLEAN');
+  await addCol('worktree_path', 'TEXT');
+  await addCol('agent_type', "TEXT NOT NULL DEFAULT 'copilot'");
+  await addCol('archived', 'BOOLEAN NOT NULL DEFAULT FALSE');
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS events (
+      id         TEXT PRIMARY KEY,
+      task_id    TEXT NOT NULL REFERENCES tasks(id),
+      type       TEXT NOT NULL,
+      content    TEXT NOT NULL,
+      timestamp  BIGINT NOT NULL,
+      metadata   TEXT
+    )
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_events_task_id ON events(task_id, timestamp ASC)
+  `);
+}
+
+// ─── Backend selection helper ────────────────────────────────────────────────
+
+export function isPostgresUrl(url: string | undefined): boolean {
+  return !!url && url.startsWith('postgresql://');
 }

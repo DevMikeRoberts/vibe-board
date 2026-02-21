@@ -1,0 +1,56 @@
+# Production server build — multi-stage, production deps only
+# Result: ~250-300MB image vs ~2.7GB dev image
+
+# Stage 1: Build TypeScript
+FROM node:24-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/client/package.json packages/client/
+COPY packages/server/package.json packages/server/
+COPY packages/e2e/package.json packages/e2e/
+COPY shared/package.json shared/
+
+RUN npm ci
+
+# Copy shared and server source
+COPY shared/ shared/
+COPY packages/server/ packages/server/
+
+# Build shared types, then server
+RUN packages/server/node_modules/.bin/tsc -p shared/tsconfig.json && \
+    packages/server/node_modules/.bin/tsc -p packages/server/tsconfig.build.json
+
+# Stage 2: Production runtime
+FROM node:24-slim
+
+# Git needed for worktree operations, curl for health checks
+RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI (for Copilot SDK)
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      -o /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
+
+# Codex CLI symlink (package bind-mounted at runtime)
+RUN ln -sf /usr/lib/node_modules/@openai/codex/bin/codex.js /usr/local/bin/codex
+
+WORKDIR /app
+
+# Install production deps only
+COPY package.json package-lock.json ./
+COPY packages/server/package.json packages/server/
+COPY shared/package.json shared/
+RUN npm ci --omit=dev
+
+# Copy compiled output
+COPY --from=build /app/packages/server/dist packages/server/dist/
+COPY --from=build /app/shared/dist shared/dist/
+COPY --from=build /app/shared/*.ts shared/
+COPY --from=build /app/shared/package.json shared/
+
+EXPOSE 3001
+
+CMD ["node", "packages/server/dist/index.js"]

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import {
@@ -10,17 +10,11 @@ import {
   Circle,
   Pencil,
   Trash2,
+  Archive,
 } from 'lucide-react';
-import type { Task, Priority, AgentStatus } from '@/types';
+import type { Task, AgentStatus } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
 import { cn } from '@/lib/utils';
-
-const priorityConfig: Record<Priority, { label: string; className: string }> = {
-  low: { label: 'Low', className: 'bg-zinc-500/10 text-zinc-500' },
-  medium: { label: 'Medium', className: 'bg-blue-500/10 text-blue-500' },
-  high: { label: 'High', className: 'bg-amber-500/10 text-amber-500' },
-  critical: { label: 'Critical', className: 'bg-red-500/10 text-red-500' },
-};
 
 
 const agentStatusConfig: Record<
@@ -48,11 +42,16 @@ interface TaskCardProps {
   onClick: () => void;
   onEdit?: (task: Task) => void;
   onDelete?: (task: Task) => void;
+  onArchive?: (task: Task) => void;
+  onUnarchive?: (task: Task) => void;
 }
 
-export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
+function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarchive }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({ id: task.id });
+    useDraggable({
+      id: task.id,
+      disabled: task.archived // Disable dragging for archived tasks
+    });
 
   // Suppress click that fires immediately after a drag ends
   const wasDragging = useRef(false);
@@ -70,7 +69,6 @@ export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
     ? { transform: CSS.Translate.toString(transform) }
     : undefined;
 
-  const priority = priorityConfig[task.priority];
   const agentStatus = agentStatusConfig[task.agentStatus];
   const StatusIcon = agentStatus.icon;
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
@@ -97,18 +95,19 @@ export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
         'group relative cursor-grab active:cursor-grabbing rounded-lg border border-border bg-card p-3 shadow-sm transition-all',
         'hover:border-primary/30 hover:shadow-md',
         isDragging && 'z-50 rotate-2 scale-105 shadow-xl opacity-90',
-        isActive && 'border-primary/20'
+        isActive && 'border-primary/20',
+        task.archived && 'opacity-60 bg-muted'
       )}
       onClick={() => { if (!wasDragging.current) onClick(); }}
     >
 
       {/* Action buttons — top right, visible on hover */}
-      {(onEdit || onDelete) && (
+      {(onEdit || onDelete || onArchive || onUnarchive) && (
         <div
-          className="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute right-2 top-2 flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
         >
-          {onEdit && (
+          {onEdit && !task.archived && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -118,6 +117,30 @@ export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
               aria-label="Edit task"
             >
               <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {onArchive && (task.columnId === 'done' || task.agentStatus === 'failed') && !task.archived && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onArchive(task);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Archive task"
+            >
+              <Archive className="h-3 w-3" />
+            </button>
+          )}
+          {onUnarchive && task.archived && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnarchive(task);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Unarchive task"
+            >
+              <Archive className="h-3 w-3" />
             </button>
           )}
           {onDelete && (
@@ -149,16 +172,6 @@ export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
         {/* Footer */}
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {/* Priority badge */}
-            <span
-              className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
-                priority.className
-              )}
-            >
-              {priority.label}
-            </span>
-
             {/* Agent type badge */}
             {task.agentType && task.columnId !== 'backlog' && (
               <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
@@ -199,3 +212,5 @@ export function TaskCard({ task, onClick, onEdit, onDelete }: TaskCardProps) {
     </div>
   );
 }
+
+export const TaskCard = memo(TaskCardComponent);

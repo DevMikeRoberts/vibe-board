@@ -4,31 +4,29 @@ import {
   X,
   ChevronDown,
 } from 'lucide-react';
-import type { Task, Priority, ColumnId } from '@/types';
+import type { Task, ColumnId, AgentType } from '@/types';
+import { AGENT_DISPLAY } from '@/lib/agent-config';
 import { cn } from '@/lib/utils';
 
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (task: { title: string; description: string; priority: Priority; columnId: ColumnId }) => void;
+  onSubmit: (task: { title: string; description: string; priority: 'medium'; columnId: ColumnId; agentType: AgentType }) => void;
   /** When set, dialog is in edit mode with pre-populated fields */
   editTask?: Task | null;
   /** Called on save in edit mode */
-  onEditSubmit?: (id: string, updates: { title: string; description: string; priority: Priority }) => void;
+  onEditSubmit?: (id: string, updates: { title: string; description: string; agentType: AgentType }) => void;
 }
 
-const priorities: { value: Priority; label: string; color: string }[] = [
-  { value: 'low', label: 'Low', color: 'bg-zinc-400' },
-  { value: 'medium', label: 'Medium', color: 'bg-blue-500' },
-  { value: 'high', label: 'High', color: 'bg-amber-500' },
-  { value: 'critical', label: 'Critical', color: 'bg-red-500' },
-];
+const agents: { value: AgentType; label: string; emoji: string }[] = (
+  Object.entries(AGENT_DISPLAY) as [AgentType, { emoji: string; label: string }][]
+).map(([value, { emoji, label }]) => ({ value, label, emoji }));
 
 export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: TaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<Priority>('medium');
-  const [showPriority, setShowPriority] = useState(false);
+  const [agentType, setAgentType] = useState<AgentType>('copilot');
+  const [showAgent, setShowAgent] = useState(false);
 
   const isEditMode = !!editTask;
 
@@ -37,13 +35,13 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
     if (editTask && open) {
       setTitle(editTask.title);
       setDescription(editTask.description);
-      setPriority(editTask.priority);
+      setAgentType(editTask.agentType || 'copilot');
     } else if (!open) {
       // Reset when dialog closes
       setTitle('');
       setDescription('');
-      setPriority('medium');
-      setShowPriority(false);
+      setAgentType('copilot');
+      setShowAgent(false);
     }
   }, [editTask, open]);
 
@@ -54,36 +52,37 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
       onEditSubmit(editTask!.id, {
         title: title.trim(),
         description: description.trim(),
-        priority,
+        agentType,
       });
     } else {
       onSubmit({
         title: title.trim(),
         description: description.trim(),
-        priority,
+        priority: 'medium',
         columnId: 'backlog',
+        agentType,
       });
     }
     setTitle('');
     setDescription('');
-    setPriority('medium');
+    setAgentType('copilot');
     onClose();
   };
 
-  // Close priority dropdown on outside click
-  const priorityRef = useRef<HTMLDivElement>(null);
+  // Close dropdowns on outside click
+  const agentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!showPriority) return;
+    if (!showAgent) return;
     const handleClick = (e: MouseEvent) => {
-      if (priorityRef.current && !priorityRef.current.contains(e.target as Node)) {
-        setShowPriority(false);
+      if (showAgent && agentRef.current && !agentRef.current.contains(e.target as Node)) {
+        setShowAgent(false);
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showPriority]);
+  }, [showAgent]);
 
-  const selectedPriority = priorities.find((p) => p.value === priority)!;
+  const selectedAgent = agents.find((a) => a.value === agentType)!;
 
   return (
     <AnimatePresence>
@@ -149,46 +148,46 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
                 />
               </div>
 
-              {/* Priority */}
-              <div className="relative" ref={priorityRef}>
+              {/* Agent */}
+              <div className="relative" ref={agentRef}>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Priority
+                  Agent
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowPriority(!showPriority)}
+                  onClick={() => setShowAgent(!showAgent)}
                   className="flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm hover:bg-accent transition-colors"
                 >
                   <span className="flex items-center gap-2">
-                    <span className={cn('h-2 w-2 rounded-full', selectedPriority.color)} />
-                    {selectedPriority.label}
+                    <span>{selectedAgent.emoji}</span>
+                    {selectedAgent.label}
                   </span>
-                  <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showPriority && 'rotate-180')} />
+                  <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showAgent && 'rotate-180')} />
                 </button>
 
                 <AnimatePresence>
-                  {showPriority && (
+                  {showAgent && (
                     <motion.div
                       initial={{ opacity: 0, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -4 }}
                       className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border bg-popover shadow-lg"
                     >
-                      {priorities.map((p) => (
+                      {agents.map((a) => (
                         <button
-                          key={p.value}
+                          key={a.value}
                           type="button"
                           onClick={() => {
-                            setPriority(p.value);
-                            setShowPriority(false);
+                            setAgentType(a.value);
+                            setShowAgent(false);
                           }}
                           className={cn(
                             'flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors',
-                            priority === p.value && 'bg-accent'
+                            agentType === a.value && 'bg-accent'
                           )}
                         >
-                          <span className={cn('h-2 w-2 rounded-full', p.color)} />
-                          {p.label}
+                          <span>{a.emoji}</span>
+                          {a.label}
                         </button>
                       ))}
                     </motion.div>

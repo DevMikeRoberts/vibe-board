@@ -1,13 +1,14 @@
 import type { Task, AgentEvent } from '../types.js';
 
 export interface TaskRepository {
-  getAll(): Task[];
-  getById(id: string): Task | undefined;
-  create(task: Task): Task;
-  update(id: string, updates: Partial<Task>): Task | undefined;
-  delete(id: string): boolean;
-  count(): number;
-  insertEvent(event: AgentEvent): void;
-  getEventsByTaskId(taskId: string): AgentEvent[];
-  deleteEventsByTaskId(taskId: string): void;
+  getAll(includeArchived?: boolean): Promise<Task[]>;
+  getById(id: string): Promise<Task | undefined>;
+  create(task: Task): Promise<Task>;
+  update(id: string, updates: Partial<Task>): Promise<Task | undefined>;
+  delete(id: string): Promise<boolean>;
+  count(): Promise<number>;
+  insertEvent(event: AgentEvent): Promise<void>;
+  getEventsByTaskId(taskId: string): Promise<AgentEvent[]>;
+  deleteEventsByTaskId(taskId: string): Promise<void>;
+  getArchivedTasks(): Promise<Task[]>;
 }

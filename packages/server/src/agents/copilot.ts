@@ -212,9 +212,14 @@ function mapSessionEvent(
       });
       break;
 
-    case 'tool.execution_partial_result':
-      onEvent({ id: uuid(), taskId, type: 'output', content: event.data.partialOutput, timestamp: Date.now() });
+    case 'tool.execution_partial_result': {
+      // Filter out CLI spinner frames (Braille patterns U+2800-U+28FF) and empty output
+      const partial = event.data.partialOutput?.replace(/[\u2800-\u28FF]/g, '').trim();
+      if (partial) {
+        onEvent({ id: uuid(), taskId, type: 'output', content: partial, timestamp: Date.now() });
+      }
       break;
+    }
 
     case 'session.error':
       onEvent({ id: uuid(), taskId, type: 'error', content: event.data.message, timestamp: Date.now() });

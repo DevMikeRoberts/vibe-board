@@ -1,10 +1,11 @@
 services:
   server:
+    init: true
     build:
       context: .
       dockerfile: Dockerfile.server
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     volumes:
       # Live-reload: mount server source (tsx watch picks up changes)
       - ./packages/server/src:/app/packages/server/src
@@ -40,11 +41,12 @@ services:
     restart: unless-stopped
 
   client:
+    init: true
     build:
       context: .
       dockerfile: Dockerfile.client
     ports:
-      - "4175:4175"
+      - "127.0.0.1:4175:4175"
     volumes:
       # Live-reload: mount client source (Vite HMR picks up changes)
       - ./packages/client/src:/app/packages/client/src

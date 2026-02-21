@@ -20,7 +20,10 @@ async function request<T>(url: string, opts?: RequestInit): Promise<T> {
 // --- Task CRUD ---
 
 export const api = {
-  getTasks: () => request<Task[]>('/tasks'),
+  getTasks: (includeArchived = false) =>
+    request<Task[]>(`/tasks${includeArchived ? '?includeArchived=true' : ''}`),
+
+  getArchivedTasks: () => request<Task[]>('/tasks/archived'),
 
   createTask: (data: { title: string; description: string; priority: Priority; columnId: ColumnId }) =>
     request<Task>('/tasks', { method: 'POST', body: JSON.stringify(data) }),
@@ -53,6 +56,12 @@ export const api = {
 
   sendMessage: (id: string, message: string) =>
     request<{ success: boolean }>(`/tasks/${id}/message`, { method: 'POST', body: JSON.stringify({ message }) }),
+
+  archiveTask: (id: string) =>
+    request<Task>(`/tasks/${id}/archive`, { method: 'PATCH' }),
+
+  unarchiveTask: (id: string) =>
+    request<Task>(`/tasks/${id}/unarchive`, { method: 'PATCH' }),
 };
 
 // --- WebSocket (shared singleton) ---

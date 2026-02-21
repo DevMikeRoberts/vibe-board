@@ -27,6 +27,7 @@ export interface Task {
   useWorktree?: boolean;
   worktreePath?: string;
   agentType?: AgentType;
+  archived?: boolean;
 }
 
 export type AgentEventType =

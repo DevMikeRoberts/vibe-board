@@ -28,3 +28,6 @@ export function isValidAgentStatus(value: unknown): value is AgentStatus {
 export function isValidAgentType(value: unknown): value is AgentType {
   return typeof value === 'string' && (VALID_AGENT_TYPES as readonly string[]).includes(value);
 }
+
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_DESCRIPTION_LENGTH = 5000;

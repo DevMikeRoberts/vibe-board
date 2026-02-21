@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -12,11 +12,12 @@ import {
   CollisionDetection,
 } from '@dnd-kit/core';
 import { motion } from 'framer-motion';
-import type { Task, ColumnId } from '@/types';
+import type { Task, ColumnId, Column as ColumnType } from '@/types';
 import { VALID_TRANSITIONS } from '@/types';
-import { columns } from '@/lib/columns';
+import { columns as baseColumns } from '@/lib/columns';
 import { Column } from './Column';
 import { TaskCard } from './TaskCard';
+import { Archive } from 'lucide-react';
 
 interface BoardProps {
   tasks: Task[];
@@ -25,8 +26,11 @@ interface BoardProps {
   onTaskClick: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (task: Task) => void;
+  onArchiveTask?: (task: Task) => void;
+  onUnarchiveTask?: (task: Task) => void;
   onAddTask: () => void;
   onDropInProgress?: (task: Task) => void;
+  showArchived?: boolean;
 }
 
 // Use pointerWithin first (ideal for dropping into columns),
@@ -44,10 +48,35 @@ export function Board({
   onTaskClick,
   onEditTask,
   onDeleteTask,
+  onArchiveTask,
+  onUnarchiveTask,
   onAddTask,
   onDropInProgress,
+  showArchived = false,
 }: BoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  // Dynamically add archived column when showArchived is true
+  const columns = useMemo(() => {
+    if (!showArchived) return baseColumns;
+
+    return [
+      ...baseColumns,
+      {
+        id: 'archived' as ColumnId,
+        title: 'Archived',
+        color: 'bg-zinc-500',
+        icon: 'archive'
+      } as ColumnType
+    ];
+  }, [showArchived]);
+
+  const getTasksForColumn = useCallback((columnId: ColumnId | string) => {
+    if (columnId === 'archived') {
+      return tasks.filter(t => t.archived === true);
+    }
+    return getTasksByColumn(columnId as ColumnId);
+  }, [tasks, getTasksByColumn]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -85,6 +114,12 @@ export function Board({
         targetColumn = overTask.columnId;
       }
 
+      // Don't allow moving archived tasks
+      if (draggedTask.archived) return;
+
+      // Don't allow dropping into archived column
+      if (targetColumn === 'archived') return;
+
       // Validate transition before moving
       if (targetColumn === draggedTask.columnId) return;
       if (!VALID_TRANSITIONS[draggedTask.columnId]?.includes(targetColumn)) return;
@@ -116,10 +151,12 @@ export function Board({
           >
             <Column
               column={column}
-              tasks={getTasksByColumn(column.id)}
+              tasks={getTasksForColumn(column.id)}
               onTaskClick={onTaskClick}
               onEditTask={onEditTask}
               onDeleteTask={onDeleteTask}
+              onArchiveTask={onArchiveTask}
+              onUnarchiveTask={onUnarchiveTask}
               onAddTask={column.id === 'backlog' ? onAddTask : undefined}
             />
           </motion.div>

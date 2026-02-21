@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: kanban
+  labels:
+    app: kanban-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kanban-server
+  template:
+    metadata:
+      labels:
+        app: kanban-server
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: server
+          image: kanban-server:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3001
+          env:
+            - name: PORT
+              value: "3001"
+            - name: NODE_ENV
+              value: production
+            - name: DATABASE_URL
+              value: "postgresql://kanban:kanban_db_pass@127.0.0.1:5432/kanban"
+            - name: ALLOWED_REPO_ROOTS
+              value: /host-projects,/tmp
+            - name: ALLOWED_ORIGINS
+              value: http://localhost:4175,https://kanban.codewithdan.com
+            - name: COPILOT_MODEL
+              value: claude-opus-4-20250514
+            - name: CLAUDE_MODEL
+              value: claude-opus-4-20250514
+            - name: CODEX_MODEL
+              value: gpt-5.2-codex
+          volumeMounts:
+            - name: server-src
+              mountPath: /app/packages/server/src
+            - name: shared-src
+              mountPath: /app/shared
+            - name: server-data
+              mountPath: /app/packages/server/data
+            - name: host-projects
+              mountPath: /host-projects
+            - name: claude-bin
+              mountPath: /usr/local/bin/claude
+              readOnly: true
+            - name: codex-pkg
+              mountPath: /usr/lib/node_modules/@openai/codex
+              readOnly: true
+            - name: gh-config
+              mountPath: /root/.config/github-copilot
+              readOnly: true
+            - name: gh-cli
+              mountPath: /root/.config/gh
+              readOnly: true
+            - name: claude-auth
+              mountPath: /root/.claude
+            - name: codex-auth
+              mountPath: /root/.codex
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3001
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: server-src
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/packages/server/src
+            type: Directory
+        - name: shared-src
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/shared
+            type: Directory
+        - name: server-data
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/packages/server/data
+            type: DirectoryOrCreate
+        - name: host-projects
+          hostPath:
+            path: /root/projects
+            type: Directory
+        - name: claude-bin
+          hostPath:
+            path: /usr/local/bin/claude
+            type: File
+        - name: codex-pkg
+          hostPath:
+            path: /usr/lib/node_modules/@openai/codex
+            type: Directory
+        - name: gh-config
+          hostPath:
+            path: /root/.config/github-copilot
+            type: Directory
+        - name: gh-cli
+          hostPath:
+            path: /root/.config/gh
+            type: Directory
+        - name: claude-auth
+          hostPath:
+            path: /root/.claude
+            type: Directory
+        - name: codex-auth
+          hostPath:
+            path: /root/.codex
+            type: Directory

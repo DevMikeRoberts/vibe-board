@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import type { Task, AgentType, ColumnId, Priority } from '@/types';
+import type { Task, AgentType, ColumnId } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { useTasks } from '@/hooks/useTasks';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useDebounce } from '@/hooks/useDebounce';
 import { Header } from '@/components/Header';
 import { Board } from '@/components/Board';
 import { TaskDialog } from '@/components/TaskDialog';
@@ -14,13 +15,16 @@ import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
-  const { tasks, error, clearError, addTask, updateTask, moveTask, stopTask, deleteTask, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
+  const { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, stopTask, deleteTask, archiveTask, unarchiveTask, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+
+  // Debounce search query
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
   // Derive live task from tasks array so it stays current with WS updates
   const selectedTask = useMemo(
@@ -30,12 +34,12 @@ export function App() {
 
   // Filter tasks by search query
   const filteredTasks = useMemo(() => {
-    if (!searchQuery.trim()) return tasks;
-    const q = searchQuery.toLowerCase();
+    if (!debouncedSearchQuery.trim()) return tasks;
+    const q = debouncedSearchQuery.toLowerCase();
     return tasks.filter(
       (t) => t.title.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
     );
-  }, [tasks, searchQuery]);
+  }, [tasks, debouncedSearchQuery]);
 
   const getFilteredTasksByColumn = useCallback(
     (columnId: ColumnId) => filteredTasks.filter((t) => t.columnId === columnId),
@@ -65,7 +69,7 @@ export function App() {
     setDialogOpen(true);
   }, []);
 
-  const handleEditSubmit = useCallback((id: string, updates: { title: string; description: string; priority: Priority }) => {
+  const handleEditSubmit = useCallback((id: string, updates: { title: string; description: string; agentType: AgentType }) => {
     updateTask(id, updates);
   }, [updateTask]);
 
@@ -83,6 +87,14 @@ export function App() {
   const handleCancelDelete = useCallback(() => {
     setDeletingTask(null);
   }, []);
+
+  const handleArchiveTask = useCallback((task: Task) => {
+    archiveTask(task.id);
+  }, [archiveTask]);
+
+  const handleUnarchiveTask = useCallback((task: Task) => {
+    unarchiveTask(task.id);
+  }, [unarchiveTask]);
 
   // Worktree dialog: intercept Run to show config dialog first
   const worktreeDialogTask = useMemo(
@@ -148,6 +160,8 @@ export function App() {
         taskCount={tasks.length}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        showArchived={showArchived}
+        onToggleArchived={() => setShowArchived(!showArchived)}
       />
 
       <main className="flex-1 overflow-hidden">
@@ -158,7 +172,10 @@ export function App() {
           onTaskClick={handleTaskClick}
           onEditTask={handleEditTask}
           onDeleteTask={handleDeleteTask}
+          onArchiveTask={handleArchiveTask}
+          onUnarchiveTask={handleUnarchiveTask}
           onAddTask={handleOpenDialog}
+          showArchived={showArchived}
           // onDropInProgress receives the pre-move task object, but task.id is stable.
           // React batches this setState with the WS-driven tasks array update from moveTask,
           // so selectedTask (derived via useMemo) resolves to the already-moved task.

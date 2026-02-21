@@ -6,16 +6,15 @@ import { api, connectWS } from '@/lib/api';
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const loaded = useRef(false);
 
-  // Fetch tasks on mount
+  // Fetch tasks on mount and when showArchived changes
   useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
-    api.getTasks().then(setTasks).catch((err) => {
+    api.getTasks(showArchived).then(setTasks).catch((err) => {
       setError(`Failed to load tasks: ${err.message}`);
     });
-  }, []);
+  }, [showArchived]);
 
   // WebSocket: live task updates from server
   useEffect(() => {
@@ -147,6 +146,24 @@ export function useTasks() {
     }
   }, []);
 
+  const archiveTask = useCallback(async (id: string) => {
+    try {
+      const updated = await api.archiveTask(id);
+      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      setError(`Failed to archive task: ${(err as Error).message}`);
+    }
+  }, []);
+
+  const unarchiveTask = useCallback(async (id: string) => {
+    try {
+      const updated = await api.unarchiveTask(id);
+      setTasks((prev) => prev.map((t) => (t.id === id ? updated : t)));
+    } catch (err) {
+      setError(`Failed to unarchive task: ${(err as Error).message}`);
+    }
+  }, []);
+
   const getTasksByColumn = useCallback(
     (columnId: ColumnId) => tasks.filter((t) => t.columnId === columnId),
     [tasks]
@@ -154,5 +171,5 @@ export function useTasks() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { tasks, error, clearError, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
+  return { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
 }

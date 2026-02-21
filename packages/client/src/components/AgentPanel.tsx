@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ChevronRight,
+  ChevronDown,
   Copy,
   Check,
   Play,
@@ -18,6 +19,7 @@ import {
   ExternalLink,
   Trash2,
   Send,
+  FileText,
 } from 'lucide-react';
 import type { Task, AgentEvent, AgentEventType } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
@@ -35,13 +37,13 @@ const eventIconMap: Record<AgentEventType, React.ElementType> = {
 };
 
 const eventColorMap: Record<AgentEventType, string> = {
-  thinking: 'text-purple-400',
-  tool_call: 'text-blue-400',
-  file_edit: 'text-amber-400',
-  command: 'text-cyan-400',
-  output: 'text-zinc-400',
-  error: 'text-red-400',
-  complete: 'text-emerald-400',
+  thinking: 'text-purple-500 dark:text-purple-400',
+  tool_call: 'text-blue-500 dark:text-blue-400',
+  file_edit: 'text-amber-500 dark:text-amber-400',
+  command: 'text-cyan-600 dark:text-cyan-400',
+  output: 'text-zinc-500 dark:text-zinc-400',
+  error: 'text-red-500 dark:text-red-400',
+  complete: 'text-emerald-500 dark:text-emerald-400',
 };
 
 const eventLabelMap: Record<AgentEventType, string> = {
@@ -84,7 +86,8 @@ function coalesceEvents(events: AgentEvent[], streaming: boolean): CoalescedEven
       // Check if last coalesced entry is the same type — merge
       const last = result[result.length - 1];
       if (last && last.type === event.type) {
-        last.content += event.content;
+        // Add paragraph break between merged events for readability
+        last.content += '\n\n' + event.content;
         continue;
       }
     }
@@ -227,7 +230,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
               {/* Thinking / text content — render as code block if it looks like code */}
               {(event.type === 'thinking' || event.type === 'complete' || event.type === 'error') && (
                 looksLikeCode(event.content) ? (
-                  <div className="rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-300 whitespace-pre-wrap">
+                  <div className="rounded-md px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
                     {event.content}
                   </div>
                 ) : (
@@ -239,40 +242,50 @@ function EventItem({ event }: { event: CoalescedEvent }) {
 
               {/* Command — user follow-up messages have distinct styling */}
               {event.type === 'command' && event.content.startsWith('You: ') && (
-                <div className="rounded-md bg-sky-500/10 border border-sky-500/20 px-2.5 py-1.5 text-xs text-sky-300">
+                <div className="rounded-md bg-sky-500/10 border border-sky-500/20 px-2.5 py-1.5 text-xs text-sky-700 dark:text-sky-300">
                   {event.content}
                 </div>
               )}
 
               {/* Command — show parsed command cleanly */}
               {event.type === 'command' && !event.content.startsWith('You: ') && (
-                <div className="flex items-center gap-1 rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-emerald-400">
+                <div className="flex items-center gap-1 rounded-md px-2.5 py-1.5 font-mono text-xs" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-command)' }}>
                   <span className="text-muted-foreground select-none">$</span>
                   <span className="flex-1">{event.toolArgs || event.content}</span>
                   <CopyButton text={event.toolArgs || event.content} />
                 </div>
               )}
 
-              {/* Output */}
+              {/* Output — render as prose if it's natural language, code block if it looks like code */}
               {event.type === 'output' && (
-                <div className="rounded-md bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-300 whitespace-pre-wrap">
-                  {event.content}
-                </div>
+                looksLikeCode(event.content) ? (
+                  <div className="rounded-md px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
+                    {event.content}
+                  </div>
+                ) : (
+                  <div className="text-xs leading-relaxed text-foreground/70 whitespace-pre-wrap [&>*:first-child]:mt-0">
+                    {event.content.split(/\n{2,}/).map((paragraph, i) => (
+                      <p key={i} className={i > 0 ? 'mt-2.5 pt-2.5 border-t border-border/30' : ''}>
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                )
               )}
 
               {/* Diff */}
               {hasDiff && (
-                <div className="mt-1 overflow-x-auto rounded-md bg-zinc-900 p-2.5 font-mono text-[11px] leading-relaxed">
+                <div className="mt-1 overflow-x-auto rounded-md p-2.5 font-mono text-[11px] leading-relaxed" style={{ backgroundColor: 'var(--code-bg)' }}>
                   {event.metadata!.diff!.split('\n').map((line, i) => (
                     <div
                       key={i}
-                      className={cn(
+                      style={
                         line.startsWith('+') && !line.startsWith('++')
-                          ? 'text-emerald-400 bg-emerald-500/10'
+                          ? { color: 'var(--code-diff-add-text)', backgroundColor: 'var(--code-diff-add-bg)' }
                           : line.startsWith('-') && !line.startsWith('--')
-                          ? 'text-red-400 bg-red-500/10'
-                          : 'text-zinc-400'
-                      )}
+                          ? { color: 'var(--code-diff-del-text)', backgroundColor: 'var(--code-diff-del-bg)' }
+                          : { color: 'var(--code-diff-neutral)' }
+                      }
                     >
                       {line}
                     </div>
@@ -294,6 +307,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
   const [prLoading, setPrLoading] = useState(false);
   const [followUpMessage, setFollowUpMessage] = useState('');
   const [sending, setSending] = useState(false);
+  const [descExpanded, setDescExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const taskId = task?.id ?? null;
@@ -406,7 +420,8 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-[55] bg-black/20"
+            className="fixed inset-0 z-[55]"
+            style={{ backgroundColor: 'var(--overlay-bg)' }}
           />
           <motion.div
             initial={{ x: '100%', opacity: 0 }}
@@ -451,7 +466,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                   </span>
                 )}
                 {task.agentStatus === 'complete' && (
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 className="h-3 w-3" />
                     Complete
                   </span>
@@ -466,7 +481,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
               {!isActive && task.agentStatus !== 'complete' && onRun && (
                 <button
                   onClick={() => onRun(task.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
                   title="Run agent"
                 >
                   <Play className="h-4 w-4" />
@@ -475,7 +490,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
               {isActive && onStop && (
                 <button
                   onClick={() => onStop(task.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-red-500 dark:text-red-400 hover:bg-red-500/20 transition-colors"
                   title="Stop agent"
                 >
                   <Square className="h-4 w-4" />
@@ -491,19 +506,48 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
             </div>
           </div>
 
-          {/* Task description as markdown */}
+          {/* Task description as collapsible markdown */}
           {/* WARNING: Do NOT add rehype-raw — it would allow raw HTML injection (XSS). */}
           {task.description && (
-            <div className="shrink-0 border-b border-border px-4 py-3 prose prose-xs prose-invert max-w-none text-xs text-muted-foreground leading-relaxed [&_code]:rounded [&_code]:bg-zinc-800 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_pre]:rounded-md [&_pre]:bg-zinc-900 [&_pre]:p-2 [&_a]:text-primary [&_a]:underline">
-              <Markdown
-                allowedElements={[
-                  'p', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a',
-                  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'br',
-                  'table', 'thead', 'tbody', 'tr', 'th', 'td',
-                ]}
+            <div className="shrink-0 border-b border-border">
+              <button
+                onClick={() => setDescExpanded(!descExpanded)}
+                className="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-accent/50 transition-colors"
               >
-                {task.description}
-              </Markdown>
+                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="text-xs font-medium text-foreground">Task Description</span>
+                <span className="text-[10px] text-muted-foreground ml-1">
+                  {task.description.length > 200 ? `${Math.round(task.description.length / 100) * 100}+ chars` : ''}
+                </span>
+                {descExpanded
+                  ? <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  : <ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                }
+              </button>
+              <AnimatePresence>
+                {descExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="max-h-[30vh] overflow-y-auto px-4 pb-3 prose prose-xs dark:prose-invert max-w-none text-xs text-muted-foreground leading-relaxed [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_a]:text-primary [&_a]:underline" style={{ '--tw-prose-code-bg': 'var(--prose-code-bg)' } as React.CSSProperties}>
+                      <style>{`.prose code { background-color: var(--prose-code-bg); } .prose pre { background-color: var(--code-bg); padding: 0.5rem; border-radius: 0.375rem; }`}</style>
+                      <Markdown
+                        allowedElements={[
+                          'p', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li', 'a',
+                          'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'br',
+                          'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                        ]}
+                      >
+                        {task.description}
+                      </Markdown>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
 
@@ -545,7 +589,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                       href={prUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                      className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
                     >
                       <ExternalLink className="h-3 w-3" />
                       View PR

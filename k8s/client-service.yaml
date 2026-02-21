@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: client
+  namespace: kanban
+spec:
+  selector:
+    app: kanban-client
+  ports:
+    - port: 4175
+      targetPort: 4175

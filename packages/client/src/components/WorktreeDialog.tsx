@@ -20,6 +20,8 @@ interface WorktreeDialogProps {
 }
 
 const LS_REPO_KEY = 'kanban-last-repo-path';
+const LS_BASE_BRANCH_KEY = 'kanban-last-base-branch';
+const LS_WORKTREE_KEY = 'kanban-last-use-worktree';
 
 function slugify(text: string): string {
   return text
@@ -46,10 +48,12 @@ export function WorktreeDialog({ open, task, onClose, onSubmit }: WorktreeDialog
   useEffect(() => {
     if (!open || !task) return;
     const lastRepo = localStorage.getItem(LS_REPO_KEY) || '';
+    const lastBaseBranch = localStorage.getItem(LS_BASE_BRANCH_KEY) || 'main';
+    const lastWorktree = localStorage.getItem(LS_WORKTREE_KEY);
     setRepoPath(task.repoPath || lastRepo);
     setBranchName(task.branchName || `task/${slugify(task.title)}`);
-    setBaseBranch(task.baseBranch || 'main');
-    setUseWorktree(task.useWorktree ?? true);
+    setBaseBranch(task.baseBranch || lastBaseBranch);
+    setUseWorktree(task.useWorktree ?? (lastWorktree !== null ? lastWorktree === 'true' : true));
     setAgentType(task.agentType || 'copilot');
   }, [open, task]);
 
@@ -57,6 +61,8 @@ export function WorktreeDialog({ open, task, onClose, onSubmit }: WorktreeDialog
     e.preventDefault();
     if (!repoPath.trim()) return;
     localStorage.setItem(LS_REPO_KEY, repoPath.trim());
+    localStorage.setItem(LS_BASE_BRANCH_KEY, baseBranch.trim());
+    localStorage.setItem(LS_WORKTREE_KEY, String(useWorktree));
     onSubmit({
       repoPath: repoPath.trim(),
       branchName: branchName.trim(),

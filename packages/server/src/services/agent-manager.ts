@@ -317,11 +317,13 @@ export class AgentManager {
     (async () => {
       try {
         const workingDirectory = worktreePath || task.repoPath || process.cwd();
+        const hasGit = fs.existsSync(path.join(workingDirectory, '.git'));
         const systemPrompt = `
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
 Task: ${task.title}
 ${worktreePath ? `\nIMPORTANT: All file paths MUST be under ${worktreePath}. Do NOT reference or edit files at ${task.repoPath} directly.` : ''}
+${!hasGit ? `\nIMPORTANT: This directory is not a git repository. Run \`git init\` first before making any changes, so all work is tracked.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
 make precise edits, and verify your changes compile/pass tests when applicable.
 </context>

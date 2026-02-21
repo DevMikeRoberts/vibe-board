@@ -18,6 +18,7 @@ interface TaskRow {
   use_worktree: number | null;
   worktree_path: string | null;
   agent_type: AgentType;
+  archived: number;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -37,6 +38,7 @@ function rowToTask(row: TaskRow): Task {
     useWorktree: row.use_worktree != null ? Boolean(row.use_worktree) : undefined,
     worktreePath: row.worktree_path ?? undefined,
     agentType: row.agent_type,
+    archived: Boolean(row.archived),
   };
 }
 
@@ -44,6 +46,8 @@ export class SqliteTaskRepository implements TaskRepository {
   private db: Database.Database;
   private stmts: {
     getAll: Database.Statement;
+    getAllIncludingArchived: Database.Statement;
+    getArchived: Database.Statement;
     getById: Database.Statement;
     insert: Database.Statement;
     update: Database.Statement;
@@ -57,13 +61,15 @@ export class SqliteTaskRepository implements TaskRepository {
   constructor(db: Database.Database) {
     this.db = db;
     this.stmts = {
-      getAll: db.prepare('SELECT * FROM tasks ORDER BY created_at ASC'),
+      getAll: db.prepare('SELECT * FROM tasks WHERE archived = 0 ORDER BY created_at ASC'),
+      getAllIncludingArchived: db.prepare('SELECT * FROM tasks ORDER BY created_at ASC'),
+      getArchived: db.prepare('SELECT * FROM tasks WHERE archived = 1 ORDER BY created_at DESC'),
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
       insert: db.prepare(`
         INSERT INTO tasks (id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at,
-          repo_path, branch_name, base_branch, use_worktree, worktree_path)
+          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived)
         VALUES (@id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at,
-          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path)
+          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived)
       `),
       update: db.prepare(`
         UPDATE tasks SET
@@ -79,7 +85,8 @@ export class SqliteTaskRepository implements TaskRepository {
           branch_name = @branch_name,
           base_branch = @base_branch,
           use_worktree = @use_worktree,
-          worktree_path = @worktree_path
+          worktree_path = @worktree_path,
+          archived = @archived
         WHERE id = @id
       `),
       delete: db.prepare('DELETE FROM tasks WHERE id = ?'),
@@ -93,16 +100,17 @@ export class SqliteTaskRepository implements TaskRepository {
     };
   }
 
-  getAll(): Task[] {
-    return (this.stmts.getAll.all() as TaskRow[]).map(rowToTask);
+  async getAll(includeArchived = false): Promise<Task[]> {
+    const stmt = includeArchived ? this.stmts.getAllIncludingArchived : this.stmts.getAll;
+    return (stmt.all() as TaskRow[]).map(rowToTask);
   }
 
-  getById(id: string): Task | undefined {
+  async getById(id: string): Promise<Task | undefined> {
     const row = this.stmts.getById.get(id) as TaskRow | undefined;
     return row ? rowToTask(row) : undefined;
   }
 
-  create(task: Task): Task {
+  async create(task: Task): Promise<Task> {
     this.stmts.insert.run({
       id: task.id,
       title: task.title,
@@ -119,13 +127,15 @@ export class SqliteTaskRepository implements TaskRepository {
       base_branch: task.baseBranch ?? null,
       use_worktree: task.useWorktree != null ? (task.useWorktree ? 1 : 0) : null,
       worktree_path: task.worktreePath ?? null,
+      archived: task.archived ? 1 : 0,
     });
     return task;
   }
 
-  update(id: string, updates: Partial<Task>): Task | undefined {
+  async update(id: string, updates: Partial<Task>): Promise<Task | undefined> {
     return this.db.transaction(() => {
-      const existing = this.getById(id);
+      const row = this.stmts.getById.get(id) as TaskRow | undefined;
+      const existing = row ? rowToTask(row) : undefined;
       if (!existing) return undefined;
       const merged = { ...existing, ...updates };
       this.stmts.update.run({
@@ -143,22 +153,23 @@ export class SqliteTaskRepository implements TaskRepository {
         base_branch: merged.baseBranch ?? null,
         use_worktree: merged.useWorktree != null ? (merged.useWorktree ? 1 : 0) : null,
         worktree_path: merged.worktreePath ?? null,
+        archived: merged.archived ? 1 : 0,
       });
       return merged;
     })();
   }
 
-  delete(id: string): boolean {
+  async delete(id: string): Promise<boolean> {
     const result = this.stmts.delete.run(id);
     return result.changes > 0;
   }
 
-  count(): number {
+  async count(): Promise<number> {
     const row = this.stmts.count.get() as { cnt: number };
     return row.cnt;
   }
 
-  insertEvent(event: AgentEvent): void {
+  async insertEvent(event: AgentEvent): Promise<void> {
     this.stmts.insertEvent.run({
       id: event.id,
       task_id: event.taskId,
@@ -169,7 +180,7 @@ export class SqliteTaskRepository implements TaskRepository {
     });
   }
 
-  getEventsByTaskId(taskId: string): AgentEvent[] {
+  async getEventsByTaskId(taskId: string): Promise<AgentEvent[]> {
     const rows = this.stmts.getEventsByTaskId.all(taskId) as Array<{
       id: string;
       task_id: string;
@@ -183,8 +194,9 @@ export class SqliteTaskRepository implements TaskRepository {
       if (row.metadata) {
         try {
           metadata = JSON.parse(row.metadata);
-        } catch {
-          // Ignore malformed metadata
+        } catch (err: unknown) {
+          // Log malformed metadata
+          console.warn(`[sqlite] Failed to parse metadata for event ${row.id}:`, err instanceof Error ? err.message : String(err));
         }
       }
       return {
@@ -198,7 +210,11 @@ export class SqliteTaskRepository implements TaskRepository {
     });
   }
 
-  deleteEventsByTaskId(taskId: string): void {
+  async deleteEventsByTaskId(taskId: string): Promise<void> {
     this.stmts.deleteEventsByTaskId.run(taskId);
+  }
+
+  async getArchivedTasks(): Promise<Task[]> {
+    return (this.stmts.getArchived.all() as TaskRow[]).map(rowToTask);
   }
 }

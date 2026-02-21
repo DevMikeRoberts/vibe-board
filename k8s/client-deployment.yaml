@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: kanban
+  labels:
+    app: kanban-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kanban-client
+  template:
+    metadata:
+      labels:
+        app: kanban-client
+    spec:
+      containers:
+        - name: client
+          image: kanban-client:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 4175
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: API_URL
+              value: http://server:3001
+          volumeMounts:
+            - name: client-src
+              mountPath: /app/packages/client/src
+            - name: shared-src
+              mountPath: /app/shared
+            - name: client-vite-config
+              mountPath: /app/packages/client/vite.config.ts
+            - name: client-index
+              mountPath: /app/packages/client/index.html
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 4175
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 4175
+            initialDelaySeconds: 10
+            periodSeconds: 30
+      volumes:
+        - name: client-src
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/packages/client/src
+            type: Directory
+        - name: shared-src
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/shared
+            type: Directory
+        - name: client-vite-config
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/packages/client/vite.config.ts
+            type: File
+        - name: client-index
+          hostPath:
+            path: /root/projects/copilot-kanban-agent/packages/client/index.html
+            type: File

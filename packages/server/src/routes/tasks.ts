@@ -1,9 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
+import { execFileSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import type { Task } from '../types.js';
-import { VALID_TRANSITIONS, isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType } from '../types.js';
+import { VALID_TRANSITIONS } from '../types.js';
+import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@copilot-kanban/shared/constants.js';
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
@@ -19,21 +22,59 @@ function isValidGitRef(ref: string): boolean {
   return GIT_REF_RE.test(ref) && !ref.includes('..') && !ref.endsWith('.lock') && ref.length <= 200;
 }
 
-// Allowed repo root directories — prevents path traversal to /etc, /root/.ssh, etc.
-const ALLOWED_REPO_ROOTS = (process.env.ALLOWED_REPO_ROOTS || `${os.homedir()},/tmp`)
-  .split(',')
-  .map((p) => p.trim())
-  .filter(Boolean);
+// Optional whitelist for hardened deployments (Docker, shared servers).
+// When ALLOWED_REPO_ROOTS is set, paths must be under one of the listed roots.
+// When unset, any path is accepted as long as it's a readable/writable git repo.
+const ALLOWED_REPO_ROOTS = process.env.ALLOWED_REPO_ROOTS
+  ? process.env.ALLOWED_REPO_ROOTS.split(',').map((p) => p.trim()).filter(Boolean)
+  : null;
 
 function isAllowedRepoPath(repoPath: string): string | null {
   const resolved = path.resolve(repoPath);
-  // Must be under one of the allowed roots
-  const underAllowedRoot = ALLOWED_REPO_ROOTS.some(
-    (root) => resolved === root || resolved.startsWith(root + path.sep)
-  );
-  if (!underAllowedRoot) {
-    return `repoPath must be under one of: ${ALLOWED_REPO_ROOTS.join(', ')}`;
+
+  // If a whitelist is configured, enforce it
+  if (ALLOWED_REPO_ROOTS) {
+    const underAllowedRoot = ALLOWED_REPO_ROOTS.some(
+      (root) => resolved === root || resolved.startsWith(root + path.sep)
+    );
+    if (!underAllowedRoot) {
+      return `repoPath must be under one of: ${ALLOWED_REPO_ROOTS.join(', ')}`;
+    }
   }
+
+  // Create directory if it doesn't exist; verify it's a directory if it does
+  try {
+    const stat = fs.statSync(resolved);
+    if (!stat.isDirectory()) {
+      return `repoPath is not a directory: ${resolved}`;
+    }
+  } catch {
+    try {
+      fs.mkdirSync(resolved, { recursive: true });
+      console.log(`[repo-path] created directory ${resolved}`);
+    } catch (err: unknown) {
+      return `Failed to create directory: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
+  // Must have read/write access
+  try {
+    fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
+  } catch {
+    return `No read/write access to: ${resolved}`;
+  }
+
+  // Initialize git repo if not already one
+  const gitDir = path.join(resolved, '.git');
+  if (!fs.existsSync(gitDir)) {
+    try {
+      execFileSync('git', ['init'], { cwd: resolved, stdio: 'pipe' });
+      console.log(`[repo-path] initialized git repo at ${resolved}`);
+    } catch (err: unknown) {
+      return `Failed to initialize git repository: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+
   return null;
 }
 
@@ -65,17 +106,20 @@ function isRateLimited(taskId: string): boolean {
   return false;
 }
 
-const MAX_TITLE_LENGTH = 200;
-const MAX_DESCRIPTION_LENGTH = 5000;
-
 // NOTE: This is a local-only demo app — no authentication is applied to these
 // routes. If deploying beyond localhost, add authentication middleware here.
 export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager): Router {
   const router = Router();
 
   // GET /api/tasks
-  router.get('/', (_req: Request, res: Response) => {
-    res.json(repo.getAll());
+  router.get('/', async (req: Request, res: Response) => {
+    const includeArchived = req.query.includeArchived === 'true';
+    res.json(await repo.getAll(includeArchived));
+  });
+
+  // GET /api/tasks/archived
+  router.get('/archived', async (_req: Request, res: Response) => {
+    res.json(await repo.getArchivedTasks());
   });
 
   // Shared validation for task creation fields — returns error string or null
@@ -156,26 +200,26 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
 
   // Shared status-change callback for agent completion/failure
   function makeStatusCallback(taskId: string): (status: Task['agentStatus']) => void {
-    return (status) => {
+    return async (status) => {
       const statusUpdates: Partial<Task> = { agentStatus: status };
       if (status === 'complete') {
         statusUpdates.completedAt = Date.now();
         statusUpdates.columnId = 'review';
       }
-      const t = repo.update(taskId, statusUpdates);
+      const t = await repo.update(taskId, statusUpdates);
       if (t) broadcastTaskUpdate(t);
     };
   }
 
   function makeWorktreeCallback(taskId: string): (worktreePath: string) => void {
-    return (worktreePath) => {
-      const t = repo.update(taskId, { worktreePath });
+    return async (worktreePath) => {
+      const t = await repo.update(taskId, { worktreePath });
       if (t) broadcastTaskUpdate(t);
     };
   }
 
   // Start an agent for a task (shared by create+autoRun and batch)
-  function startAgentForTask(task: Task): void {
+  async function startAgentForTask(task: Task): Promise<void> {
     const updates: Partial<Task> = {
       agentStatus: 'planning',
       startedAt: Date.now(),
@@ -184,7 +228,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     if (task.columnId === 'backlog') {
       updates.columnId = 'in-progress';
     }
-    const updated = repo.update(task.id, updates);
+    const updated = await repo.update(task.id, updates);
     if (updated) {
       broadcastTaskUpdate(updated);
       agentManager.startAgent(updated, makeStatusCallback(task.id), makeWorktreeCallback(task.id));
@@ -192,7 +236,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   }
 
   // POST /api/tasks
-  router.post('/', (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response) => {
     const validationError = validateTaskFields(req.body);
     if (validationError) {
       res.status(400).json({ error: validationError });
@@ -200,7 +244,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
 
     const task = buildTask(req.body);
-    repo.create(task);
+    await repo.create(task);
     broadcastTaskUpdate(task);
 
     const { autoRun } = req.body;
@@ -212,14 +256,14 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       const agentInfo = agents.find(a => a.name === task.agentType);
       if (!agentInfo?.available) {
         // Create task but mark as failed
-        const failed = repo.update(task.id, { agentStatus: 'failed' });
+        const failed = await repo.update(task.id, { agentStatus: 'failed' });
         if (failed) broadcastTaskUpdate(failed);
         res.status(201).json(failed || { ...task, agentStatus: 'failed' });
         return;
       }
       startAgentForTask(task);
       // Re-fetch the task to get updated status
-      const latest = repo.getById(task.id);
+      const latest = await repo.getById(task.id);
       res.status(201).json(latest || task);
       return;
     }
@@ -228,7 +272,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // POST /api/tasks/batch — create multiple tasks, optionally auto-run them
-  router.post('/batch', (req: Request, res: Response) => {
+  router.post('/batch', async (req: Request, res: Response) => {
     const { tasks: taskDefs } = req.body;
 
     if (!Array.isArray(taskDefs) || taskDefs.length === 0) {
@@ -254,7 +298,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     const created: Task[] = [];
     for (const def of taskDefs) {
       const task = buildTask(def);
-      repo.create(task);
+      await repo.create(task);
       broadcastTaskUpdate(task);
       created.push(task);
     }
@@ -267,14 +311,14 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
         const agents = agentManager.getAvailableAgents();
         const agentInfo = agents.find(a => a.name === task.agentType);
         if (!agentInfo?.available) {
-          const failed = repo.update(task.id, { agentStatus: 'failed' });
+          const failed = await repo.update(task.id, { agentStatus: 'failed' });
           if (failed) {
             broadcastTaskUpdate(failed);
             created[i] = failed;
           }
         } else {
           startAgentForTask(task);
-          const latest = repo.getById(task.id);
+          const latest = await repo.getById(task.id);
           if (latest) created[i] = latest;
         }
       }
@@ -284,8 +328,8 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // GET /api/tasks/:id/status — lightweight polling endpoint
-  router.get('/:id/status', (req: Request, res: Response) => {
-    const task = repo.getById(paramId(req));
+  router.get('/:id/status', async (req: Request, res: Response) => {
+    const task = await repo.getById(paramId(req));
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -300,8 +344,8 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // PATCH /api/tasks/:id
-  router.patch('/:id', (req: Request, res: Response) => {
-    const task = repo.getById(paramId(req));
+  router.patch('/:id', async (req: Request, res: Response) => {
+    const task = await repo.getById(paramId(req));
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -385,7 +429,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       updates.completedAt = undefined;
     }
 
-    const updated = repo.update(task.id, updates);
+    const updated = await repo.update(task.id, updates);
     if (!updated) {
       res.status(500).json({ error: 'failed to update task' });
       return;
@@ -395,23 +439,24 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // DELETE /api/tasks/:id
-  router.delete('/:id', (req: Request, res: Response) => {
+  router.delete('/:id', async (req: Request, res: Response) => {
     const id = paramId(req);
-    if (!repo.getById(id)) {
+    if (!await repo.getById(id)) {
       res.status(404).json({ error: 'task not found' });
       return;
     }
     agentManager.stopAgent(id);
     agentManager.clearEvents(id);
-    repo.delete(id);
+    await repo.deleteEventsByTaskId(id);
+    await repo.delete(id);
     broadcast({ type: 'task_deleted', payload: { id } });
     res.status(204).send();
   });
 
   // POST /api/tasks/:id/configure — store worktree config before running
-  router.post('/:id/configure', (req: Request, res: Response) => {
+  router.post('/:id/configure', async (req: Request, res: Response) => {
     const id = paramId(req);
-    const task = repo.getById(id);
+    const task = await repo.getById(id);
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -467,7 +512,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     if (useWorktree !== undefined) updates.useWorktree = useWorktree;
     if (agentType !== undefined) updates.agentType = agentType;
 
-    const updated = repo.update(id, updates);
+    const updated = await repo.update(id, updates);
     if (!updated) {
       res.status(500).json({ error: 'failed to update task' });
       return;
@@ -477,13 +522,13 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // POST /api/tasks/:id/run
-  router.post('/:id/run', (req: Request, res: Response) => {
+  router.post('/:id/run', async (req: Request, res: Response) => {
     const id = paramId(req);
     if (isRateLimited(id)) {
       res.status(429).json({ error: 'too many requests, try again shortly' });
       return;
     }
-    const task = repo.getById(id);
+    const task = await repo.getById(id);
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -493,6 +538,9 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       return;
     }
 
+    // Clear old events from any previous run (prevents stale errors from showing)
+    agentManager.resetEvents(task.id);
+
     const updates: Partial<Task> = {
       agentStatus: 'planning',
       startedAt: Date.now(),
@@ -501,7 +549,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     if (task.columnId === 'backlog') {
       updates.columnId = 'in-progress';
     }
-    const updated = repo.update(task.id, updates);
+    const updated = await repo.update(task.id, updates);
     if (!updated) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -514,13 +562,13 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // POST /api/tasks/:id/stop
-  router.post('/:id/stop', (req: Request, res: Response) => {
+  router.post('/:id/stop', async (req: Request, res: Response) => {
     const id = paramId(req);
     if (isRateLimited(id)) {
       res.status(429).json({ error: 'too many requests, try again shortly' });
       return;
     }
-    const task = repo.getById(id);
+    const task = await repo.getById(id);
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -530,7 +578,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       res.status(409).json({ error: 'no running agent for this task' });
       return;
     }
-    const updated = repo.update(task.id, { agentStatus: 'failed' });
+    const updated = await repo.update(task.id, { agentStatus: 'failed' });
     if (!updated) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -542,7 +590,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   // POST /api/tasks/:id/message — send a follow-up message to a running agent
   router.post('/:id/message', async (req: Request, res: Response) => {
     const id = paramId(req);
-    const task = repo.getById(id);
+    const task = await repo.getById(id);
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -563,18 +611,18 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       await agentManager.sendMessage(task.id, message);
       broadcast({ type: 'agent_follow_up', payload: { taskId: task.id, message } });
       res.json({ success: true });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || 'failed to send message' });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'failed to send message' });
     }
   });
 
   // GET /api/tasks/:id/events?since=<timestamp>&limit=<n>
-  router.get('/:id/events', (req: Request, res: Response) => {
-    if (!repo.getById(paramId(req))) {
+  router.get('/:id/events', async (req: Request, res: Response) => {
+    if (!await repo.getById(paramId(req))) {
       res.status(404).json({ error: 'task not found' });
       return;
     }
-    let events = agentManager.getEvents(paramId(req));
+    let events = await agentManager.getEvents(paramId(req));
     const since = Number(req.query.since);
     if (since > 0) {
       events = events.filter(e => e.timestamp > since);
@@ -587,9 +635,9 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   });
 
   // POST /api/tasks/:id/create-pr — create a PR from the worktree branch
-  router.post('/:id/create-pr', (req: Request, res: Response) => {
+  router.post('/:id/create-pr', async (req: Request, res: Response) => {
     const id = paramId(req);
-    const task = repo.getById(id);
+    const task = await repo.getById(id);
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -601,15 +649,15 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     try {
       const result = agentManager.createPR(task);
       res.json(result);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create PR' });
     }
   });
 
   // POST /api/tasks/:id/cleanup-worktree — remove worktree after done
-  router.post('/:id/cleanup-worktree', (req: Request, res: Response) => {
+  router.post('/:id/cleanup-worktree', async (req: Request, res: Response) => {
     const id = paramId(req);
-    const task = repo.getById(id);
+    const task = await repo.getById(id);
     if (!task) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -620,13 +668,60 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
     try {
       agentManager.removeWorktree(task);
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to cleanup worktree' });
       return;
     }
-    const updated = repo.update(id, { worktreePath: undefined });
+    const updated = await repo.update(id, { worktreePath: undefined });
     if (updated) broadcastTaskUpdate(updated);
     res.json({ success: true });
+  });
+
+  // PATCH /api/tasks/:id/archive — archive a completed/failed task
+  router.patch('/:id/archive', async (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = await repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+
+    // Only allow archiving tasks in done column or with failed status
+    if (task.columnId !== 'done' && task.agentStatus !== 'failed') {
+      res.status(400).json({ error: 'can only archive completed or failed tasks' });
+      return;
+    }
+
+    const updated = await repo.update(id, { archived: true });
+    if (!updated) {
+      res.status(500).json({ error: 'failed to archive task' });
+      return;
+    }
+    broadcastTaskUpdate(updated);
+    res.json(updated);
+  });
+
+  // PATCH /api/tasks/:id/unarchive — restore an archived task
+  router.patch('/:id/unarchive', async (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = await repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+
+    if (!task.archived) {
+      res.status(400).json({ error: 'task is not archived' });
+      return;
+    }
+
+    const updated = await repo.update(id, { archived: false });
+    if (!updated) {
+      res.status(500).json({ error: 'failed to unarchive task' });
+      return;
+    }
+    broadcastTaskUpdate(updated);
+    res.json(updated);
   });
 
   return router;

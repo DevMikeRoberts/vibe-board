@@ -7,6 +7,7 @@ import {
   Eye,
   CheckCircle2,
   Plus,
+  Archive,
 } from 'lucide-react';
 import type { Column as ColumnType, Task } from '@/types';
 import { TaskCard } from './TaskCard';
@@ -17,6 +18,7 @@ const iconMap: Record<string, React.ElementType> = {
   loader: Loader2,
   eye: Eye,
   'check-circle': CheckCircle2,
+  archive: Archive,
 };
 
 interface ColumnProps {
@@ -25,10 +27,12 @@ interface ColumnProps {
   onTaskClick: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (task: Task) => void;
+  onArchiveTask?: (task: Task) => void;
+  onUnarchiveTask?: (task: Task) => void;
   onAddTask?: () => void;
 }
 
-export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onAddTask }: ColumnProps) {
+export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onArchiveTask, onUnarchiveTask, onAddTask }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const Icon = iconMap[column.icon] || Inbox;
 
@@ -73,7 +77,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
           'flex flex-1 flex-col gap-2 overflow-y-auto rounded-xl p-2 transition-colors duration-200',
           isOver
             ? 'bg-primary/5 ring-2 ring-primary/20 ring-inset'
-            : 'bg-muted/40'
+            : 'bg-[var(--column-bg)]'
         )}
       >
         {tasks.map((task) => (
@@ -83,6 +87,8 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
             onClick={() => onTaskClick(task)}
             onEdit={onEditTask}
             onDelete={onDeleteTask}
+            onArchive={onArchiveTask}
+            onUnarchive={onUnarchiveTask}
           />
         ))}
 

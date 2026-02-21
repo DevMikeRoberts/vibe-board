@@ -1,0 +1,53 @@
+# Production client build — multi-stage, serves static files via nginx
+# Result: ~50MB image vs ~2.5GB dev image
+
+# Stage 1: Build the Vite app
+FROM node:24-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/client/package.json packages/client/
+COPY packages/server/package.json packages/server/
+COPY packages/e2e/package.json packages/e2e/
+COPY shared/package.json shared/
+
+RUN npm ci
+
+COPY shared/ shared/
+COPY packages/client/ packages/client/
+
+RUN npx --workspace=packages/client vite build
+
+# Stage 2: Serve with nginx
+FROM nginx:alpine
+
+# Custom nginx config for SPA routing + API proxy
+COPY --from=build /app/packages/client/dist /usr/share/nginx/html
+
+RUN cat > /etc/nginx/conf.d/default.conf <<'EOF'
+server {
+    listen 4175;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
+
+    # SPA fallback — serve index.html for client-side routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets aggressively
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+EOF
+
+EXPOSE 4175
+
+CMD ["nginx", "-g", "daemon off;"]
