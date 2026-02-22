@@ -29,9 +29,13 @@ import { cn } from '@/lib/utils';
 const eventIconMap: Record<AgentEventType, React.ElementType> = {
   thinking: Brain,
   tool_call: Cog,
+  file_read: FileText,
+  file_write: FileCode2,
   file_edit: FileCode2,
   command: Terminal,
+  command_output: Terminal,
   output: Terminal,
+  test_result: CheckCircle2,
   error: AlertCircle,
   complete: CheckCircle2,
 };
@@ -39,9 +43,13 @@ const eventIconMap: Record<AgentEventType, React.ElementType> = {
 const eventColorMap: Record<AgentEventType, string> = {
   thinking: 'text-purple-500 dark:text-purple-400',
   tool_call: 'text-blue-500 dark:text-blue-400',
+  file_read: 'text-sky-500 dark:text-sky-400',
+  file_write: 'text-amber-500 dark:text-amber-400',
   file_edit: 'text-amber-500 dark:text-amber-400',
   command: 'text-cyan-600 dark:text-cyan-400',
+  command_output: 'text-zinc-500 dark:text-zinc-400',
   output: 'text-zinc-500 dark:text-zinc-400',
+  test_result: 'text-emerald-500 dark:text-emerald-400',
   error: 'text-red-500 dark:text-red-400',
   complete: 'text-emerald-500 dark:text-emerald-400',
 };
@@ -49,9 +57,13 @@ const eventColorMap: Record<AgentEventType, string> = {
 const eventLabelMap: Record<AgentEventType, string> = {
   thinking: 'Thinking',
   tool_call: 'Tool Call',
+  file_read: 'File Read',
+  file_write: 'File Write',
   file_edit: 'File Edit',
   command: 'Command',
+  command_output: 'Output',
   output: 'Output',
+  test_result: 'Test Result',
   error: 'Error',
   complete: 'Complete',
 };
