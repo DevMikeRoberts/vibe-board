@@ -88,12 +88,14 @@ export function Board({
     (event: DragStartEvent) => {
       const task = tasks.find((t) => t.id === event.active.id);
       if (task) setActiveTask(task);
+      document.body.style.cursor = 'grabbing';
     },
     [tasks]
   );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
+      document.body.style.cursor = '';
       setActiveTask(null);
       const { active, over } = event;
       if (!over) return;
@@ -134,12 +136,18 @@ export function Board({
     [onMoveTask, onDropInProgress, tasks]
   );
 
+  const handleDragCancel = useCallback(() => {
+    document.body.style.cursor = '';
+    setActiveTask(null);
+  }, []);
+
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={kanbanCollision}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex h-full gap-4 overflow-x-auto p-4 pb-4 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto md:p-6">
         {columns.map((column, index) => (
