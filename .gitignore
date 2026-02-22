@@ -144,3 +144,4 @@ vite.config.ts.timestamp-*
 data/
 packages/e2e/test-results/
 packages/e2e/playwright-report/
+agent-sdk-core/

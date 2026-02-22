@@ -9,7 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@codewithdan/agent-sdk-core": "file:../../../agent-sdk-core",
+    "@codewithdan/agent-sdk-core": "file:../../agent-sdk-core",
     "@anthropic-ai/claude-agent-sdk": "^0.2.39",
     "@github/copilot-sdk": "^0.1.23",
     "@openai/codex-sdk": "^0.98.0",
