@@ -33,9 +33,13 @@ export interface Task {
 export type AgentEventType =
   | 'thinking'
   | 'tool_call'
+  | 'file_read'
+  | 'file_write'
   | 'file_edit'
   | 'command'
+  | 'command_output'
   | 'output'
+  | 'test_result'
   | 'error'
   | 'complete';
 
