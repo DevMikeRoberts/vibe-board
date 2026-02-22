@@ -5,12 +5,9 @@ import os from 'os';
 import path from 'path';
 import type { Task, AgentEvent, AgentType } from '../types.js';
 import type { TaskRepository } from '../repositories/types.js';
-import type { AgentProvider, AgentSession } from '../agents/base.js';
-import type { AgentInfo } from '../agents/detection.js';
-import { detectAgents } from '../agents/detection.js';
-import { CopilotProvider } from '../agents/copilot.js';
-import { ClaudeProvider } from '../agents/claude.js';
-import { CodexProvider } from '../agents/codex.js';
+import type { AgentProvider, AgentSession, AgentInfo } from '@agent-sdk/core';
+import type { AgentEvent as CoreAgentEvent } from '@agent-sdk/core';
+import { CopilotProvider, ClaudeProvider, CodexProvider, detectAgents } from '@agent-sdk/core';
 import { broadcast } from '../websocket.js';
 
 const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
@@ -330,11 +327,18 @@ make precise edits, and verify your changes compile/pass tests when applicable.
 `;
 
         const session = await provider.createSession({
-          taskId: task.id,
+          contextId: task.id,
           workingDirectory,
           repoPath: task.repoPath,
           systemPrompt,
-          onEvent: (event) => this.emitEvent(task.id, event),
+          onEvent: (coreEvent: CoreAgentEvent) => this.emitEvent(task.id, {
+            id: coreEvent.id,
+            taskId: task.id,
+            type: coreEvent.type,
+            content: coreEvent.content,
+            timestamp: coreEvent.timestamp,
+            metadata: coreEvent.metadata,
+          }),
         });
 
         this.sessions.set(task.id, { session, startTime: sessionStartTime, agentType });
