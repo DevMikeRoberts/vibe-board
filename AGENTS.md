@@ -91,6 +91,8 @@ npm run build:server   # tsc -b tsconfig.build.json
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `API_KEY` | _(none)_ | Bearer token for API + WebSocket auth; unset = open access |
+| `VITE_API_KEY` | _(none)_ | Client-side API key (must match `API_KEY`) |
 | `PORT` | `3001` | Server port |
 | `DATABASE_URL` | _(none)_ | PostgreSQL connection string; when unset, uses SQLite |
 | `DB_PATH` | `./data/kanban.db` | SQLite database file path |
@@ -98,7 +100,7 @@ npm run build:server   # tsc -b tsconfig.build.json
 | `CLAUDE_MODEL` | `claude-opus-4-20250514` | Model for Claude Code sessions |
 | `CODEX_MODEL` | `gpt-5.2-codex` | Model for OpenAI Codex sessions |
 | `COPILOT_DENIED_TOOLS` | _(none)_ | Comma-separated tool names to deny in Copilot sessions |
-| `ALLOWED_REPO_ROOTS` | _(none)_ | Comma-separated allowed repo root paths (security whitelist) |
+| `ALLOWED_REPO_ROOTS` | `$HOME,/tmp` | Comma-separated allowed repo root paths (security whitelist) |
 | `ALLOWED_ORIGINS` | `http://localhost:4175,http://localhost:4176` | CORS origins |
 | `AGENT_TIMEOUT_MS` | `600000` (10 min) | Max agent execution time |
 | `API_URL` | `http://localhost:3001` | Vite proxy target (set in Docker) |

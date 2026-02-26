@@ -3,10 +3,19 @@ import type { Task, AgentEvent, AgentInfo, AgentType, ColumnId, Priority } from 
 export type { AgentInfo };
 
 const BASE = '/api';
+const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (API_KEY) {
+    headers['Authorization'] = `Bearer ${API_KEY}`;
+  }
+  return headers;
+}
 
 async function request<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders(),
     ...opts,
   });
   if (!res.ok) {
@@ -77,7 +86,10 @@ function ensureConnection() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const url = `${proto}//${location.host}/ws`;
+  let url = `${proto}//${location.host}/ws`;
+  if (API_KEY) {
+    url += `?token=${encodeURIComponent(API_KEY)}`;
+  }
   disposed = false;
 
   ws = new WebSocket(url);

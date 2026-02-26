@@ -7,7 +7,10 @@ import { initDatabase, initPostgresDatabase, isPostgresUrl } from './db.js';
 import { SqliteTaskRepository } from './repositories/sqlite.js';
 import { PostgresTaskRepository } from './repositories/postgres.js';
 import { createTaskRouter } from './routes/tasks.js';
+import { createAgentRouter } from './routes/agent.js';
+import { createGitRouter } from './routes/git.js';
 import { AgentManager } from './services/agent-manager.js';
+import { authMiddleware } from './middleware/auth.js';
 import type { TaskRepository } from './repositories/types.js';
 
 const app = express();
@@ -16,6 +19,10 @@ const PORT = parseInt(process.env.PORT || '3001', 10);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:4175,http://localhost:4176').split(',');
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '100kb' }));
+
+// API key auth — when API_KEY env var is set, all /api routes require
+// Authorization: Bearer <key>. When unset, auth is skipped (local dev).
+app.use('/api', authMiddleware);
 
 const DATABASE_URL = process.env.DATABASE_URL;
 
@@ -45,13 +52,15 @@ const agentManager = new AgentManager();
   agentManager.initEventPersistence(taskRepo);
 
   app.use('/api/tasks', createTaskRouter(taskRepo, agentManager));
+  app.use('/api/tasks', createAgentRouter(taskRepo, agentManager));
+  app.use('/api/tasks', createGitRouter(taskRepo, agentManager));
 
   // GET /api/agents — list available agents
   app.get('/api/agents', (_req, res) => {
     res.json(agentManager.getAvailableAgents());
   });
 
-  // Health check
+  // Health check (no auth required)
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', timestamp: Date.now() });
   });
@@ -64,6 +73,9 @@ const agentManager = new AgentManager();
   server.listen(PORT, () => {
     console.log(`[server] listening on http://localhost:${PORT}`);
     console.log(`[server] WebSocket at ws://localhost:${PORT}/ws`);
+    if (process.env.API_KEY) {
+      console.log('[server] API key authentication enabled');
+    }
   });
 
   // Graceful shutdown

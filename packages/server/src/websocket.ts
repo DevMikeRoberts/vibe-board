@@ -1,6 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import type { WSMessage } from './types.js';
+import { isValidToken } from './middleware/auth.js';
 
 interface AliveWebSocket extends WebSocket {
   isAlive: boolean;
@@ -10,7 +11,25 @@ let wss: WebSocketServer;
 
 export function createWSS(server: Server): WebSocketServer {
   if (wss) throw new Error('WSS already initialized');
-  wss = new WebSocketServer({ server, path: '/ws' });
+  wss = new WebSocketServer({ noServer: true });
+
+  // Handle HTTP upgrade — check auth token before accepting
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url?.startsWith('/ws')) {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const token = url.searchParams.get('token') ?? undefined;
+
+      if (!isValidToken(token)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+    }
+  });
 
   wss.on('connection', (rawWs) => {
     const ws = rawWs as AliveWebSocket;

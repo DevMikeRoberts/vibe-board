@@ -191,10 +191,12 @@ export class AgentManager {
 
     try {
       execFileSync('git', ['push', '-u', 'origin', task.branchName], { cwd, stdio: 'pipe' });
+      // Sanitize and truncate title for CLI arg safety
+      const prTitle = task.title.replace(/[<>]/g, '').slice(0, 200);
       const result = execFileSync(
         'gh',
         ['pr', 'create', '--base', baseBranch, '--head', task.branchName,
-         '--title', task.title, '--body', `Automated PR from Kanban task ${task.id}`, '--'],
+         '--title', prTitle, '--body', `Automated PR from Kanban task ${task.id}`, '--'],
         { cwd, stdio: 'pipe' },
       );
       const url = result.toString().trim();
@@ -315,10 +317,12 @@ export class AgentManager {
       try {
         const workingDirectory = worktreePath || task.repoPath || process.cwd();
         const hasGit = fs.existsSync(path.join(workingDirectory, '.git'));
+        // Sanitize task content to prevent prompt injection via </context> breakout
+        const safeTitle = task.title.replace(/[<>]/g, '');
         const systemPrompt = `
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
-Task: ${task.title}
+Task: ${safeTitle}
 ${worktreePath ? `\nIMPORTANT: All file paths MUST be under ${worktreePath}. Do NOT reference or edit files at ${task.repoPath} directly.` : ''}
 ${!hasGit ? `\nIMPORTANT: This directory is not a git repository. Run \`git init\` first before making any changes, so all work is tracked.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
@@ -367,7 +371,8 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         if (entry) entry.timeoutId = timeoutId;
 
         // Build prompt and execute — each provider returns a typed AgentResult
-        const prompt = `${task.title}\n\n${task.description}`;
+        const safeDescription = (task.description || '').replace(/[<>]/g, '');
+        const prompt = `${safeTitle}\n\n${safeDescription}`;
         console.log(`[agent-manager] executing ${agentType} for task ${task.id}`);
         const result = await session.execute(prompt);
         console.log(`[agent-manager] ${agentType} ${result.status} for task ${task.id}${result.error ? `: ${result.error}` : ''}`);

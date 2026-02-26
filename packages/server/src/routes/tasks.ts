@@ -1,8 +1,4 @@
 import { Router, Request, Response } from 'express';
-import { v4 as uuid } from 'uuid';
-import { execFileSync } from 'child_process';
-import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import type { Task } from '../types.js';
 import { VALID_TRANSITIONS } from '../types.js';
@@ -10,104 +6,12 @@ import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType,
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
+import {
+  paramId, isAllowedRepoPath, expandTilde,
+  validateTaskFields, buildTask, broadcastTaskUpdate,
+  startAgentForTask,
+} from './helpers.js';
 
-function paramId(req: Request): string {
-  const id = req.params.id;
-  return typeof id === 'string' ? id : id[0];
-}
-
-// Reject branch names with shell metacharacters or git-invalid patterns
-const GIT_REF_RE = /^[a-zA-Z0-9_/][a-zA-Z0-9_./-]*$/;
-function isValidGitRef(ref: string): boolean {
-  return GIT_REF_RE.test(ref) && !ref.includes('..') && !ref.endsWith('.lock') && ref.length <= 200;
-}
-
-// Optional whitelist for hardened deployments (Docker, shared servers).
-// When ALLOWED_REPO_ROOTS is set, paths must be under one of the listed roots.
-// When unset, any path is accepted as long as it's a readable/writable git repo.
-const ALLOWED_REPO_ROOTS = process.env.ALLOWED_REPO_ROOTS
-  ? process.env.ALLOWED_REPO_ROOTS.split(',').map((p) => p.trim()).filter(Boolean)
-  : null;
-
-function isAllowedRepoPath(repoPath: string): string | null {
-  const resolved = path.resolve(repoPath);
-
-  // If a whitelist is configured, enforce it
-  if (ALLOWED_REPO_ROOTS) {
-    const underAllowedRoot = ALLOWED_REPO_ROOTS.some(
-      (root) => resolved === root || resolved.startsWith(root + path.sep)
-    );
-    if (!underAllowedRoot) {
-      return `repoPath must be under one of: ${ALLOWED_REPO_ROOTS.join(', ')}`;
-    }
-  }
-
-  // Create directory if it doesn't exist; verify it's a directory if it does
-  try {
-    const stat = fs.statSync(resolved);
-    if (!stat.isDirectory()) {
-      return `repoPath is not a directory: ${resolved}`;
-    }
-  } catch {
-    try {
-      fs.mkdirSync(resolved, { recursive: true });
-      console.log(`[repo-path] created directory ${resolved}`);
-    } catch (err: unknown) {
-      return `Failed to create directory: ${err instanceof Error ? err.message : String(err)}`;
-    }
-  }
-
-  // Must have read/write access
-  try {
-    fs.accessSync(resolved, fs.constants.R_OK | fs.constants.W_OK);
-  } catch {
-    return `No read/write access to: ${resolved}`;
-  }
-
-  // Initialize git repo if not already one
-  const gitDir = path.join(resolved, '.git');
-  if (!fs.existsSync(gitDir)) {
-    try {
-      execFileSync('git', ['init'], { cwd: resolved, stdio: 'pipe' });
-      console.log(`[repo-path] initialized git repo at ${resolved}`);
-    } catch (err: unknown) {
-      return `Failed to initialize git repository: ${err instanceof Error ? err.message : String(err)}`;
-    }
-  }
-
-  return null;
-}
-
-function expandTilde(p: string): string {
-  if (!p.startsWith('~')) return p;
-  const rest = p.slice(p.startsWith('~/') || p.startsWith('~\\') ? 2 : 1);
-  return path.join(os.homedir(), rest);
-}
-
-function broadcastTaskUpdate(task: Task): void {
-  broadcast({ type: 'task_updated', payload: task });
-}
-
-// Simple per-task rate limiter for agent run/stop (1 request per 5 seconds per task)
-const RATE_LIMIT_MS = 5_000;
-const agentActionTimestamps = new Map<string, number>();
-
-function isRateLimited(taskId: string): boolean {
-  const now = Date.now();
-  const last = agentActionTimestamps.get(taskId);
-  if (last && now - last < RATE_LIMIT_MS) return true;
-  agentActionTimestamps.set(taskId, now);
-  // Lazy eviction: only clean up when map gets large
-  if (agentActionTimestamps.size > 100) {
-    for (const [id, ts] of agentActionTimestamps) {
-      if (now - ts > RATE_LIMIT_MS) agentActionTimestamps.delete(id);
-    }
-  }
-  return false;
-}
-
-// NOTE: This is a local-only demo app — no authentication is applied to these
-// routes. If deploying beyond localhost, add authentication middleware here.
 export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager): Router {
   const router = Router();
 
@@ -121,119 +25,6 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   router.get('/archived', async (_req: Request, res: Response) => {
     res.json(await repo.getArchivedTasks());
   });
-
-  // Shared validation for task creation fields — returns error string or null
-  function validateTaskFields(body: Record<string, any>): string | null {
-    const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, useWorktree, autoRun } = body;
-
-    if (!title || typeof title !== 'string' || !title.trim()) {
-      return 'title is required and must be a non-empty string';
-    }
-    if (title.length > MAX_TITLE_LENGTH) {
-      return `title must be at most ${MAX_TITLE_LENGTH} characters`;
-    }
-    if (description !== undefined && typeof description !== 'string') {
-      return 'description must be a string';
-    }
-    if (typeof description === 'string' && description.length > MAX_DESCRIPTION_LENGTH) {
-      return `description must be at most ${MAX_DESCRIPTION_LENGTH} characters`;
-    }
-    if (priority !== undefined && !isValidPriority(priority)) {
-      return 'invalid priority: must be one of low, medium, high, critical';
-    }
-    if (columnId !== undefined && !isValidColumnId(columnId)) {
-      return 'invalid columnId: must be one of backlog, in-progress, review, done';
-    }
-    if (agentType !== undefined && !isValidAgentType(agentType)) {
-      return 'invalid agentType: must be one of copilot, claude, codex';
-    }
-    if (repoPath !== undefined && typeof repoPath !== 'string') {
-      return 'repoPath must be a string';
-    }
-    if (typeof repoPath === 'string') {
-      const expandedRepoPath = expandTilde(repoPath);
-      if (!path.isAbsolute(expandedRepoPath)) {
-        return 'repoPath must be an absolute path';
-      }
-      const repoErr = isAllowedRepoPath(expandedRepoPath);
-      if (repoErr) return repoErr;
-    }
-    if (branchName !== undefined && typeof branchName !== 'string') {
-      return 'branchName must be a string';
-    }
-    if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
-      return 'branchName contains invalid characters';
-    }
-    if (baseBranch !== undefined && typeof baseBranch !== 'string') {
-      return 'baseBranch must be a string';
-    }
-    if (typeof baseBranch === 'string' && !isValidGitRef(baseBranch)) {
-      return 'baseBranch contains invalid characters';
-    }
-    if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
-      return 'useWorktree must be a boolean';
-    }
-    if (autoRun !== undefined && typeof autoRun !== 'boolean') {
-      return 'autoRun must be a boolean';
-    }
-    return null;
-  }
-
-  // Build a Task object from validated request body
-  function buildTask(body: Record<string, any>): Task {
-    const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, useWorktree } = body;
-    return {
-      id: uuid(),
-      title,
-      description: description || '',
-      priority: priority || 'medium',
-      columnId: columnId || 'backlog',
-      agentStatus: 'idle',
-      agentType: agentType || 'copilot',
-      createdAt: Date.now(),
-      repoPath: typeof repoPath === 'string' ? expandTilde(repoPath) : undefined,
-      branchName: branchName || undefined,
-      baseBranch: baseBranch || undefined,
-      useWorktree: useWorktree || undefined,
-    };
-  }
-
-  // Shared status-change callback for agent completion/failure
-  function makeStatusCallback(taskId: string): (status: Task['agentStatus']) => void {
-    return async (status) => {
-      const statusUpdates: Partial<Task> = { agentStatus: status };
-      if (status === 'complete') {
-        statusUpdates.completedAt = Date.now();
-        statusUpdates.columnId = 'review';
-      }
-      const t = await repo.update(taskId, statusUpdates);
-      if (t) broadcastTaskUpdate(t);
-    };
-  }
-
-  function makeWorktreeCallback(taskId: string): (worktreePath: string) => void {
-    return async (worktreePath) => {
-      const t = await repo.update(taskId, { worktreePath });
-      if (t) broadcastTaskUpdate(t);
-    };
-  }
-
-  // Start an agent for a task (shared by create+autoRun and batch)
-  async function startAgentForTask(task: Task): Promise<void> {
-    const updates: Partial<Task> = {
-      agentStatus: 'planning',
-      startedAt: Date.now(),
-      completedAt: undefined,
-    };
-    if (task.columnId === 'backlog') {
-      updates.columnId = 'in-progress';
-    }
-    const updated = await repo.update(task.id, updates);
-    if (updated) {
-      broadcastTaskUpdate(updated);
-      agentManager.startAgent(updated, makeStatusCallback(task.id), makeWorktreeCallback(task.id));
-    }
-  }
 
   // POST /api/tasks
   router.post('/', async (req: Request, res: Response) => {
@@ -251,18 +42,15 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
 
     // autoRun: true — immediately start agent if columnId is in-progress
     if (autoRun === true && task.columnId === 'in-progress') {
-      // Validate agent is available before auto-running
       const agents = agentManager.getAvailableAgents();
       const agentInfo = agents.find(a => a.name === task.agentType);
       if (!agentInfo?.available) {
-        // Create task but mark as failed
         const failed = await repo.update(task.id, { agentStatus: 'failed' });
         if (failed) broadcastTaskUpdate(failed);
         res.status(201).json(failed || { ...task, agentStatus: 'failed' });
         return;
       }
-      startAgentForTask(task);
-      // Re-fetch the task to get updated status
+      startAgentForTask(task, repo, agentManager);
       const latest = await repo.getById(task.id);
       res.status(201).json(latest || task);
       return;
@@ -317,7 +105,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
             created[i] = failed;
           }
         } else {
-          startAgentForTask(task);
+          startAgentForTask(task, repo, agentManager);
           const latest = await repo.getById(task.id);
           if (latest) created[i] = latest;
         }
@@ -353,7 +141,6 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
 
     const { title, description, priority, columnId, agentStatus, agentType, repoPath } = req.body;
 
-    // Validate types of all incoming fields
     if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
       res.status(400).json({ error: 'title must be a non-empty string' });
       return;
@@ -453,231 +240,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     res.status(204).send();
   });
 
-  // POST /api/tasks/:id/configure — store worktree config before running
-  router.post('/:id/configure', async (req: Request, res: Response) => {
-    const id = paramId(req);
-    const task = await repo.getById(id);
-    if (!task) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-
-    const { repoPath, branchName, baseBranch, useWorktree, agentType } = req.body;
-
-    if (repoPath !== undefined && typeof repoPath !== 'string') {
-      res.status(400).json({ error: 'repoPath must be a string' });
-      return;
-    }
-    if (branchName !== undefined && typeof branchName !== 'string') {
-      res.status(400).json({ error: 'branchName must be a string' });
-      return;
-    }
-    if (baseBranch !== undefined && typeof baseBranch !== 'string') {
-      res.status(400).json({ error: 'baseBranch must be a string' });
-      return;
-    }
-    if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
-      res.status(400).json({ error: 'useWorktree must be a boolean' });
-      return;
-    }
-    if (agentType !== undefined && !isValidAgentType(agentType)) {
-      res.status(400).json({ error: 'invalid agentType: must be one of copilot, claude, codex' });
-      return;
-    }
-    if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
-      res.status(400).json({ error: 'branchName contains invalid characters' });
-      return;
-    }
-    if (typeof baseBranch === 'string' && !isValidGitRef(baseBranch)) {
-      res.status(400).json({ error: 'baseBranch contains invalid characters' });
-      return;
-    }
-    if (typeof repoPath === 'string') {
-      const expandedRepoPath = expandTilde(repoPath);
-      if (!path.isAbsolute(expandedRepoPath)) {
-        res.status(400).json({ error: 'repoPath must be an absolute path (e.g. ~/projects/my-app or C:\\Users\\you\\projects\\my-app)' });
-        return;
-      }
-      const repoErr = isAllowedRepoPath(expandedRepoPath);
-      if (repoErr) {
-        res.status(400).json({ error: repoErr });
-        return;
-      }
-    }
-
-    const updates: Partial<Task> = {};
-    if (repoPath !== undefined) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
-    if (branchName !== undefined) updates.branchName = branchName;
-    if (baseBranch !== undefined) updates.baseBranch = baseBranch;
-    if (useWorktree !== undefined) updates.useWorktree = useWorktree;
-    if (agentType !== undefined) updates.agentType = agentType;
-
-    const updated = await repo.update(id, updates);
-    if (!updated) {
-      res.status(500).json({ error: 'failed to update task' });
-      return;
-    }
-    broadcastTaskUpdate(updated);
-    res.json(updated);
-  });
-
-  // POST /api/tasks/:id/run
-  router.post('/:id/run', async (req: Request, res: Response) => {
-    const id = paramId(req);
-    if (isRateLimited(id)) {
-      res.status(429).json({ error: 'too many requests, try again shortly' });
-      return;
-    }
-    const task = await repo.getById(id);
-    if (!task) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    if (agentManager.isRunning(task.id)) {
-      res.status(409).json({ error: 'agent already running for this task' });
-      return;
-    }
-
-    // Clear old events from any previous run (prevents stale errors from showing)
-    agentManager.resetEvents(task.id);
-
-    const updates: Partial<Task> = {
-      agentStatus: 'planning',
-      startedAt: Date.now(),
-      completedAt: undefined,
-    };
-    if (task.columnId === 'backlog') {
-      updates.columnId = 'in-progress';
-    }
-    const updated = await repo.update(task.id, updates);
-    if (!updated) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    broadcastTaskUpdate(updated);
-
-    agentManager.startAgent(updated, makeStatusCallback(task.id), makeWorktreeCallback(task.id));
-
-    res.json(updated);
-  });
-
-  // POST /api/tasks/:id/stop
-  router.post('/:id/stop', async (req: Request, res: Response) => {
-    const id = paramId(req);
-    if (isRateLimited(id)) {
-      res.status(429).json({ error: 'too many requests, try again shortly' });
-      return;
-    }
-    const task = await repo.getById(id);
-    if (!task) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    const stopped = agentManager.stopAgent(task.id);
-    if (!stopped) {
-      res.status(409).json({ error: 'no running agent for this task' });
-      return;
-    }
-    const updated = await repo.update(task.id, { agentStatus: 'failed' });
-    if (!updated) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    broadcastTaskUpdate(updated);
-    res.json(updated);
-  });
-
-  // POST /api/tasks/:id/message — send a follow-up message to a running agent
-  router.post('/:id/message', async (req: Request, res: Response) => {
-    const id = paramId(req);
-    const task = await repo.getById(id);
-    if (!task) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-
-    const { message } = req.body;
-    if (!message || typeof message !== 'string' || !message.trim()) {
-      res.status(400).json({ error: 'message is required and must be a non-empty string' });
-      return;
-    }
-
-    if (!agentManager.isRunning(task.id)) {
-      res.status(409).json({ error: 'no running agent for this task' });
-      return;
-    }
-
-    try {
-      await agentManager.sendMessage(task.id, message);
-      broadcast({ type: 'agent_follow_up', payload: { taskId: task.id, message } });
-      res.json({ success: true });
-    } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : 'failed to send message' });
-    }
-  });
-
-  // GET /api/tasks/:id/events?since=<timestamp>&limit=<n>
-  router.get('/:id/events', async (req: Request, res: Response) => {
-    if (!await repo.getById(paramId(req))) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    let events = await agentManager.getEvents(paramId(req));
-    const since = Number(req.query.since);
-    if (since > 0) {
-      events = events.filter(e => e.timestamp > since);
-    }
-    const limit = Number(req.query.limit);
-    if (limit > 0) {
-      events = events.slice(-limit);
-    }
-    res.json(events);
-  });
-
-  // POST /api/tasks/:id/create-pr — create a PR from the worktree branch
-  router.post('/:id/create-pr', async (req: Request, res: Response) => {
-    const id = paramId(req);
-    const task = await repo.getById(id);
-    if (!task) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    if (!task.branchName || !task.repoPath) {
-      res.status(400).json({ error: 'task has no branch or repo configured' });
-      return;
-    }
-    try {
-      const result = agentManager.createPR(task);
-      res.json(result);
-    } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create PR' });
-    }
-  });
-
-  // POST /api/tasks/:id/cleanup-worktree — remove worktree after done
-  router.post('/:id/cleanup-worktree', async (req: Request, res: Response) => {
-    const id = paramId(req);
-    const task = await repo.getById(id);
-    if (!task) {
-      res.status(404).json({ error: 'task not found' });
-      return;
-    }
-    if (!task.worktreePath) {
-      res.status(400).json({ error: 'no worktree to clean up' });
-      return;
-    }
-    try {
-      agentManager.removeWorktree(task);
-    } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to cleanup worktree' });
-      return;
-    }
-    const updated = await repo.update(id, { worktreePath: undefined });
-    if (updated) broadcastTaskUpdate(updated);
-    res.json({ success: true });
-  });
-
-  // PATCH /api/tasks/:id/archive — archive a completed/failed task
+  // PATCH /api/tasks/:id/archive
   router.patch('/:id/archive', async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
@@ -685,13 +248,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       res.status(404).json({ error: 'task not found' });
       return;
     }
-
-    // Only allow archiving tasks in done column or with failed status
     if (task.columnId !== 'done' && task.agentStatus !== 'failed') {
       res.status(400).json({ error: 'can only archive completed or failed tasks' });
       return;
     }
-
     const updated = await repo.update(id, { archived: true });
     if (!updated) {
       res.status(500).json({ error: 'failed to archive task' });
@@ -701,7 +261,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     res.json(updated);
   });
 
-  // PATCH /api/tasks/:id/unarchive — restore an archived task
+  // PATCH /api/tasks/:id/unarchive
   router.patch('/:id/unarchive', async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
@@ -709,12 +269,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       res.status(404).json({ error: 'task not found' });
       return;
     }
-
     if (!task.archived) {
       res.status(400).json({ error: 'task is not archived' });
       return;
     }
-
     const updated = await repo.update(id, { archived: false });
     if (!updated) {
       res.status(500).json({ error: 'failed to unarchive task' });
