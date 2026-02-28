@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (task: { title: string; description: string; priority: 'medium'; columnId: ColumnId; agentType: AgentType }) => void;
+  onSubmit: (task: { title: string; description: string; priority: 'medium'; columnId: ColumnId; agentType: AgentType; autoRun?: boolean }) => void;
   /** When set, dialog is in edit mode with pre-populated fields */
   editTask?: Task | null;
   /** Called on save in edit mode */
@@ -27,6 +27,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
   const [description, setDescription] = useState('');
   const [agentType, setAgentType] = useState<AgentType>('copilot');
   const [showAgent, setShowAgent] = useState(false);
+  const [autoRun, setAutoRun] = useState(false);
 
   const isEditMode = !!editTask;
 
@@ -42,6 +43,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
       setDescription('');
       setAgentType('copilot');
       setShowAgent(false);
+      setAutoRun(false);
     }
   }, [editTask, open]);
 
@@ -59,13 +61,15 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
         title: title.trim(),
         description: description.trim(),
         priority: 'medium',
-        columnId: 'backlog',
+        columnId: autoRun ? 'in-progress' : 'backlog',
         agentType,
+        autoRun: autoRun || undefined,
       });
     }
     setTitle('');
     setDescription('');
     setAgentType('copilot');
+    setAutoRun(false);
     onClose();
   };
 
@@ -194,6 +198,21 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
                   )}
                 </AnimatePresence>
               </div>
+
+              {/* Auto-run (create mode only) */}
+              {!isEditMode && (
+                <label className="flex cursor-pointer items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={autoRun}
+                    onChange={(e) => setAutoRun(e.target.checked)}
+                    className="h-4 w-4 cursor-pointer rounded border-border accent-primary"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Auto-run — start agent immediately after creating
+                  </span>
+                </label>
+              )}
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2">

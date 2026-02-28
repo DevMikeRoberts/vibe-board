@@ -32,7 +32,7 @@ export function useTasks() {
     });
   }, []);
 
-  const addTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt' | 'agentStatus'>) => {
+  const addTask = useCallback(async (task: Omit<Task, 'id' | 'createdAt' | 'agentStatus'> & { autoRun?: boolean }) => {
     try {
       const newTask = await api.createTask(task);
       // Deduplicate: WS broadcast may have already added this task
