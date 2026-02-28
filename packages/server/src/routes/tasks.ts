@@ -139,7 +139,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       return;
     }
 
-    const { title, description, priority, columnId, agentStatus, agentType, repoPath } = req.body;
+    const { title, description, priority, columnId, agentStatus, agentType, repoPath, archived } = req.body;
 
     if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
       res.status(400).json({ error: 'title must be a non-empty string' });
@@ -208,6 +208,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     if (agentStatus !== undefined) updates.agentStatus = agentStatus;
     if (agentType !== undefined) updates.agentType = agentType;
     if (repoPath !== undefined) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
+    if (archived !== undefined) updates.archived = Boolean(archived);
 
     // Reset agent state when moved to in-progress
     if (columnId === 'in-progress') {

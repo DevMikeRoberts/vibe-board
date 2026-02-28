@@ -9,8 +9,6 @@ const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'data', 'kanban.
 const DATA_DIR = path.dirname(DB_PATH);
 
 function migrate(db: Database.Database): void {
-  // Enable FK enforcement (off by default in SQLite)
-  db.pragma('foreign_keys = ON');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS tasks (
@@ -100,6 +98,7 @@ export function initDatabase(): Database.Database {
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 10000'); // wait up to 10s on lock contention
   migrate(db);
   console.log(`[db] initialized at ${DB_PATH}`);
   return db;
