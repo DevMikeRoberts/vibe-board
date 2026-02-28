@@ -203,9 +203,13 @@ test.describe('Task Priority', () => {
     await openCreateDialog(page);
     await page.getByPlaceholder('What needs to be done?').fill(taskTitle);
 
-    // Open priority dropdown and select High
-    await page.getByText('Medium').first().click();
-    await page.getByRole('button', { name: '🟠 High' }).click();
+    // Open priority dropdown within the dialog and select High
+    const dialog = page.getByRole('dialog');
+    // The priority dropdown button contains the emoji and label as separate elements
+    // Click the button that currently shows "Medium" (the priority selector)
+    const priorityButton = dialog.locator('button', { hasText: 'Medium' }).first();
+    await priorityButton.click();
+    await dialog.getByRole('button', { name: '🟠 High' }).click();
 
     await page.getByRole('button', { name: 'Create Task' }).click();
     await expect(page.getByRole('heading', { name: 'Create Task' })).not.toBeVisible({ timeout: 3_000 });
@@ -239,8 +243,10 @@ test.describe('Task Priority', () => {
     await expect(page.getByRole('heading', { name: 'Edit Task' })).toBeVisible();
 
     // Open priority dropdown and select Critical
-    await page.getByText('Medium').first().click();
-    await page.getByRole('button', { name: '🔴 Critical' }).click();
+    const dialog = page.getByRole('dialog');
+    const priorityButton = dialog.locator('button', { hasText: 'Medium' }).first();
+    await priorityButton.click();
+    await dialog.getByRole('button', { name: '🔴 Critical' }).click();
 
     await page.getByRole('button', { name: 'Save Changes' }).click();
     await expect(page.getByRole('heading', { name: 'Edit Task' })).not.toBeVisible({ timeout: 2_000 });
@@ -400,10 +406,14 @@ test.describe('Task Templates', () => {
   });
 
   test('create and use a template', async ({ page, request }) => {
+    const ts = Date.now();
     // Create a template via API
     const res = await request.post(`${API}/api/templates`, {
-      data: { name: 'Test Template', title: 'Templated Task', description: 'From template', priority: 'high', agentType: 'claude' },
+      data: { name: `Test Template ${ts}`, title: 'Templated Task', description: 'From template', priority: 'high', agentType: 'claude' },
     });
+    if (!res.ok()) {
+      console.error('Template create failed:', res.status(), await res.text());
+    }
     expect(res.ok()).toBeTruthy();
 
     // Open create dialog
@@ -413,7 +423,7 @@ test.describe('Task Templates', () => {
     await page.getByRole('button', { name: 'Templates' }).click();
 
     // Click the template name to apply it
-    await page.getByText('Test Template').click();
+    await page.getByText(`Test Template ${ts}`).click();
 
     // Verify fields are pre-filled
     await expect(page.getByPlaceholder('What needs to be done?')).toHaveValue('Templated Task');

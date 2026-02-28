@@ -7,7 +7,7 @@ import type { TemplateRepository } from '../repositories/template-types.js';
 const MAX_TEMPLATE_NAME_LENGTH = 100;
 
 function paramId(req: Request): string {
-  const id = paramId(req);
+  const id = req.params.id;
   return typeof id === 'string' ? id : id[0];
 }
 
