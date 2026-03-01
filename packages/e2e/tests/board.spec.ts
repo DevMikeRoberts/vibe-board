@@ -335,7 +335,7 @@ test.describe('Filter Chips', () => {
 
     // Click Claude filter chip
     await page.getByRole('button', { name: /Filter/ }).click();
-    await page.getByRole('button', { name: '🟠 Claude' }).click();
+    await page.getByRole('button', { name: 'Claude' }).click();
 
     // Only Claude task should be visible
     await expect(page.getByRole('heading', { name: 'Filter Claude Task' })).toBeVisible();

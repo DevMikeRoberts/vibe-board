@@ -48,7 +48,7 @@ export function FilterChips({ activeAgentTypes, activeStatuses, onToggleAgentTyp
               : 'border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
           )}
         >
-          <span>{chip.emoji}</span>
+          {chip.emoji && <span>{chip.emoji}</span>}
           {chip.label}
         </button>
       ))}
