@@ -176,9 +176,9 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       )}
 
       <div>
-        {/* Title — allow 2 lines with ellipsis */}
+        {/* Title with priority emoji */}
         <h3 className="line-clamp-2 pr-12 text-base font-medium leading-snug text-card-foreground">
-          {task.title}
+          {priorityDisplay && <span className="mr-1">{priorityDisplay.emoji}</span>}{task.title}
         </h3>
 
         {/* Description preview */}
