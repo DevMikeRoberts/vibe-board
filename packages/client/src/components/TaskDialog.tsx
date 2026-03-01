@@ -3,14 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
   ChevronDown,
-  BookTemplate,
-  Save,
-  Trash2,
 } from 'lucide-react';
-import type { Task, TaskTemplate, ColumnId, AgentType, Priority } from '@/types';
+import type { Task, ColumnId, AgentType, Priority } from '@/types';
 import { AGENT_DISPLAY } from '@/lib/agent-config';
 import { PRIORITY_DISPLAY } from '@/lib/priority-config';
-import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface TaskDialogProps {
@@ -40,60 +36,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
   const [showAgent, setShowAgent] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
 
-  // Template state
-  const [templates, setTemplates] = useState<TaskTemplate[]>([]);
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [saveTemplateName, setSaveTemplateName] = useState('');
-  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
-  const [templateError, setTemplateError] = useState('');
-
   const isEditMode = !!editTask;
-
-  // Fetch templates when dialog opens
-  useEffect(() => {
-    if (open) {
-      api.getTemplates().then(setTemplates).catch(() => {});
-    } else {
-      setShowTemplates(false);
-      setShowSaveTemplate(false);
-      setSaveTemplateName('');
-      setTemplateError('');
-    }
-  }, [open]);
-
-  const applyTemplate = (t: TaskTemplate) => {
-    if (t.title) setTitle(t.title);
-    if (t.description) setDescription(t.description);
-    setPriority(t.priority || 'medium');
-    setAgentType(t.agentType || 'copilot');
-    setShowTemplates(false);
-  };
-
-  const handleSaveTemplate = async () => {
-    if (!saveTemplateName.trim()) return;
-    setTemplateError('');
-    try {
-      const created = await api.createTemplate({
-        name: saveTemplateName.trim(),
-        title: title.trim(),
-        description: description.trim(),
-        priority,
-        agentType,
-      });
-      setTemplates((prev) => [created, ...prev]);
-      setShowSaveTemplate(false);
-      setSaveTemplateName('');
-    } catch (err) {
-      setTemplateError((err as Error).message);
-    }
-  };
-
-  const handleDeleteTemplate = async (id: string) => {
-    try {
-      await api.deleteTemplate(id);
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
-    } catch { /* ignore */ }
-  };
 
   // Pre-populate fields when editing
   useEffect(() => {
@@ -188,64 +131,13 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
             {/* Header */}
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-semibold">{isEditMode ? 'Edit Task' : 'Create Task'}</h2>
-              <div className="flex items-center gap-1">
-                {/* Template picker button */}
-                {templates.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowTemplates(!showTemplates)}
-                    className="flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  >
-                    <BookTemplate className="h-3.5 w-3.5" />
-                    Templates
-                  </button>
-                )}
-                <button
-                  onClick={onClose}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+              <button
+                onClick={onClose}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
-
-            {/* Template picker dropdown */}
-            <AnimatePresence>
-              {showTemplates && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mb-4 overflow-hidden rounded-lg border border-border bg-muted/50"
-                >
-                  <div className="max-h-40 overflow-y-auto">
-                    {templates.map((t) => (
-                      <div
-                        key={t.id}
-                        className="flex items-center justify-between px-3 py-2 text-sm hover:bg-accent transition-colors"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => applyTemplate(t)}
-                          className="flex-1 text-left truncate"
-                        >
-                          <span className="font-medium">{t.name}</span>
-                          {t.title && <span className="ml-2 text-muted-foreground text-xs">— {t.title}</span>}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteTemplate(t.id)}
-                          className="ml-2 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-red-400 transition-colors"
-                          aria-label="Delete template"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Title */}
@@ -387,65 +279,21 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-between gap-2 pt-2">
-                {/* Save as Template */}
-                <div className="flex items-center gap-2">
-                  {!showSaveTemplate ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowSaveTemplate(true)}
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      <Save className="h-3 w-3" />
-                      Save as Template
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={saveTemplateName}
-                        onChange={(e) => setSaveTemplateName(e.target.value)}
-                        placeholder="Template name..."
-                        className="h-7 w-36 rounded border border-border bg-background px-2 text-xs focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSaveTemplate(); } if (e.key === 'Escape') setShowSaveTemplate(false); }}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSaveTemplate}
-                        disabled={!saveTemplateName.trim()}
-                        className="h-7 rounded bg-primary px-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setShowSaveTemplate(false); setTemplateError(''); }}
-                        className="text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-                  {templateError && <span className="text-xs text-red-400">{templateError}</span>}
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!title.trim()}
-                    className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {isEditMode ? 'Save Changes' : 'Create Task'}
-                  </button>
-                </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground hover:bg-accent transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!title.trim()}
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isEditMode ? 'Save Changes' : 'Create Task'}
+                </button>
               </div>
             </form>
           </motion.div>
