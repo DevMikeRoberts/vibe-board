@@ -233,9 +233,9 @@ test.describe('Task Priority', () => {
     const id = await createTask(page, taskTitle);
     createdTaskIds.push(id);
 
-    // Default priority is medium — verify blue border
+    // Default priority is medium — no visible border (medium is borderless)
     const taskCard = page.locator('.group').filter({ has: page.getByRole('heading', { name: taskTitle }) });
-    await expect(taskCard).toHaveClass(/border-l-blue-500/);
+    await expect(taskCard).not.toHaveClass(/border-l-4/);
 
     // Edit task and change priority to critical
     await taskCard.hover();
