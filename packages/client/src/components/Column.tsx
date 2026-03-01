@@ -63,10 +63,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
   }, [column.color]);
 
   return (
-    <div className={cn(
-      'flex h-full shrink-0 flex-col max-md:h-auto max-md:min-h-48',
-      tasks.length > 0 ? 'w-full md:w-72 lg:w-80' : 'w-full md:w-40 lg:w-48'
-    )} data-column={column.id}>
+    <div className="flex h-full w-full shrink-0 flex-col md:w-72 lg:w-80 max-md:h-auto max-md:min-h-48" data-column={column.id}>
       {/* Column header */}
       <div className="mb-3 flex items-center justify-between px-1">
         <div className="flex items-center gap-2">
