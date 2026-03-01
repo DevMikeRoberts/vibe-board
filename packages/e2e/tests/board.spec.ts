@@ -297,10 +297,10 @@ test.describe('Task Sorting', () => {
     const headings = backlog.locator('h3');
     const titles = await headings.allTextContents();
 
-    // Filter to just our test tasks
-    const sortTitles = titles.filter(t => t.startsWith('Sort '));
-    expect(sortTitles[0]).toBe('Sort Critical Task');
-    expect(sortTitles[sortTitles.length - 1]).toBe('Sort Low Task');
+    // Filter to just our test tasks (titles include priority emoji prefix)
+    const sortTitles = titles.filter(t => t.includes('Sort '));
+    expect(sortTitles[0]).toContain('Sort Critical Task');
+    expect(sortTitles[sortTitles.length - 1]).toContain('Sort Low Task');
   });
 });
 
@@ -333,9 +333,9 @@ test.describe('Filter Chips', () => {
     await expect(page.getByRole('heading', { name: 'Filter Claude Task' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Filter Copilot Task' })).toBeVisible();
 
-    // Click Claude filter chip
-    await page.getByRole('button', { name: /Filter/ }).click();
-    await page.getByRole('button', { name: 'Claude' }).click();
+    // Click Filter toggle then Claude filter chip
+    await page.getByLabel('Toggle filters').click();
+    await page.getByRole('button', { name: 'Claude', exact: true }).click();
 
     // Only Claude task should be visible
     await expect(page.getByRole('heading', { name: 'Filter Claude Task' })).toBeVisible();
