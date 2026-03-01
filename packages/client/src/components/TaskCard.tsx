@@ -177,7 +177,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
       <div>
         {/* Title with priority emoji */}
-        <h3 className="line-clamp-2 pr-12 text-base font-medium leading-snug text-card-foreground">
+        <h3 className="line-clamp-2 pr-16 text-base font-medium leading-snug text-card-foreground">
           {priorityDisplay && <span className="mr-1">{priorityDisplay.emoji}</span>}{task.title}
         </h3>
 
