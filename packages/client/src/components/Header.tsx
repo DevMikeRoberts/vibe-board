@@ -121,7 +121,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
 
       {/* Collapsible filter chips row */}
       {showFilters && (
-        <div className="flex items-center gap-2 px-6 pb-2">
+        <div className="flex items-center justify-end gap-2 px-6 pb-2">
           <FilterChips
             activeAgentTypes={activeAgentTypes}
             activeStatuses={activeStatuses}
