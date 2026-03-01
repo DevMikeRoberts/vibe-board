@@ -177,7 +177,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
       <div>
         {/* Title — allow 2 lines with ellipsis */}
-        <h3 className="line-clamp-2 pr-8 text-base font-medium leading-snug text-card-foreground">
+        <h3 className="line-clamp-2 pr-12 text-base font-medium leading-snug text-card-foreground">
           {task.title}
         </h3>
 
