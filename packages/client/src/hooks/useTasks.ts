@@ -20,10 +20,13 @@ export function useTasks() {
     return connectWS(
       (msg) => {
         if (msg.type === 'task_updated') {
+          const task = msg.payload;
+          // Skip grouped children — they're managed by useTaskGroups
+          if (task.groupId) return;
           setTasks((prev) => {
-            const exists = prev.some((t) => t.id === msg.payload.id);
-            if (exists) return prev.map((t) => (t.id === msg.payload.id ? msg.payload : t));
-            return [...prev, msg.payload];
+            const exists = prev.some((t) => t.id === task.id);
+            if (exists) return prev.map((t) => (t.id === task.id ? task : t));
+            return [...prev, task];
           });
         }
         if (msg.type === 'task_deleted') {

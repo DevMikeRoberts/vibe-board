@@ -35,6 +35,19 @@ export function useTaskGroups() {
             return prev;
           });
         }
+        // Update child task within its parent group
+        if (msg.type === 'task_updated' && msg.payload.groupId) {
+          const child = msg.payload;
+          setGroups((prev) =>
+            prev.map((g) => {
+              if (g.id !== child.groupId) return g;
+              return {
+                ...g,
+                children: g.children.map((c) => (c.id === child.id ? child : c)),
+              };
+            }),
+          );
+        }
       },
       () => { api.getGroups().then(setGroups).catch(console.error); },
     );
