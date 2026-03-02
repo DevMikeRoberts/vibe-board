@@ -85,7 +85,7 @@ export function createGitRouter(repo: TaskRepository, agentManager: AgentManager
       return;
     }
     try {
-      const result = agentManager.mergeLocal(task);
+      const result = await agentManager.mergeLocal(task);
       // Clean up worktree after successful merge — branch is merged, directory is no longer needed
       if (task.worktreePath) {
         try { agentManager.removeWorktree(task); } catch { /* best effort */ }

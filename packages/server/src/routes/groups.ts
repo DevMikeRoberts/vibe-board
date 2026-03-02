@@ -4,6 +4,7 @@ import type { TaskGroup, Task } from '../types.js';
 import {
   isValidPriority,
   isValidAgentType,
+  isValidColumnId,
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
   MAX_GROUP_CHILDREN,
@@ -172,8 +173,24 @@ export function createGroupsRouter(
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
 
     const updates: Partial<TaskGroup> = {};
-    if (req.body.title !== undefined) updates.title = req.body.title;
-    if (req.body.description !== undefined) updates.description = req.body.description;
+    if (req.body.title !== undefined) {
+      if (typeof req.body.title !== 'string' || !req.body.title.trim()) {
+        res.status(400).json({ error: 'title must be a non-empty string' }); return;
+      }
+      if (req.body.title.length > MAX_TITLE_LENGTH) {
+        res.status(400).json({ error: `title must be at most ${MAX_TITLE_LENGTH} characters` }); return;
+      }
+      updates.title = req.body.title;
+    }
+    if (req.body.description !== undefined) {
+      if (typeof req.body.description !== 'string') {
+        res.status(400).json({ error: 'description must be a string' }); return;
+      }
+      if (req.body.description.length > MAX_DESCRIPTION_LENGTH) {
+        res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION_LENGTH} characters` }); return;
+      }
+      updates.description = req.body.description;
+    }
     if (req.body.priority !== undefined) {
       if (!isValidPriority(req.body.priority)) { res.status(400).json({ error: 'invalid priority' }); return; }
       updates.priority = req.body.priority;
@@ -186,8 +203,13 @@ export function createGroupsRouter(
       }
       updates.maxConcurrency = mc;
     }
-    if (req.body.columnId !== undefined) updates.columnId = req.body.columnId;
-    if (req.body.archived !== undefined) updates.archived = req.body.archived;
+    if (req.body.columnId !== undefined) {
+      if (!isValidColumnId(req.body.columnId)) {
+        res.status(400).json({ error: 'invalid columnId' }); return;
+      }
+      updates.columnId = req.body.columnId;
+    }
+    if (req.body.archived !== undefined) updates.archived = Boolean(req.body.archived);
 
     // E3: Moving group back to backlog stops all running children and resets state
     if (updates.columnId === 'backlog' && group.columnId !== 'backlog') {
@@ -229,12 +251,12 @@ export function createGroupsRouter(
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
 
-    // Stop any running agents and clean up worktrees
+    // Stop group queue + all running agents
+    await agentManager.stopGroup(id);
+
+    // Clean up worktrees
     const children = await groupRepo.getChildTasks(id);
     for (const child of children) {
-      if (agentManager.isRunning(child.id)) {
-        await agentManager.stopAgent(child.id);
-      }
       if (child.worktreePath) {
         try { agentManager.removeWorktree(child); } catch { /* best effort */ }
       }

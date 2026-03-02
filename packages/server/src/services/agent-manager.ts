@@ -51,6 +51,8 @@ export class AgentManager {
   /** Pending coalesced output/thinking broadcast per task */
   private streamBuffer = new Map<string, { event: AgentEvent; timer: ReturnType<typeof setTimeout> }>();
   private groupQueues = new Map<string, GroupQueue>();
+  /** Per-repo mutex to serialize git operations (merge, checkout) */
+  private repoLocks = new Map<string, Promise<void>>();
 
   /** Call once at startup to enable event persistence. */
   initEventPersistence(repo: TaskRepository): void {
@@ -268,26 +270,40 @@ export class AgentManager {
     }
   }
 
-  mergeLocal(task: Task): { merged: true; baseBranch: string } {
+  private async withRepoLock<T>(repoPath: string, fn: () => T | Promise<T>): Promise<T> {
+    const prev = this.repoLocks.get(repoPath) ?? Promise.resolve();
+    let resolve: () => void;
+    const lock = new Promise<void>((r) => { resolve = r; });
+    this.repoLocks.set(repoPath, lock);
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      resolve!();
+      if (this.repoLocks.get(repoPath) === lock) this.repoLocks.delete(repoPath);
+    }
+  }
+
+  async mergeLocal(task: Task): Promise<{ merged: true; baseBranch: string }> {
     if (!task.repoPath || !task.branchName) {
       throw new Error('Task has no repo path or branch name configured');
     }
     const baseBranch = task.baseBranch || 'main';
 
-    try {
-      // Merge from the main repo (not the worktree)
-      execFileSync('git', ['checkout', baseBranch], { cwd: task.repoPath, stdio: 'pipe' });
-      execFileSync('git', ['merge', task.branchName, '--no-edit'], { cwd: task.repoPath, stdio: 'pipe' });
-      console.log(`[merge] merged ${task.branchName} into ${baseBranch}`);
-      return { merged: true, baseBranch };
-    } catch (err: unknown) {
-      // If merge conflicts, abort so we don't leave repo in broken state
-      try { execFileSync('git', ['merge', '--abort'], { cwd: task.repoPath, stdio: 'pipe' }); } catch { /* already clean */ }
-      const stderr = err instanceof Error && 'stderr' in err ? (err as any).stderr?.toString() : '';
-      const msg = stderr || (err instanceof Error ? err.message : String(err));
-      console.error(`[merge] failed:`, msg);
-      throw new Error(`Merge failed (conflicts?). Branch ${task.branchName} was not merged:\n${msg.trim()}`);
-    }
+    return this.withRepoLock(task.repoPath, () => {
+      try {
+        execFileSync('git', ['checkout', baseBranch], { cwd: task.repoPath, stdio: 'pipe' });
+        execFileSync('git', ['merge', task.branchName!, '--no-edit'], { cwd: task.repoPath, stdio: 'pipe' });
+        console.log(`[merge] merged ${task.branchName} into ${baseBranch}`);
+        return { merged: true as const, baseBranch };
+      } catch (err: unknown) {
+        try { execFileSync('git', ['merge', '--abort'], { cwd: task.repoPath!, stdio: 'pipe' }); } catch { /* already clean */ }
+        const stderr = err instanceof Error && 'stderr' in err ? (err as any).stderr?.toString() : '';
+        const msg = stderr || (err instanceof Error ? err.message : String(err));
+        console.error(`[merge] failed:`, msg);
+        throw new Error(`Merge failed (conflicts?). Branch ${task.branchName} was not merged:\n${msg.trim()}`);
+      }
+    });
   }
 
   // ─── Session Lifecycle ─────────────────────────────────────────────
@@ -325,6 +341,9 @@ export class AgentManager {
 
     // Track start time for duration reporting
     const sessionStartTime = Date.now();
+
+    // Synchronous placeholder to prevent duplicate starts during async session creation
+    this.sessions.set(task.id, { session: null as any, startTime: sessionStartTime, agentType });
 
     // Guard for single terminal state (complete OR failed — prevents races)
     let terminated = false;
@@ -623,8 +642,9 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       q.runningTaskIds.add(taskId);
 
       const originalStatusCb = q.makeStatusCallback(task);
-      const wrappedStatusCb = (status: Task['agentStatus']) => {
-        const result = originalStatusCb(status);
+      const wrappedStatusCb = async (status: Task['agentStatus']) => {
+        // Await status persistence so DB is consistent before completion check
+        await originalStatusCb(status);
 
         if (status === 'complete' || status === 'failed') {
           q.runningTaskIds.delete(taskId);
@@ -634,19 +654,18 @@ make precise edits, and verify your changes compile/pass tests when applicable.
             q.failedTaskIds.add(taskId);
           }
 
-          // Notify completion
-          q.onChildComplete(taskId);
+          // Notify completion (catch to prevent unhandled rejection crash)
+          Promise.resolve(q.onChildComplete(taskId)).catch((err: unknown) =>
+            console.error('[group] onChildComplete failed:', err),
+          );
 
           // Clean up queue when fully drained
           if (q.pendingTaskIds.length === 0 && q.runningTaskIds.size === 0) {
             this.groupQueues.delete(groupId);
           } else {
-            // Schedule next drain to avoid reentrancy
             queueMicrotask(() => this.drainGroupQueue(groupId));
           }
         }
-
-        return result;
       };
 
       this.startAgent(task, wrappedStatusCb, q.makeWorktreeCallback(task));
