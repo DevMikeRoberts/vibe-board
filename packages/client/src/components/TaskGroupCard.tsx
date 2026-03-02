@@ -146,18 +146,40 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
         {status.idle > 0 && <span className="text-zinc-500">{status.idle} pending</span>}
       </div>
 
-      {/* Expanded child list preview (first 3) */}
+      {/* Child task cards */}
       {group.children.length > 0 && (
-        <div className="mt-2 border-t border-zinc-700/50 pt-2 space-y-1">
-          {group.children.slice(0, 3).map((child) => (
-            <div key={child.id} className="flex items-center gap-2 text-xs">
-              {statusIcon(child.agentStatus)}
-              <span className="truncate text-zinc-300">{child.title}</span>
-            </div>
-          ))}
-          {group.children.length > 3 && (
-            <span className="text-xs text-zinc-500">+{group.children.length - 3} more</span>
-          )}
+        <div className="mt-2 border-t border-zinc-700/50 pt-2 space-y-1.5">
+          {group.children.map((child) => {
+            const agentDisplay = AGENT_DISPLAY[child.agentType as keyof typeof AGENT_DISPLAY];
+            const priorityInfo = PRIORITY_DISPLAY[child.priority];
+            return (
+              <div
+                key={child.id}
+                className={cn(
+                  'rounded-md border border-zinc-700/60 bg-zinc-800/60 px-2.5 py-1.5',
+                  priorityInfo?.borderClass,
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="text-xs font-medium leading-snug text-zinc-200 line-clamp-1">
+                    {priorityInfo && <span className="mr-0.5">{priorityInfo.emoji}</span>}
+                    {child.title}
+                  </h4>
+                  {statusIcon(child.agentStatus)}
+                </div>
+                {child.description && (
+                  <p className="mt-0.5 text-[10px] leading-snug text-zinc-500 line-clamp-1">{child.description}</p>
+                )}
+                <div className="mt-1 flex items-center gap-2">
+                  {agentDisplay && (
+                    <span className="inline-flex items-center gap-0.5 text-[10px] text-zinc-500">
+                      {agentDisplay.emoji} {agentDisplay.label}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
