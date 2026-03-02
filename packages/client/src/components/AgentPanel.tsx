@@ -341,6 +341,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
   const [sending, setSending] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'events' | 'terminal'>('events');
+  const [showWorktreeConfirm, setShowWorktreeConfirm] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const taskId = task?.id ?? null;
@@ -646,7 +647,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                   )}
                   {task.worktreePath && onCleanupWorktree && (
                     <button
-                      onClick={() => onCleanupWorktree(task.id)}
+                      onClick={() => setShowWorktreeConfirm(true)}
                       className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-colors"
                     >
                       <Trash2 className="h-3 w-3" />
@@ -678,6 +679,33 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Worktree cleanup confirmation */}
+          {showWorktreeConfirm && (
+            <div className="mx-4 my-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+              <p className="text-xs text-amber-200 font-medium mb-1">Delete worktree?</p>
+              <p className="text-xs text-amber-300/80 mb-3">
+                This removes the worktree directory and its files. If you haven't created a PR yet, you won't be able to push these changes afterward.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowWorktreeConfirm(false)}
+                  className="rounded px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowWorktreeConfirm(false);
+                    if (task && onCleanupWorktree) onCleanupWorktree(task.id);
+                  }}
+                  className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-500"
+                >
+                  Delete worktree
+                </button>
+              </div>
             </div>
           )}
 
