@@ -72,7 +72,7 @@ export function GroupPanel({ group, onClose, onRunGroup, onStopGroup, onRetryChi
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="fixed inset-y-0 right-0 z-40 flex w-full max-w-md flex-col border-l border-zinc-700 bg-zinc-900 shadow-2xl"
+        className="fixed right-0 top-0 z-[60] flex h-full w-full max-w-md flex-col border-l border-zinc-700 bg-zinc-900 shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-700 px-4 py-3">
