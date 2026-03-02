@@ -11,21 +11,21 @@ copilot-kanban-agent/
 ├── packages/
 │   ├── client/          # React 19 + Vite + Tailwind 4 + Framer Motion + xterm.js
 │   │   └── src/
-│   │       ├── components/  # Board, Column, TaskCard, AgentPanel, TerminalView, FilterChips, Header, dialogs
-│   │       ├── hooks/       # useTasks, useTheme, useDebounce, useKeyboardShortcuts
+│   │       ├── components/  # Board, Column, TaskCard, TaskGroupCard, GroupPanel, AgentPanel, TerminalView, FilterChips, Header, dialogs
+│   │       ├── hooks/       # useTasks, useTaskGroups, useTheme, useDebounce, useKeyboardShortcuts
 │   │       ├── lib/         # api.ts (REST + WebSocket), agent-config.ts, priority-config.ts, columns.ts, utils
 │   │       └── types/       # Client-side type re-exports
 │   ├── server/          # Express + @codewithdan/agent-sdk-core + better-sqlite3/pg + ws
 │   │   └── src/
 │   │       ├── middleware/  # auth.ts (Bearer token auth)
-│   │       ├── routes/      # tasks.ts, agent.ts, git.ts, templates.ts, helpers.ts
+│   │       ├── routes/      # tasks.ts, agent.ts, git.ts, templates.ts, groups.ts, helpers.ts
 │   │       ├── services/    # agent-manager.ts (session orchestration, event caching)
-│   │       ├── repositories/# sqlite.ts, postgres.ts, sqlite-templates.ts, postgres-templates.ts, types.ts, template-types.ts
+│   │       ├── repositories/# sqlite.ts, postgres.ts, sqlite-templates.ts, postgres-templates.ts, sqlite-groups.ts, postgres-groups.ts, types.ts, template-types.ts, group-types.ts
 │   │       ├── db.ts        # SQLite + PostgreSQL init + migrations
 │   │       ├── websocket.ts # WebSocket broadcast
 │   │       └── index.ts     # Express app setup + graceful shutdown
 │   └── e2e/             # Playwright tests
-├── shared/              # Shared types (Task, TaskTemplate, AgentEvent, ColumnId, AgentType, etc.) + validation constants
+├── shared/              # Shared types (Task, TaskGroup, TaskTemplate, AgentEvent, ColumnId, AgentType, etc.) + validation constants
 ├── scripts/             # test-sdk-e2e.sh
 └── k8s/                 # Kubernetes manifests (namespace, deployments, services, ingress)
 ```
@@ -37,6 +37,7 @@ copilot-kanban-agent/
 - **Dual database backends** — SQLite via `better-sqlite3` (default, zero config) or PostgreSQL via `pg` (set `DATABASE_URL`). Both implement the `TaskRepository` and `TemplateRepository` interfaces.
 - **Route splitting** — REST API is split across `tasks.ts` (CRUD), `agent.ts` (start/stop/events), `git.ts` (PR creation, worktree cleanup), and `templates.ts` (task template CRUD).
 - **API key auth** — optional Bearer token via `API_KEY` env var. When set, all API and WebSocket requests require `Authorization: Bearer <key>`. Middleware in `middleware/auth.ts`.
+- **Task Groups** — parent entity with N child tasks, concurrency-controlled execution via `GroupQueue` in agent-manager. Groups move as a single card on the board; auto-advance to review when all children complete. Parallelism slider locked once running.
 - **Event streaming** — SDK events mapped to `AgentEvent`s, persisted to database, broadcast via WebSocket. In-memory LRU cache (200 tasks max, 100 events per task).
 - **Git worktrees** — optional per-task branch isolation. Agent works in worktree directory, path rewriting via `onPreToolUse` hook.
 - **Vite proxy** — client proxies `/api` and `/ws` to the server. In Docker, `API_URL` env var points to `http://server:3001`.
@@ -127,10 +128,11 @@ cd packages/e2e && npx playwright test
 - **Agent lifecycle**: idle → planning → executing → complete/failed (set via `agentStatus`)
 - **Agent types**: `copilot | claude | codex | opencode` — each task can specify which agent to use via `agentType`
 - **Provider pattern**: `AgentProvider` creates `AgentSession`s (from `@codewithdan/agent-sdk-core`). `AgentManager` orchestrates sessions with timeouts, event caching, and graceful cleanup.
-- **Repository pattern**: `TaskRepository` and `TemplateRepository` interfaces with SQLite and PostgreSQL implementations.
+- **Repository pattern**: `TaskRepository`, `TemplateRepository`, and `TaskGroupRepository` interfaces with SQLite and PostgreSQL implementations.
 - **Event coalescing**: AgentPanel merges consecutive thinking/output events for readability
 - **Graceful shutdown**: 5s force-exit timeout after `SIGINT`/`SIGTERM`, all SDK sessions cleaned up
 - **Copilot permission request**: SDK uses `req.kind` (shell/read/write/mcp/url/memory), NOT `req.toolName`
+- **Group queue**: `GroupQueue` in agent-manager tracks pending/running/completed/failed per group. `drainQueue()` fills slots up to `maxConcurrency` as children complete.
 
 ## Known Issues (LOW priority)
 

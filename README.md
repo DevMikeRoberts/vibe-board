@@ -27,6 +27,7 @@ A drag-and-drop Kanban board that assigns coding tasks to AI agents — GitHub C
 - One-click PR creation from completed tasks
 - **Dual database backends** — SQLite (zero-config default) or PostgreSQL
 - Task templates for reusable task configurations
+- **Task Groups** — define multiple related tasks in one form, launch with configurable parallelism (slider 1..N), monitor aggregate progress
 - Auto-run option to start agent immediately on task creation
 - Priority levels (critical, high, medium, low) with emoji indicators and color-coded borders
 - Filter and sort tasks by agent type, status, and priority
@@ -34,7 +35,7 @@ A drag-and-drop Kanban board that assigns coding tasks to AI agents — GitHub C
 - Task archiving
 - Dark/light theme toggle
 - Task search and filtering
-- Keyboard shortcuts (N: new task, Esc: close panels)
+- Keyboard shortcuts (N: new task, G: new group, Esc: close panels)
 
 ## Getting Started
 
@@ -130,19 +131,19 @@ copilot-kanban-agent/
 ├── packages/
 │   ├── client/                # React frontend
 │   │   └── src/
-│   │       ├── components/    # Board, Column, TaskCard, AgentPanel, TerminalView, FilterChips, dialogs
-│   │       ├── hooks/         # useTasks, useTheme, useDebounce, useKeyboardShortcuts
+│   │       ├── components/    # Board, Column, TaskCard, TaskGroupCard, GroupPanel, AgentPanel, TerminalView, FilterChips, dialogs
+│   │       ├── hooks/         # useTasks, useTaskGroups, useTheme, useDebounce, useKeyboardShortcuts
 │   │       └── lib/           # API client, WebSocket, agent-config, priority-config, utilities
 │   ├── server/                # Express backend
 │   │   └── src/
 │   │       ├── middleware/     # Bearer token auth
-│   │       ├── routes/        # REST API split: tasks, agent, git, templates
+│   │       ├── routes/        # REST API split: tasks, agent, git, templates, groups
 │   │       ├── services/      # Agent session orchestration via @codewithdan/agent-sdk-core
-│   │       ├── repositories/  # SQLite + PostgreSQL data access (tasks + templates)
+│   │       ├── repositories/  # SQLite + PostgreSQL data access (tasks + templates + groups)
 │   │       ├── db.ts          # Database init + migrations
 │   │       └── websocket.ts   # Real-time event broadcast
 │   └── e2e/                   # Playwright end-to-end tests
-└── shared/                    # Shared types (Task, TaskTemplate, AgentEvent, etc.) + validation
+└── shared/                    # Shared types (Task, TaskGroup, TaskTemplate, AgentEvent, etc.) + validation
 ```
 
 ## How It Works
@@ -163,6 +164,18 @@ The server uses a **provider pattern** (via `@codewithdan/agent-sdk-core`) to su
 - **`AgentManager`** — orchestrates sessions with timeouts, event caching, and graceful cleanup
 
 Each task can specify which agent to use. Available agents are auto-detected at startup by checking for installed CLIs. Four providers are supported: Copilot, Claude Code, Codex, and OpenCode. Events from all providers are normalized into a common `AgentEvent` format and streamed to the UI via WebSocket.
+
+### Task Groups
+
+For projects needing multiple parallel changes, **Task Groups** let you define a batch of related tasks in a single form:
+
+1. Click **New Group** (or press `G`) to open the group creation dialog
+2. Set group-level config: title, repo path, base branch, priority
+3. Add child tasks (2–20), each with its own title, description, agent type, and worktree toggle
+4. Set **parallelism** with a slider (1 to N) — controls how many agents run concurrently
+5. Click **Create & Run** to launch immediately, or **Create Group** to add to backlog
+
+Groups appear as a single card on the board showing aggregate progress. Click to expand the **Group Panel** with per-child status, retry buttons for failures, and drill-through to individual agent panels. Groups auto-advance to "review" when all children complete successfully.
 
 ## Tests
 
