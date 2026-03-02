@@ -268,6 +268,28 @@ export class AgentManager {
     }
   }
 
+  mergeLocal(task: Task): { merged: true; baseBranch: string } {
+    if (!task.repoPath || !task.branchName) {
+      throw new Error('Task has no repo path or branch name configured');
+    }
+    const baseBranch = task.baseBranch || 'main';
+
+    try {
+      // Merge from the main repo (not the worktree)
+      execFileSync('git', ['checkout', baseBranch], { cwd: task.repoPath, stdio: 'pipe' });
+      execFileSync('git', ['merge', task.branchName, '--no-edit'], { cwd: task.repoPath, stdio: 'pipe' });
+      console.log(`[merge] merged ${task.branchName} into ${baseBranch}`);
+      return { merged: true, baseBranch };
+    } catch (err: unknown) {
+      // If merge conflicts, abort so we don't leave repo in broken state
+      try { execFileSync('git', ['merge', '--abort'], { cwd: task.repoPath, stdio: 'pipe' }); } catch { /* already clean */ }
+      const stderr = err instanceof Error && 'stderr' in err ? (err as any).stderr?.toString() : '';
+      const msg = stderr || (err instanceof Error ? err.message : String(err));
+      console.error(`[merge] failed:`, msg);
+      throw new Error(`Merge failed (conflicts?). Branch ${task.branchName} was not merged:\n${msg.trim()}`);
+    }
+  }
+
   // ─── Session Lifecycle ─────────────────────────────────────────────
 
   startAgent(

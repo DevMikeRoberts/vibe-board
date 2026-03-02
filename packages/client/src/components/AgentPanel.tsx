@@ -17,6 +17,7 @@ import {
   Square,
   GitBranch,
   ExternalLink,
+  GitMerge,
   Trash2,
   Send,
   FileText,
@@ -160,6 +161,7 @@ interface AgentPanelProps {
   onRun?: (id: string) => void;
   onStop?: (id: string) => void;
   onCreatePR?: (id: string) => Promise<string | undefined>;
+  onMergeLocal?: (id: string) => Promise<string | undefined>;
   onCleanupWorktree?: (id: string) => Promise<void>;
   onReconfigureRetry?: (id: string) => void;
   theme?: 'dark' | 'light';
@@ -331,12 +333,15 @@ function EventItem({ event }: { event: CoalescedEvent }) {
   );
 }
 
-export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanupWorktree, onReconfigureRetry, theme }: AgentPanelProps) {
+export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLocal, onCleanupWorktree, onReconfigureRetry, theme }: AgentPanelProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [prLoading, setPrLoading] = useState(false);
   const [prError, setPrError] = useState<string | null>(null);
+  const [mergeResult, setMergeResult] = useState<string | null>(null);
+  const [mergeLoading, setMergeLoading] = useState(false);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const [followUpMessage, setFollowUpMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -359,6 +364,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
     setPrUrl(null);
     setPrLoading(false);
     setPrError(null);
+    setMergeResult(null);
+    setMergeLoading(false);
+    setMergeError(null);
     setFollowUpMessage('');
     setSending(false);
 
@@ -645,6 +653,32 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                       View PR
                     </a>
                   )}
+                  {!mergeResult && task.branchName && onMergeLocal && (
+                    <button
+                      onClick={async () => {
+                        setMergeLoading(true);
+                        setMergeError(null);
+                        try {
+                          const branch = await onMergeLocal(task.id);
+                          if (branch) setMergeResult(branch);
+                        } catch (err: unknown) {
+                          setMergeError((err as Error).message || 'Failed to merge');
+                        }
+                        setMergeLoading(false);
+                      }}
+                      disabled={mergeLoading}
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                    >
+                      <GitMerge className="h-3 w-3" />
+                      {mergeLoading ? 'Merging...' : `Merge to ${task.baseBranch || 'main'}`}
+                    </button>
+                  )}
+                  {mergeResult && (
+                    <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                      <GitMerge className="h-3 w-3" />
+                      Merged to {mergeResult}
+                    </span>
+                  )}
                   {task.worktreePath && onCleanupWorktree && (
                     <button
                       onClick={() => setShowWorktreeConfirm(true)}
@@ -679,10 +713,27 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                   </button>
                 </div>
               )}
+              {mergeError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="whitespace-pre-wrap font-mono text-xs text-red-300">{mergeError}</p>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(mergeError)}
+                      className="shrink-0 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setMergeError(null)}
+                    className="mt-2 text-[10px] text-zinc-300 hover:text-white"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
             </div>
           )}
-
-          {/* Worktree cleanup confirmation */}
           {showWorktreeConfirm && (
             <div className="mx-4 my-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
               <p className="text-xs text-amber-200 font-medium mb-1">Delete worktree?</p>

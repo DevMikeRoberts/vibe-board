@@ -137,6 +137,11 @@ export function useTasks() {
     }
   }, []);
 
+  const mergeLocal = useCallback(async (id: string) => {
+    const result = await api.mergeLocal(id);
+    return result.baseBranch;
+  }, []);
+
   const stopTask = useCallback(async (id: string) => {
     try {
       const updated = await api.stopTask(id);
@@ -189,5 +194,5 @@ export function useTasks() {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { tasks, error, clearError, showArchived, setShowArchived, addTask, batchCreate, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, getTasksByColumn, configureAndRunTask, createPR, cleanupWorktree };
+  return { tasks, error, clearError, showArchived, setShowArchived, addTask, batchCreate, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, getTasksByColumn, configureAndRunTask, createPR, mergeLocal, cleanupWorktree };
 }

@@ -49,5 +49,25 @@ export function createGitRouter(repo: TaskRepository, agentManager: AgentManager
     res.json({ success: true });
   });
 
+  // POST /api/tasks/:id/merge-local — merge worktree branch into base branch locally
+  router.post('/:id/merge-local', async (req: Request, res: Response) => {
+    const id = paramId(req);
+    const task = await repo.getById(id);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+    if (!task.branchName || !task.repoPath) {
+      res.status(400).json({ error: 'task has no branch or repo configured' });
+      return;
+    }
+    try {
+      const result = agentManager.mergeLocal(task);
+      res.json(result);
+    } catch (err: unknown) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to merge' });
+    }
+  });
+
   return router;
 }
