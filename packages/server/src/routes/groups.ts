@@ -188,11 +188,16 @@ export function createGroupsRouter(
       }
       const children = await groupRepo.getChildTasks(id);
       for (const child of children) {
+        // Clean up worktree if one was created
+        if (child.worktreePath) {
+          try { agentManager.removeWorktree(child); } catch { /* best effort */ }
+        }
         if (child.agentStatus !== 'idle') {
           await taskRepo.update(child.id, {
             agentStatus: 'idle',
             startedAt: undefined,
             completedAt: undefined,
+            worktreePath: undefined,
           });
         }
       }
@@ -216,11 +221,14 @@ export function createGroupsRouter(
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
 
-    // Stop any running agents for children
+    // Stop any running agents and clean up worktrees
     const children = await groupRepo.getChildTasks(id);
     for (const child of children) {
       if (agentManager.isRunning(child.id)) {
         await agentManager.stopAgent(child.id);
+      }
+      if (child.worktreePath) {
+        try { agentManager.removeWorktree(child); } catch { /* best effort */ }
       }
     }
 
@@ -292,10 +300,13 @@ export function createGroupsRouter(
       await agentManager.stopGroup(id);
     }
 
-    // Archive all children
+    // Archive all children and clean up worktrees
     const children = await groupRepo.getChildTasks(id);
     for (const child of children) {
-      await taskRepo.update(child.id, { archived: true });
+      if (child.worktreePath) {
+        try { agentManager.removeWorktree(child); } catch { /* best effort */ }
+      }
+      await taskRepo.update(child.id, { archived: true, worktreePath: undefined });
     }
 
     const updated = await groupRepo.update(id, { archived: true });
