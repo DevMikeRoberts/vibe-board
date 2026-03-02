@@ -62,8 +62,18 @@ export function App() {
 
   // Derive live task from tasks array so it stays current with WS updates
   const selectedTask = useMemo(
-    () => (selectedTaskId ? tasks.find((t) => t.id === selectedTaskId) ?? null : null),
-    [selectedTaskId, tasks]
+    () => {
+      if (!selectedTaskId) return null;
+      // Search standalone tasks first, then group children
+      const standalone = tasks.find((t) => t.id === selectedTaskId);
+      if (standalone) return standalone;
+      for (const g of groups) {
+        const child = g.children.find((c) => c.id === selectedTaskId);
+        if (child) return child;
+      }
+      return null;
+    },
+    [selectedTaskId, tasks, groups]
   );
 
   const selectedGroup = useMemo(
@@ -171,8 +181,18 @@ export function App() {
   }, []);
 
   const handleClosePanel = useCallback(() => {
+    // If viewing a grouped child, return to its group panel
+    if (selectedTaskId) {
+      for (const g of groups) {
+        if (g.children.some((c) => c.id === selectedTaskId)) {
+          setSelectedTaskId(null);
+          setSelectedGroupId(g.id);
+          return;
+        }
+      }
+    }
     setSelectedTaskId(null);
-  }, []);
+  }, [selectedTaskId, groups]);
 
   const handleOpenDialog = useCallback(() => {
     setDialogOpen(true);
