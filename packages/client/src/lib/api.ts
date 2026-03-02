@@ -1,6 +1,17 @@
-import type { Task, TaskTemplate, AgentEvent, AgentInfo, AgentType, ColumnId, Priority } from '@/types';
+import type { Task, TaskGroup, TaskTemplate, AgentEvent, AgentInfo, AgentType, ColumnId, Priority } from '@/types';
 
 export type { AgentInfo };
+
+export interface TaskGroupWithChildren extends TaskGroup {
+  children: Task[];
+}
+
+export interface CreateGroupChild {
+  title: string;
+  description?: string;
+  agentType?: AgentType;
+  useWorktree?: boolean;
+}
 
 const BASE = '/api';
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
@@ -85,6 +96,36 @@ export const api = {
 
   deleteTemplate: (id: string) =>
     request<void>(`/templates/${id}`, { method: 'DELETE' }),
+
+  // --- Groups ---
+  getGroups: (includeArchived = false) =>
+    request<TaskGroupWithChildren[]>(`/groups${includeArchived ? '?archived=true' : ''}`),
+
+  getGroup: (id: string) =>
+    request<TaskGroupWithChildren>(`/groups/${id}`),
+
+  createGroup: (data: {
+    title: string;
+    description?: string;
+    priority?: Priority;
+    repoPath?: string;
+    baseBranch?: string;
+    maxConcurrency: number;
+    children: CreateGroupChild[];
+    autoRun?: boolean;
+  }) => request<TaskGroupWithChildren>('/groups', { method: 'POST', body: JSON.stringify(data) }),
+
+  updateGroup: (id: string, data: Partial<TaskGroup>) =>
+    request<TaskGroupWithChildren>(`/groups/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
+  deleteGroup: (id: string) =>
+    request<void>(`/groups/${id}`, { method: 'DELETE' }),
+
+  runGroup: (id: string) =>
+    request<TaskGroupWithChildren>(`/groups/${id}/run`, { method: 'POST' }),
+
+  stopGroup: (id: string) =>
+    request<{ stopped: boolean }>(`/groups/${id}/stop`, { method: 'POST' }),
 };
 
 // --- WebSocket (shared singleton) ---

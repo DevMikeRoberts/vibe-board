@@ -6,12 +6,14 @@ import { useTheme } from '@/hooks/useTheme';
 import { useTasks } from '@/hooks/useTasks';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useTaskGroups } from '@/hooks/useTaskGroups';
 import { PRIORITY_WEIGHT } from '@/lib/priority-config';
 import { Header } from '@/components/Header';
 import type { StatusFilter } from '@/components/FilterChips';
 import { statusFilterToStatuses } from '@/components/FilterChips';
 import { Board } from '@/components/Board';
 import { TaskDialog } from '@/components/TaskDialog';
+import { TaskGroupDialog } from '@/components/TaskGroupDialog';
 import { AgentPanel } from '@/components/AgentPanel';
 import { WorktreeDialog } from '@/components/WorktreeDialog';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
@@ -19,7 +21,9 @@ import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 export function App() {
   const { theme, toggleTheme } = useTheme();
   const { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, configureAndRunTask, createPR, cleanupWorktree } = useTasks();
+  const { createGroup } = useTaskGroups();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
@@ -138,6 +142,10 @@ export function App() {
     setDialogOpen(true);
   }, []);
 
+  const handleOpenGroupDialog = useCallback(() => {
+    setGroupDialogOpen(true);
+  }, []);
+
   const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
     setEditingTask(null);
@@ -215,16 +223,18 @@ export function App() {
       setDeletingTask(null);
     } else if (worktreeDialogTaskId) {
       setWorktreeDialogTaskId(null);
+    } else if (groupDialogOpen) {
+      setGroupDialogOpen(false);
     } else if (dialogOpen) {
       setDialogOpen(false);
     } else if (selectedTaskId) {
       setSelectedTaskId(null);
     }
-  }, [deletingTask, worktreeDialogTaskId, dialogOpen, selectedTaskId]);
+  }, [deletingTask, worktreeDialogTaskId, groupDialogOpen, dialogOpen, selectedTaskId]);
 
   const isAnyOpen = useCallback(
-    () => dialogOpen || selectedTaskId !== null || worktreeDialogTaskId !== null || deletingTask !== null,
-    [dialogOpen, selectedTaskId, worktreeDialogTaskId, deletingTask]
+    () => dialogOpen || groupDialogOpen || selectedTaskId !== null || worktreeDialogTaskId !== null || deletingTask !== null,
+    [dialogOpen, groupDialogOpen, selectedTaskId, worktreeDialogTaskId, deletingTask]
   );
 
   useKeyboardShortcuts({
@@ -259,6 +269,7 @@ export function App() {
         onToggleStatus={handleToggleStatus}
         onClearFilters={handleClearFilters}
         onNewTask={handleOpenDialog}
+        onNewGroup={handleOpenGroupDialog}
       />
 
       <main className="flex-1 overflow-hidden">
@@ -287,6 +298,12 @@ export function App() {
         onSubmit={addTask}
         editTask={editingTask}
         onEditSubmit={handleEditSubmit}
+      />
+
+      <TaskGroupDialog
+        open={groupDialogOpen}
+        onClose={() => setGroupDialogOpen(false)}
+        onSubmit={createGroup}
       />
 
       <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onCleanupWorktree={cleanupWorktree} onReconfigureRetry={handleReconfigureRetry} theme={theme} />

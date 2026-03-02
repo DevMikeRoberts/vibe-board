@@ -24,6 +24,7 @@ interface HeaderProps {
   onToggleStatus: (status: StatusFilter) => void;
   onClearFilters: () => void;
   onNewTask: () => void;
+  onNewGroup: () => void;
 }
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
@@ -33,7 +34,7 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: 'status', label: 'Status' },
 ];
 
-export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showArchived, onToggleArchived, sortBy, sortDir, onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses, onToggleAgentType, onToggleStatus, onClearFilters, onNewTask }: HeaderProps) {
+export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showArchived, onToggleArchived, sortBy, sortDir, onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses, onToggleAgentType, onToggleStatus, onClearFilters, onNewTask, onNewGroup }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const hasActiveFilters = activeAgentTypes.length > 0 || activeStatuses.length > 0;
 
@@ -62,6 +63,15 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
           >
             <Plus className="h-3.5 w-3.5" />
             New Task
+          </button>
+
+          {/* New Group button */}
+          <button
+            onClick={onNewGroup}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Group
           </button>
 
           {/* Search input */}
