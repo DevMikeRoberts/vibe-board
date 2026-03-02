@@ -124,13 +124,8 @@ export function useTasks() {
   }, []);
 
   const createPR = useCallback(async (id: string) => {
-    try {
-      const result = await api.createPR(id);
-      return result.url;
-    } catch (err) {
-      setError(`Failed to create PR: ${(err as Error).message}`);
-      return undefined;
-    }
+    const result = await api.createPR(id);
+    return result.url;
   }, []);
 
   const cleanupWorktree = useCallback(async (id: string) => {

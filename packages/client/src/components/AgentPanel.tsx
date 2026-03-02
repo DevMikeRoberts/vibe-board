@@ -336,6 +336,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
   const [streaming, setStreaming] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [prLoading, setPrLoading] = useState(false);
+  const [prError, setPrError] = useState<string | null>(null);
   const [followUpMessage, setFollowUpMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -356,6 +357,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
     // Reset state for new task
     setPrUrl(null);
     setPrLoading(false);
+    setPrError(null);
     setFollowUpMessage('');
     setSending(false);
 
@@ -615,8 +617,13 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                     <button
                       onClick={async () => {
                         setPrLoading(true);
-                        const url = await onCreatePR(task.id);
-                        if (url) setPrUrl(url);
+                        setPrError(null);
+                        try {
+                          const url = await onCreatePR(task.id);
+                          if (url) setPrUrl(url);
+                        } catch (err: unknown) {
+                          setPrError((err as Error).message || 'Failed to create PR');
+                        }
                         setPrLoading(false);
                       }}
                       disabled={prLoading}
@@ -646,6 +653,29 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onCleanup
                       Clean up worktree
                     </button>
                   )}
+                </div>
+              )}
+
+              {/* PR error with copy-able commands */}
+              {prError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="whitespace-pre-wrap font-mono text-xs text-red-300">{prError}</p>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(prError);
+                      }}
+                      className="shrink-0 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setPrError(null)}
+                    className="mt-2 text-[10px] text-red-400/60 hover:text-red-400"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               )}
             </div>
