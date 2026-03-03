@@ -158,7 +158,7 @@ npm test
 cd packages/e2e && npx playwright test --reporter=list
 ```
 
-7 test files, 81 tests (79 active, 2 skipped integration):
+7 test files covering 81 tests:
 
 | File | Tests | Coverage |
 |------|-------|----------|
