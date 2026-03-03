@@ -1,12 +1,10 @@
-# AI Agent Board
-
 <p align="center">
   <img src="images/logo.png" alt="AI Agent Board logo" width="400">
 </p>
 
-<p align="center">
-  A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, or OpenCode. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
-</p>
+# AI Agent Board
+
+A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, or OpenCode. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
 
 <p align="center">
   <a href="#how-it-works">How It Works</a> •
