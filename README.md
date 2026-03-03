@@ -1,4 +1,4 @@
-# Copilot Kanban Agent
+# Agentic AI Kanban Board
 
 A drag-and-drop Kanban board that assigns coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, or OpenCode. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
 
@@ -54,8 +54,8 @@ A drag-and-drop Kanban board that assigns coding tasks to AI agents — GitHub C
 ### Option 1: Docker Compose (Recommended)
 
 ```bash
-git clone https://github.com/DanWahlin/copilot-kanban-board.git
-cd copilot-kanban-agent
+git clone https://github.com/DanWahlin/agentic-ai-kanban-board.git
+cd agentic-ai-kanban-board
 cp .env.example .env        # Edit .env if you need PostgreSQL or custom settings
 docker compose up -d
 ```
@@ -125,7 +125,7 @@ npm run build:client
 ## Project Structure
 
 ```
-copilot-kanban-agent/
+agentic-ai-kanban-board/
 ├── docker-compose.yml         # Two-container dev setup
 ├── Dockerfile.client          # Vite dev server image
 ├── Dockerfile.server          # Express + agent SDKs image

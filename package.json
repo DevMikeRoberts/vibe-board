@@ -1,5 +1,5 @@
 {
-  "name": "copilot-kanban-agent",
+  "name": "agentic-ai-kanban-board",
   "private": true,
   "version": "0.1.0",
   "workspaces": [
@@ -9,11 +9,11 @@
     "shared"
   ],
   "scripts": {
-    "dev:client": "npm run dev -w @copilot-kanban/client",
-    "dev:server": "npm run dev -w @copilot-kanban/server",
-    "build:client": "npm run build -w @copilot-kanban/client",
-    "build:server": "npm run build -w @copilot-kanban/server",
-    "test": "npm run test -w @copilot-kanban/e2e",
-    "test:e2e": "npm run test -w @copilot-kanban/e2e"
+    "dev:client": "npm run dev -w @agentic-kanban/client",
+    "dev:server": "npm run dev -w @agentic-kanban/server",
+    "build:client": "npm run build -w @agentic-kanban/client",
+    "build:server": "npm run build -w @agentic-kanban/server",
+    "test": "npm run test -w @agentic-kanban/e2e",
+    "test:e2e": "npm run test -w @agentic-kanban/e2e"
   }
 }

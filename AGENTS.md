@@ -2,12 +2,12 @@
 
 ## Project Overview
 
-Copilot Kanban Agent — a drag-and-drop Kanban board that delegates coding tasks to AI coding agents (GitHub Copilot, Claude Code, OpenAI Codex, OpenCode). Monorepo with npm workspaces.
+Agentic AI Kanban Board — a drag-and-drop Kanban board that delegates coding tasks to AI coding agents (GitHub Copilot, Claude Code, OpenAI Codex, OpenCode). Monorepo with npm workspaces.
 
 ## Architecture
 
 ```
-copilot-kanban-agent/
+agentic-ai-kanban-board/
 ├── packages/
 │   ├── client/          # React 19 + Vite + Tailwind 4 + Framer Motion + xterm.js
 │   │   └── src/

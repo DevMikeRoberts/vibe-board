@@ -50,17 +50,17 @@ spec:
       volumes:
         - name: client-src
           hostPath:
-            path: /root/projects/copilot-kanban-agent/packages/client/src
+            path: /root/projects/agentic-ai-kanban-board/packages/client/src
             type: Directory
         - name: shared-src
           hostPath:
-            path: /root/projects/copilot-kanban-agent/shared
+            path: /root/projects/agentic-ai-kanban-board/shared
             type: Directory
         - name: client-vite-config
           hostPath:
-            path: /root/projects/copilot-kanban-agent/packages/client/vite.config.ts
+            path: /root/projects/agentic-ai-kanban-board/packages/client/vite.config.ts
             type: File
         - name: client-index
           hostPath:
-            path: /root/projects/copilot-kanban-agent/packages/client/index.html
+            path: /root/projects/agentic-ai-kanban-board/packages/client/index.html
             type: File

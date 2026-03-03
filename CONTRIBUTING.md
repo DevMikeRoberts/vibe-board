@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to Copilot Kanban Agent!
+Thanks for your interest in contributing to Agentic AI Kanban Board!
 
 ## Getting Started
 

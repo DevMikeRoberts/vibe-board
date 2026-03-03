@@ -1,5 +1,5 @@
 {
-  "name": "@copilot-kanban/e2e",
+  "name": "@agentic-kanban/e2e",
   "private": true,
   "version": "0.1.0",
   "type": "module",

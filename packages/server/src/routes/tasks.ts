@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import path from 'path';
 import type { Task } from '../types.js';
 import { VALID_TRANSITIONS } from '../types.js';
-import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@copilot-kanban/shared/constants.js';
+import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@agentic-kanban/shared/constants.js';
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';

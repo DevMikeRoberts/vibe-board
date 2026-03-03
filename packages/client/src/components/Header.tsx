@@ -49,7 +49,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
           </div>
           <div>
             <h1 className="text-lg font-semibold tracking-tight text-white">
-              Copilot Kanban
+              Agentic AI Kanban
             </h1>
             <div className="flex items-center gap-2">
               <p className="text-sm text-zinc-400">

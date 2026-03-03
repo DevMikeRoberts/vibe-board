@@ -2,14 +2,14 @@
 
 ## About This Project
 
-Copilot Kanban Agent is a **local development tool** that orchestrates AI coding agents on your machine. It is designed to run on `localhost` and is not intended to be exposed to the public internet.
+Agentic AI Kanban Board is a **local development tool** that orchestrates AI coding agents on your machine. It is designed to run on `localhost` and is not intended to be exposed to the public internet.
 
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability, please report it responsibly:
 
 1. **Do not** open a public issue
-2. Use [GitHub's private vulnerability reporting](https://github.com/YOUR_USERNAME/copilot-kanban-agent/security/advisories/new) to submit a report
+2. Use [GitHub's private vulnerability reporting](https://github.com/YOUR_USERNAME/agentic-ai-kanban-board/security/advisories/new) to submit a report
 3. Include steps to reproduce the issue and any relevant details
 
 You should receive an initial response within 72 hours.

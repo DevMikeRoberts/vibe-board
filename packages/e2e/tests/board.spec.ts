@@ -48,7 +48,7 @@ test.describe('Kanban Board', () => {
   });
 
   test('shows app title', async ({ page }) => {
-    await expect(page.getByRole('heading', { name: 'Copilot Kanban' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Agentic AI Kanban' })).toBeVisible();
   });
 
   test('has theme toggle button', async ({ page }) => {

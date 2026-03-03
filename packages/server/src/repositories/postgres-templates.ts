@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import type { TaskTemplate, Priority, AgentType } from '../types.js';
 import type { TemplateRepository } from './template-types.js';
-import { isValidPriority, isValidAgentType } from '@copilot-kanban/shared/constants.js';
+import { isValidPriority, isValidAgentType } from '@agentic-kanban/shared/constants.js';
 
 interface TemplateRow {
   id: string;

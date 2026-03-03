@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import type { TaskTemplate } from '../types.js';
-import { isValidPriority, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@copilot-kanban/shared/constants.js';
+import { isValidPriority, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@agentic-kanban/shared/constants.js';
 import type { TemplateRepository } from '../repositories/template-types.js';
 import { paramId } from './helpers.js';
 

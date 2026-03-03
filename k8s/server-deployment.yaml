@@ -80,15 +80,15 @@ spec:
       volumes:
         - name: server-src
           hostPath:
-            path: /root/projects/copilot-kanban-agent/packages/server/src
+            path: /root/projects/agentic-ai-kanban-board/packages/server/src
             type: Directory
         - name: shared-src
           hostPath:
-            path: /root/projects/copilot-kanban-agent/shared
+            path: /root/projects/agentic-ai-kanban-board/shared
             type: Directory
         - name: server-data
           hostPath:
-            path: /root/projects/copilot-kanban-agent/packages/server/data
+            path: /root/projects/agentic-ai-kanban-board/packages/server/data
             type: DirectoryOrCreate
         - name: host-projects
           hostPath:

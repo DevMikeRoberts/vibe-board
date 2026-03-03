@@ -9,7 +9,7 @@ import {
   MAX_DESCRIPTION_LENGTH,
   MAX_GROUP_CHILDREN,
   MIN_GROUP_CHILDREN,
-} from '@copilot-kanban/shared/constants.js';
+} from '@agentic-kanban/shared/constants.js';
 import type { TaskGroupRepository } from '../repositories/group-types.js';
 import type { TaskRepository } from '../repositories/types.js';
 import type { AgentManager } from '../services/agent-manager.js';
