@@ -2,6 +2,8 @@
 
 A drag-and-drop Kanban board that assigns coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, or OpenCode. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
 
+![AI Agent Board in action](images/agent-board-in-action.gif)
+
 ## How It Works
 
 1. **Create a task** in the Backlog column
