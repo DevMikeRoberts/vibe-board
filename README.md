@@ -2,6 +2,37 @@
 
 A drag-and-drop Kanban board that assigns coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, or OpenCode. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
 
+## How It Works
+
+1. **Create a task** in the Backlog column
+2. **Drag it to In Progress** — the agent panel opens automatically
+3. **Configure the run** — set the repo path, branch name, agent type, and whether to use a git worktree
+4. **Click Start Agent** — the selected agent begins working, streaming progress in real-time
+5. **Review the results** — commands executed, files modified, output produced
+6. **Merge or create a PR** — merge the branch to main locally, or create a PR if the repo has a GitHub remote
+
+### Multi-Agent Architecture
+
+The server uses a **provider pattern** (via `@codewithdan/agent-sdk-core`) to support multiple AI coding agents behind a common interface:
+
+- **`AgentProvider`** — creates sessions, reports availability
+- **`AgentSession`** — runs a task, emits events, supports abort
+- **`AgentManager`** — orchestrates sessions with timeouts, event caching, and graceful cleanup
+
+Each task can specify which agent to use. Available agents are auto-detected at startup by checking for installed CLIs. Four providers are supported: Copilot, Claude Code, Codex, and OpenCode. Events from all providers are normalized into a common `AgentEvent` format and streamed to the UI via WebSocket.
+
+### Task Groups
+
+For projects needing multiple parallel changes, **Task Groups** let you define a batch of related tasks in a single form:
+
+1. Click **New Group** (or press `G`) to open the group creation dialog
+2. Set group-level config: title, repo path, base branch, priority
+3. Add child tasks (2–20), each with its own title, description, agent type, and worktree toggle
+4. Set **parallelism** with a slider (1 to N) — controls how many agents run concurrently
+5. Click **Create & Run** to launch immediately, or **Create Group** to add to backlog
+
+Groups appear as a single card on the board showing aggregate progress. Click to expand the **Group Panel** with per-child status, retry buttons for failures, and drill-through to individual agent panels. Groups auto-advance to "review" when all children complete successfully.
+
 ## Features
 
 - Kanban board with Backlog, In Progress, Review, Done columns
@@ -116,37 +147,6 @@ ai-agent-board/
 │   └── e2e/                   # Playwright end-to-end tests
 └── shared/                    # Shared types (Task, TaskGroup, TaskTemplate, AgentEvent, etc.) + validation
 ```
-
-## How It Works
-
-1. **Create a task** in the Backlog column
-2. **Drag it to In Progress** — the agent panel opens automatically
-3. **Configure the run** — set the repo path, branch name, agent type, and whether to use a git worktree
-4. **Click Start Agent** — the selected agent begins working, streaming progress in real-time
-5. **Review the results** — commands executed, files modified, output produced
-6. **Merge or create a PR** — merge the branch to main locally, or create a PR if the repo has a GitHub remote
-
-### Multi-Agent Architecture
-
-The server uses a **provider pattern** (via `@codewithdan/agent-sdk-core`) to support multiple AI coding agents behind a common interface:
-
-- **`AgentProvider`** — creates sessions, reports availability
-- **`AgentSession`** — runs a task, emits events, supports abort
-- **`AgentManager`** — orchestrates sessions with timeouts, event caching, and graceful cleanup
-
-Each task can specify which agent to use. Available agents are auto-detected at startup by checking for installed CLIs. Four providers are supported: Copilot, Claude Code, Codex, and OpenCode. Events from all providers are normalized into a common `AgentEvent` format and streamed to the UI via WebSocket.
-
-### Task Groups
-
-For projects needing multiple parallel changes, **Task Groups** let you define a batch of related tasks in a single form:
-
-1. Click **New Group** (or press `G`) to open the group creation dialog
-2. Set group-level config: title, repo path, base branch, priority
-3. Add child tasks (2–20), each with its own title, description, agent type, and worktree toggle
-4. Set **parallelism** with a slider (1 to N) — controls how many agents run concurrently
-5. Click **Create & Run** to launch immediately, or **Create Group** to add to backlog
-
-Groups appear as a single card on the board showing aggregate progress. Click to expand the **Group Panel** with per-child status, retry buttons for failures, and drill-through to individual agent panels. Groups auto-advance to "review" when all children complete successfully.
 
 ## Tests
 
