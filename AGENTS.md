@@ -7,7 +7,7 @@ Agentic AI Kanban Board — a drag-and-drop Kanban board that delegates coding t
 ## Architecture
 
 ```
-agentic-ai-kanban-board/
+ai-agent-board/
 ├── packages/
 │   ├── client/          # React 19 + Vite + Tailwind 4 + Framer Motion + xterm.js
 │   │   └── src/
@@ -85,6 +85,33 @@ npm install
 npm run dev:server   # Terminal 1 — port 3001
 npm run dev:client   # Terminal 2 — port 4175
 ```
+
+## Production (systemd)
+
+The production server (`kanban.codewithdan.com`) runs via two systemd services:
+
+| Service | Unit File | Port | Description |
+|---------|-----------|------|-------------|
+| `ai-agent-board-server` | `/etc/systemd/system/ai-agent-board-server.service` | 3001 | Express API + WebSocket + agent SDKs |
+| `ai-agent-board-client` | `/etc/systemd/system/ai-agent-board-client.service` | 4175 | Vite dev server (proxied by nginx/reverse proxy) |
+
+```bash
+# Check status
+systemctl status ai-agent-board-server ai-agent-board-client
+
+# Restart after code changes
+systemctl restart ai-agent-board-server ai-agent-board-client
+
+# View logs
+journalctl -u ai-agent-board-server -f
+journalctl -u ai-agent-board-client -f
+
+# Restart just one
+systemctl restart ai-agent-board-server
+systemctl restart ai-agent-board-client
+```
+
+**Important:** The server reads `packages/server/.env` via dotenv. Production uses PostgreSQL via the `ai-agent-board-db` Docker container (postgres:16-alpine on port 5433). DB credentials: `user=kanban, db=kanban`. If the password needs resetting: `docker exec ai-agent-board-db psql -U kanban -c "ALTER USER kanban WITH PASSWORD '<pass>'"`. Do **not** fall back to SQLite in production.
 
 ## Build
 
