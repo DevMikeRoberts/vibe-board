@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Kanban, Search, Archive, ArrowUpDown, Filter, Plus, X } from 'lucide-react';
+import { Kanban, Search, Archive, ArrowUpDown, Filter, Plus, X, Menu } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { FilterChips, type StatusFilter } from './FilterChips';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
@@ -37,16 +37,16 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
 
 export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showArchived, onToggleArchived, sortBy, sortDir, onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses, onToggleAgentType, onToggleStatus, onClearFilters, onNewTask, onNewGroup }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const mobileSearchRef = useRef<HTMLInputElement>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuSearchRef = useRef<HTMLInputElement>(null);
   const hasActiveFilters = activeAgentTypes.length > 0 || activeStatuses.length > 0;
   const { status: wsStatus, wasConnected } = useConnectionStatus();
 
   useEffect(() => {
-    if (mobileSearchOpen) {
-      mobileSearchRef.current?.focus();
+    if (mobileMenuOpen) {
+      mobileMenuSearchRef.current?.focus();
     }
-  }, [mobileSearchOpen]);
+  }, [mobileMenuOpen]);
 
   return (
     <header className="sticky top-0 z-50 border-b border-zinc-700/30 bg-zinc-900 shadow-md">
@@ -90,38 +90,28 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
 
         {/* Action buttons */}
         <div className="flex items-center gap-1 md:gap-2">
+          {/* ── Desktop-only controls ── */}
           {/* New Task button */}
           <button
             onClick={onNewTask}
-            className="flex items-center gap-1.5 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors px-2 md:px-3"
+            className="hidden md:flex items-center gap-1.5 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors px-3"
             aria-label="New Task"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden md:inline">New Task</span>
+            <span>New Task</span>
           </button>
 
           {/* New Group button */}
           <button
             onClick={onNewGroup}
-            className="flex items-center gap-1.5 h-8 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors px-2 md:px-3"
+            className="hidden md:flex items-center gap-1.5 h-8 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors px-3"
             aria-label="New Group"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden md:inline">New Group</span>
+            <span>New Group</span>
           </button>
 
-          {/* Search — icon toggle on mobile, always-visible input on desktop */}
-          <button
-            onClick={() => setMobileSearchOpen((v) => !v)}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors md:hidden ${
-              mobileSearchOpen || searchQuery
-                ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-            }`}
-            aria-label={mobileSearchOpen ? 'Close search' : 'Open search'}
-          >
-            {mobileSearchOpen ? <X className="h-3.5 w-3.5" /> : <Search className="h-3.5 w-3.5" />}
-          </button>
+          {/* Search — always-visible input on desktop */}
           <div className="relative hidden md:block">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-300" />
             <input
@@ -134,10 +124,10 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             />
           </div>
 
-          {/* Filter toggle */}
+          {/* Filter toggle — desktop */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-2 md:px-3 ${
+            className={`hidden md:flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
               showFilters || hasActiveFilters
                 ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
                 : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
@@ -145,11 +135,10 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             aria-label="Toggle filters"
           >
             <Filter className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden md:inline">Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}</span>
-            {hasActiveFilters && <span className="md:hidden text-[10px] font-bold">{activeAgentTypes.length + activeStatuses.length}</span>}
+            <span>Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}</span>
           </button>
 
-          {/* Sort control — hidden on mobile */}
+          {/* Sort control — desktop */}
           <div className="hidden md:flex items-center gap-1">
             <ArrowUpDown className="h-3.5 w-3.5 text-zinc-400" />
             <select
@@ -170,10 +159,10 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             </button>
           </div>
 
-          {/* Archive toggle */}
+          {/* Archive toggle — desktop */}
           <button
             onClick={onToggleArchived}
-            className={`flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-2 md:px-3 ${
+            className={`hidden md:flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
               showArchived
                 ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
                 : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
@@ -181,34 +170,130 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             aria-label={showArchived ? 'Hide archived' : 'Show archived'}
           >
             <Archive className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden md:inline">{showArchived ? 'Hide' : 'Show'} Archived</span>
+            <span>{showArchived ? 'Hide' : 'Show'} Archived</span>
           </button>
 
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+
+          {/* ── Mobile hamburger ── */}
+          <button
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors md:hidden ${
+              mobileMenuOpen || hasActiveFilters || showArchived
+                ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
+                : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+            }`}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileMenuOpen}
+          >
+            {mobileMenuOpen ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+          </button>
         </div>
       </div>
 
-      {/* Mobile search row */}
-      {mobileSearchOpen && (
-        <div className="px-3 pb-2 md:hidden">
+      {/* ── Mobile expanded menu panel ── */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-zinc-700/40 bg-zinc-900 px-3 py-3 space-y-3">
+          {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-300" />
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
             <input
-              ref={mobileSearchRef}
+              ref={mobileMenuSearchRef}
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="Search tasks..."
               aria-label="Search tasks"
-              className="h-8 w-full rounded-lg border border-zinc-700 bg-zinc-800 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-800 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
             />
           </div>
+
+          {/* New Task + New Group */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => { onNewTask(); setMobileMenuOpen(false); }}
+              className="flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              New Task
+            </button>
+            <button
+              onClick={() => { onNewGroup(); setMobileMenuOpen(false); }}
+              className="flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              New Group
+            </button>
+          </div>
+
+          {/* Sort row */}
+          <div className="flex items-center gap-2">
+            <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+            <span className="text-xs text-zinc-400">Sort</span>
+            <select
+              value={sortBy}
+              onChange={(e) => onSortByChange(e.target.value as SortBy)}
+              className="flex-1 h-9 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-xs text-zinc-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+              aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
+            >
+              {sortDir === 'asc' ? '↑' : '↓'}
+            </button>
+          </div>
+
+          {/* Filter + Archive row */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg border transition-colors text-xs font-medium ${
+                showFilters || hasActiveFilters
+                  ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+              }`}
+              aria-label="Toggle filters"
+            >
+              <Filter className="h-3.5 w-3.5 shrink-0" />
+              Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}
+            </button>
+            <button
+              onClick={onToggleArchived}
+              className={`flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg border transition-colors text-xs font-medium ${
+                showArchived
+                  ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+              }`}
+              aria-label={showArchived ? 'Hide archived' : 'Show archived'}
+            >
+              <Archive className="h-3.5 w-3.5 shrink-0" />
+              {showArchived ? 'Hide' : 'Show'} Archived
+            </button>
+          </div>
+
+          {/* Filter chips (shown when filter is active) */}
+          {showFilters && (
+            <div className="flex items-center gap-2 flex-wrap pt-0.5">
+              <FilterChips
+                activeAgentTypes={activeAgentTypes}
+                activeStatuses={activeStatuses}
+                onToggleAgentType={onToggleAgentType}
+                onToggleStatus={onToggleStatus}
+                onClear={onClearFilters}
+              />
+            </div>
+          )}
         </div>
       )}
 
-      {/* Collapsible filter chips row */}
+      {/* Desktop filter chips row */}
       {showFilters && (
-        <div className="flex items-center justify-end gap-2 px-3 pb-2 md:px-6">
+        <div className="hidden md:flex items-center justify-end gap-2 px-6 pb-2">
           <FilterChips
             activeAgentTypes={activeAgentTypes}
             activeStatuses={activeStatuses}
