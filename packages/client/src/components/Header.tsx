@@ -89,29 +89,33 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-1 md:gap-2">
+        <div className="flex items-center gap-1 md:gap-0">
           {/* ── Desktop-only controls ── */}
-          {/* New Task button */}
-          <button
-            onClick={onNewTask}
-            className="hidden md:flex items-center gap-1.5 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors px-3"
-            aria-label="New Task"
-          >
-            <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span>New Task</span>
-          </button>
 
-          {/* New Group button */}
-          <button
-            onClick={onNewGroup}
-            className="hidden md:flex items-center gap-1.5 h-8 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors px-3"
-            aria-label="New Group"
-          >
-            <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span>New Group</span>
-          </button>
+          {/* Group 1: Create actions */}
+          <div className="hidden md:flex items-center gap-1.5">
+            <button
+              onClick={onNewTask}
+              className="flex items-center gap-1.5 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors px-3"
+              aria-label="New Task"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span>New Task</span>
+            </button>
+            <button
+              onClick={onNewGroup}
+              className="flex items-center gap-1.5 h-8 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors px-3"
+              aria-label="New Group"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span>New Group</span>
+            </button>
+          </div>
 
-          {/* Search — always-visible input on desktop */}
+          {/* Divider */}
+          <div className="hidden md:block mx-2.5 h-5 w-px bg-zinc-700" />
+
+          {/* Group 2: Search */}
           <div className="relative hidden md:block">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-300" />
             <input
@@ -124,54 +128,65 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             />
           </div>
 
-          {/* Filter toggle — desktop */}
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className={`hidden md:flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
-              showFilters || hasActiveFilters
-                ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-            }`}
-            aria-label="Toggle filters"
-          >
-            <Filter className="h-3.5 w-3.5 shrink-0" />
-            <span>Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}</span>
-          </button>
+          {/* Divider */}
+          <div className="hidden md:block mx-2.5 h-5 w-px bg-zinc-700" />
 
-          {/* Sort control — desktop */}
-          <div className="hidden md:flex items-center gap-1">
-            <ArrowUpDown className="h-3.5 w-3.5 text-zinc-400" />
-            <select
-              value={sortBy}
-              onChange={(e) => onSortByChange(e.target.value as SortBy)}
-              className="h-8 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-xs text-zinc-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+          {/* Group 3: View controls — filter, sort, archive */}
+          <div className="hidden md:flex items-center gap-1.5">
+            {/* Filter toggle */}
             <button
-              onClick={() => onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
-              aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
+                showFilters || hasActiveFilters
+                  ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+              }`}
+              aria-label="Toggle filters"
             >
-              {sortDir === 'asc' ? '↑' : '↓'}
+              <Filter className="h-3.5 w-3.5 shrink-0" />
+              <span>Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}</span>
+            </button>
+
+            {/* Sort control — joined group */}
+            <div className="flex items-center h-8 rounded-lg border border-zinc-700 bg-zinc-800 overflow-hidden">
+              <div className="flex items-center gap-1.5 pl-2.5 pr-1 text-zinc-400">
+                <ArrowUpDown className="h-3.5 w-3.5 shrink-0" />
+              </div>
+              <select
+                value={sortBy}
+                onChange={(e) => onSortByChange(e.target.value as SortBy)}
+                className="h-full bg-transparent px-1 text-xs text-zinc-200 focus:outline-none cursor-pointer"
+              >
+                {SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')}
+                className="flex h-full w-7 items-center justify-center border-l border-zinc-700 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
+              >
+                {sortDir === 'asc' ? '↑' : '↓'}
+              </button>
+            </div>
+
+            {/* Archive toggle */}
+            <button
+              onClick={onToggleArchived}
+              className={`flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
+                showArchived
+                  ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
+                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
+              }`}
+              aria-label={showArchived ? 'Hide archived' : 'Show archived'}
+            >
+              <Archive className="h-3.5 w-3.5 shrink-0" />
+              <span>{showArchived ? 'Hide' : 'Show'} Archived</span>
             </button>
           </div>
 
-          {/* Archive toggle — desktop */}
-          <button
-            onClick={onToggleArchived}
-            className={`hidden md:flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
-              showArchived
-                ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
-                : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-            }`}
-            aria-label={showArchived ? 'Hide archived' : 'Show archived'}
-          >
-            <Archive className="h-3.5 w-3.5 shrink-0" />
-            <span>{showArchived ? 'Hide' : 'Show'} Archived</span>
-          </button>
+          {/* Divider */}
+          <div className="hidden md:block mx-2.5 h-5 w-px bg-zinc-700" />
 
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
