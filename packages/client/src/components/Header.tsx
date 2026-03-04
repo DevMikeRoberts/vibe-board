@@ -56,33 +56,29 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500">
             <Kanban className="h-4 w-4 text-white" />
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold tracking-tight text-white md:text-lg">
-              AI Agent Board
-            </h1>
-            <div className="hidden items-center gap-2 md:flex">
-              <span className="flex items-center gap-1 text-[10px]">
-                {wsStatus === 'connected' && (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-emerald-500/70">Live</span>
-                  </>
-                )}
-                {wsStatus === 'disconnected' && wasConnected && (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    <span className="text-red-400">Reconnecting…</span>
-                  </>
-                )}
-                {wsStatus === 'connecting' && (
-                  <>
-                    <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    <span className="text-amber-400/70">Connecting…</span>
-                  </>
-                )}
-              </span>
-            </div>
-          </div>
+          <h1 className="truncate text-base font-semibold tracking-tight text-white md:text-lg">
+            AI Agent Board
+          </h1>
+          <span className="hidden items-center gap-1 text-[10px] md:flex">
+            {wsStatus === 'connected' && (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-emerald-500/70">Live</span>
+              </>
+            )}
+            {wsStatus === 'disconnected' && wasConnected && (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                <span className="text-red-400">Reconnecting…</span>
+              </>
+            )}
+            {wsStatus === 'connecting' && (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-amber-400/70">Connecting…</span>
+              </>
+            )}
+          </span>
         </div>
 
         {/* Action buttons */}
