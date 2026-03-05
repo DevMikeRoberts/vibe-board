@@ -27,19 +27,19 @@ function eventToLines(event: AgentEvent): string {
   switch (event.type) {
     case 'file_read': {
       const file = event.metadata?.file ?? event.content;
-      return `${ANSI.cyan}▸ read  ${ANSI.reset}${ANSI.dim}${file}${ANSI.reset}\r\n`;
+      return `${ANSI.cyan}▸ read  ${ANSI.reset}${file}\r\n`;
     }
     case 'file_write':
     case 'file_edit': {
       const file = event.metadata?.file ?? event.content;
-      return `${ANSI.yellow}▸ write ${ANSI.reset}${ANSI.dim}${file}${ANSI.reset}\r\n`;
+      return `${ANSI.yellow}▸ write ${ANSI.reset}${file}\r\n`;
     }
     case 'command': {
       const cmd = event.metadata?.command ?? event.content;
       return `${ANSI.blue}$ ${ANSI.reset}${cmd}\r\n`;
     }
     case 'command_output': {
-      const lines = event.content.split('\n').map(l => `${ANSI.gray}  ${l}${ANSI.reset}`).join('\r\n');
+      const lines = event.content.split('\n').map(l => `  ${l}`).join('\r\n');
       return lines + '\r\n';
     }
     case 'thinking': {
@@ -60,24 +60,24 @@ function eventToLines(event: AgentEvent): string {
 }
 
 const DARK_THEME = {
-  background: 'transparent',
-  foreground: '#e2e8f0',
-  cursor:     '#e2e8f0',
+  background: '#0f172a',
+  foreground: '#f1f5f9',
+  cursor:     '#f1f5f9',
   black:      '#1e293b',
-  red:        '#f87171',
-  green:      '#4ade80',
-  yellow:     '#facc15',
-  blue:       '#60a5fa',
-  magenta:    '#c084fc',
-  cyan:       '#22d3ee',
-  white:      '#e2e8f0',
-  brightBlack:'#64748b',
+  red:        '#fca5a5',
+  green:      '#86efac',
+  yellow:     '#fde68a',
+  blue:       '#93c5fd',
+  magenta:    '#d8b4fe',
+  cyan:       '#67e8f9',
+  white:      '#f1f5f9',
+  brightBlack:'#cbd5e1',
 };
 
 const LIGHT_THEME = {
-  background: 'transparent',
-  foreground: '#1e293b',
-  cursor:     '#1e293b',
+  background: '#f8fafc',
+  foreground: '#0f172a',
+  cursor:     '#0f172a',
   black:      '#e2e8f0',
   red:        '#dc2626',
   green:      '#16a34a',
@@ -85,8 +85,8 @@ const LIGHT_THEME = {
   blue:       '#2563eb',
   magenta:    '#9333ea',
   cyan:       '#0891b2',
-  white:      '#1e293b',
-  brightBlack:'#94a3b8',
+  white:      '#0f172a',
+  brightBlack:'#64748b',
 };
 
 export function TerminalView({ events, streaming, theme = 'dark' }: TerminalViewProps) {
