@@ -51,7 +51,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const [repoPath, setRepoPath] = useState('');
   const [branchName, setBranchName] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
-  const [useWorktree, setUseWorktree] = useState(true);
+  const [useWorktree, setUseWorktree] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pathError, setPathError] = useState('');
   const [pendingImages, setPendingImages] = useState<File[]>([]);
@@ -69,7 +69,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setRepoPath(editTask.repoPath || '');
       setBranchName(editTask.branchName || `task/${slugify(editTask.title)}`);
       setBaseBranch(editTask.baseBranch || 'main');
-      setUseWorktree(editTask.useWorktree ?? true);
+      setUseWorktree(editTask.useWorktree ?? false);
       // Load attachments from server
       api.getAttachments(editTask.id).then(setExistingAttachments).catch(() => setExistingAttachments([]));
       // Highlight missing path if opened via Play button
@@ -88,7 +88,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setRepoPath('');
       setBranchName('');
       setBaseBranch('main');
-      setUseWorktree(true);
+      setUseWorktree(false);
       setSubmitting(false);
       setPathError('');
       setPendingImages([]);
@@ -168,7 +168,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setRepoPath('');
       setBranchName('');
       setBaseBranch('main');
-      setUseWorktree(true);
+      setUseWorktree(false);
       setPendingImages([]);
       setExistingAttachments([]);
       onClose();
