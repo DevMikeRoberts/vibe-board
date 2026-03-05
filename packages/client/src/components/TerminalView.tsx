@@ -39,7 +39,13 @@ function eventToLines(event: AgentEvent): string {
       return `${ANSI.blue}$ ${ANSI.reset}${cmd}\r\n`;
     }
     case 'command_output': {
-      const lines = event.content.split('\n').map(l => `  ${l}`).join('\r\n');
+      // Filter empty lines and progress-only noise (e.g. "(0.3s)")
+      const meaningful = event.content.split('\n').filter(l => {
+        const trimmed = l.trim();
+        return trimmed.length > 0 && !/^\(\d+\.\d+s\)$/.test(trimmed);
+      });
+      if (meaningful.length === 0) return '';
+      const lines = meaningful.map(l => `  ${l}`).join('\r\n');
       return lines + '\r\n';
     }
     case 'thinking': {
