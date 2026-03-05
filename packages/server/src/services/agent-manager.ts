@@ -16,10 +16,16 @@ const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
 function loadAttachmentAsBase64(filePath: string, displayName: string, mimeType: string): AgentAttachment | null {
   try {
-    if (!fs.existsSync(filePath)) return null;
-    const data = fs.readFileSync(filePath).toString('base64');
+    if (!fs.existsSync(filePath)) {
+      console.warn(`[agent-manager] attachment file not found: ${filePath}`);
+      return null;
+    }
+    const fileBuffer = fs.readFileSync(filePath);
+    const data = fileBuffer.toString('base64');
+    console.log(`[agent-manager] loaded attachment: ${displayName} (${mimeType}, ${fileBuffer.length} bytes, base64 length: ${data.length})`);
     return { type: 'base64_image', data, displayName, mediaType: mimeType };
-  } catch {
+  } catch (err) {
+    console.error(`[agent-manager] failed to load attachment ${filePath}:`, err);
     return null;
   }
 }
@@ -505,15 +511,19 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         let agentAttachments: AgentAttachment[] | undefined;
         if (this.attachmentStore) {
           const taskAttachments = await this.attachmentStore.getByTaskId(task.id);
+          console.log(`[agent-manager] found ${taskAttachments.length} attachment record(s) in DB for task ${task.id}`);
           if (taskAttachments.length > 0) {
             const loaded: AgentAttachment[] = [];
             for (const a of taskAttachments) {
-              const filePath = path.join(UPLOADS_DIR, a.taskId, a.filename);
-              const att = loadAttachmentAsBase64(filePath, a.originalName, a.mimeType);
+              const srcPath = path.join(UPLOADS_DIR, a.taskId, a.filename);
+              console.log(`[agent-manager] loading attachment: ${srcPath} (${a.originalName}, ${a.mimeType})`);
+              const att = loadAttachmentAsBase64(srcPath, a.originalName, a.mimeType);
               if (att) loaded.push(att);
             }
             if (loaded.length > 0) agentAttachments = loaded;
           }
+        } else {
+          console.log(`[agent-manager] no attachmentStore configured`);
         }
 
         console.log(`[agent-manager] executing ${agentType} for task ${task.id}${agentAttachments?.length ? ` with ${agentAttachments.length} image(s)` : ''}`);
@@ -572,8 +582,8 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       for (const id of attachmentIds) {
         const a = await this.attachmentStore.getById(id);
         if (!a) continue;
-        const filePath = path.join(UPLOADS_DIR, a.taskId, a.filename);
-        const att = loadAttachmentAsBase64(filePath, a.originalName, a.mimeType);
+        const srcPath = path.join(UPLOADS_DIR, a.taskId, a.filename);
+        const att = loadAttachmentAsBase64(srcPath, a.originalName, a.mimeType);
         if (att) loaded.push(att);
       }
       if (loaded.length > 0) agentAttachments = loaded;

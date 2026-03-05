@@ -17,7 +17,6 @@ import { TaskGroupDialog } from '@/components/TaskGroupDialog';
 import { GroupPanel } from '@/components/GroupPanel';
 import { AgentPanel } from '@/components/AgentPanel';
 import type { TaskGroupWithChildren } from '@/lib/api';
-import { WorktreeDialog } from '@/components/WorktreeDialog';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 
 export function App() {
@@ -30,7 +29,7 @@ export function App() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [worktreeDialogTaskId, setWorktreeDialogTaskId] = useState<string | null>(null);
+  const [highlightRequiredFields, setHighlightRequiredFields] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
@@ -215,6 +214,7 @@ export function App() {
   const handleCloseDialog = useCallback(() => {
     setDialogOpen(false);
     setEditingTask(null);
+    setHighlightRequiredFields(false);
   }, []);
 
   const handleEditTask = useCallback((task: Task) => {
@@ -222,7 +222,7 @@ export function App() {
     setDialogOpen(true);
   }, []);
 
-  const handleEditSubmit = useCallback(async (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; baseBranch?: string; useWorktree?: boolean }) => {
+  const handleEditSubmit = useCallback(async (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean }) => {
     return updateTask(id, updates);
   }, [updateTask]);
 
@@ -254,15 +254,28 @@ export function App() {
     unarchiveTask(task.id);
   }, [unarchiveTask]);
 
-  // Worktree dialog: intercept Run to show config dialog first
-  const worktreeDialogTask = useMemo(
-    () => (worktreeDialogTaskId ? tasks.find((t) => t.id === worktreeDialogTaskId) ?? null : null),
-    [worktreeDialogTaskId, tasks]
-  );
-
+  // Worktree dialog: intercept Run — if task has repoPath, run directly; otherwise open edit dialog
   const handleRunWithConfig = useCallback((taskId: string) => {
-    setWorktreeDialogTaskId(taskId);
-  }, []);
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    if (task.repoPath) {
+      // Task already configured — run directly
+      setSelectedTaskId(taskId);
+      configureAndRunTask(taskId, {
+        repoPath: task.repoPath,
+        branchName: task.branchName || `task/${task.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)}`,
+        baseBranch: task.baseBranch || 'main',
+        useWorktree: task.useWorktree ?? true,
+        agentType: task.agentType,
+      });
+    } else {
+      // Missing config — open edit dialog with required fields highlighted
+      setEditingTask(task);
+      setHighlightRequiredFields(true);
+      setDialogOpen(true);
+    }
+  }, [tasks, configureAndRunTask]);
 
   const handleRetryTask = useCallback((task: Task) => {
     setSelectedTaskId(task.id);
@@ -270,45 +283,34 @@ export function App() {
   }, [runTask]);
 
   const handleReconfigureRetry = useCallback((taskId: string) => {
-    setWorktreeDialogTaskId(taskId);
-  }, []);
-
-  const handleWorktreeSubmit = useCallback(
-    async (config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean; agentType?: AgentType }) => {
-      if (!worktreeDialogTaskId) return;
-      const taskId = worktreeDialogTaskId;
-      setSelectedTaskId(taskId);
-      setWorktreeDialogTaskId(null);
-      await configureAndRunTask(taskId, config);
-    },
-    [worktreeDialogTaskId, configureAndRunTask]
-  );
-
-  const handleCloseWorktreeDialog = useCallback(() => {
-    setWorktreeDialogTaskId(null);
-  }, []);
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    setEditingTask(task);
+    setHighlightRequiredFields(true);
+    setDialogOpen(true);
+  }, [tasks]);
 
   // Keyboard shortcuts
   const handleCloseAll = useCallback(() => {
     if (deletingTask || deletingGroupId) {
       setDeletingTask(null);
       setDeletingGroupId(null);
-    } else if (worktreeDialogTaskId) {
-      setWorktreeDialogTaskId(null);
     } else if (groupDialogOpen) {
       setGroupDialogOpen(false);
     } else if (dialogOpen) {
       setDialogOpen(false);
+      setEditingTask(null);
+      setHighlightRequiredFields(false);
     } else if (selectedGroupId) {
       setSelectedGroupId(null);
     } else if (selectedTaskId) {
       setSelectedTaskId(null);
     }
-  }, [deletingTask, deletingGroupId, worktreeDialogTaskId, groupDialogOpen, dialogOpen, selectedGroupId, selectedTaskId]);
+  }, [deletingTask, deletingGroupId, groupDialogOpen, dialogOpen, selectedGroupId, selectedTaskId]);
 
   const isAnyOpen = useCallback(
-    () => dialogOpen || groupDialogOpen || selectedTaskId !== null || selectedGroupId !== null || worktreeDialogTaskId !== null || deletingTask !== null || deletingGroupId !== null,
-    [dialogOpen, groupDialogOpen, selectedTaskId, selectedGroupId, worktreeDialogTaskId, deletingTask, deletingGroupId]
+    () => dialogOpen || groupDialogOpen || selectedTaskId !== null || selectedGroupId !== null || deletingTask !== null || deletingGroupId !== null,
+    [dialogOpen, groupDialogOpen, selectedTaskId, selectedGroupId, deletingTask, deletingGroupId]
   );
 
   useKeyboardShortcuts({
@@ -376,6 +378,7 @@ export function App() {
         onSubmit={addTask}
         editTask={editingTask}
         onEditSubmit={handleEditSubmit}
+        highlightRequired={highlightRequiredFields}
       />
 
       <TaskGroupDialog
@@ -395,13 +398,6 @@ export function App() {
         onStopGroup={handleStopGroup}
         onRetryChild={handleRetryChild}
         onChildClick={handleChildClick}
-      />
-
-      <WorktreeDialog
-        open={worktreeDialogTaskId !== null}
-        task={worktreeDialogTask}
-        onClose={handleCloseWorktreeDialog}
-        onSubmit={handleWorktreeSubmit}
       />
 
       <DeleteConfirmDialog

@@ -12,6 +12,14 @@ import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 import { api } from '@/lib/api';
 import ImageUpload from './ImageUpload';
 
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+}
+
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
@@ -19,7 +27,9 @@ interface TaskDialogProps {
   /** When set, dialog is in edit mode with pre-populated fields */
   editTask?: Task | null;
   /** Called on save in edit mode */
-  onEditSubmit?: (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; baseBranch?: string; useWorktree?: boolean }) => Promise<unknown>;
+  onEditSubmit?: (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean }) => Promise<unknown>;
+  /** When true, highlight missing required fields (e.g. opened from Play button) */
+  highlightRequired?: boolean;
 }
 
 const agents: { value: AgentType; label: string; emoji: string }[] = (
@@ -30,7 +40,7 @@ const priorities: { value: Priority; label: string; emoji: string }[] = (
   Object.entries(PRIORITY_DISPLAY) as [Priority, { emoji: string; label: string }][]
 ).map(([value, { emoji, label }]) => ({ value, label, emoji }));
 
-export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: TaskDialogProps) {
+export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, highlightRequired }: TaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
@@ -39,6 +49,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
   const [showAgent, setShowAgent] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
   const [repoPath, setRepoPath] = useState('');
+  const [branchName, setBranchName] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [useWorktree, setUseWorktree] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -56,10 +67,15 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
       setPriority(editTask.priority || 'medium');
       setAgentType(editTask.agentType || 'copilot');
       setRepoPath(editTask.repoPath || '');
+      setBranchName(editTask.branchName || `task/${slugify(editTask.title)}`);
       setBaseBranch(editTask.baseBranch || 'main');
       setUseWorktree(editTask.useWorktree ?? true);
       // Load attachments from server
       api.getAttachments(editTask.id).then(setExistingAttachments).catch(() => setExistingAttachments([]));
+      // Highlight missing path if opened via Play button
+      if (highlightRequired && !editTask.repoPath) {
+        setPathError('Local path is required to run the agent');
+      }
     } else if (!open) {
       // Reset when dialog closes
       setTitle('');
@@ -70,6 +86,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
       setShowAgent(false);
       setAutoRun(false);
       setRepoPath('');
+      setBranchName('');
       setBaseBranch('main');
       setUseWorktree(true);
       setSubmitting(false);
@@ -77,32 +94,40 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
       setPendingImages([]);
       setExistingAttachments([]);
     }
-  }, [editTask, open]);
+  }, [editTask, open, highlightRequired]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || submitting) return;
 
-    // Client-side path validation
+    // Client-side path validation — required
     const trimmedPath = repoPath.trim();
-    if (trimmedPath) {
-      if (!trimmedPath.startsWith('/') && !trimmedPath.startsWith('~')) {
-        setPathError('Path must be absolute (start with / or ~)');
-        return;
-      }
+    if (!trimmedPath) {
+      setPathError('Local path is required');
+      return;
+    }
+    if (!trimmedPath.startsWith('/') && !trimmedPath.startsWith('~')) {
+      setPathError('Path must be absolute (start with / or ~)');
+      return;
     }
     setPathError('');
 
-    const repoFields = trimmedPath ? {
+    // Auto-generate branch name from title if using worktree and no custom name set
+    const effectiveBranch = useWorktree
+      ? (branchName.trim() || `task/${slugify(title.trim())}`)
+      : undefined;
+
+    const repoFields = {
       repoPath: trimmedPath,
+      branchName: effectiveBranch,
       baseBranch: baseBranch.trim() || 'main',
       useWorktree,
-    } : {};
+    };
 
     setSubmitting(true);
     try {
       if (isEditMode && onEditSubmit) {
-        if (trimmedPath) addRepoPath(trimmedPath);
+        addRepoPath(trimmedPath);
         const result = await onEditSubmit(editTask!.id, {
           title: title.trim(),
           description: description.trim(),
@@ -112,7 +137,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
         });
         if (result === undefined) return; // Server error — keep dialog open
       } else {
-        if (trimmedPath) addRepoPath(trimmedPath);
+        addRepoPath(trimmedPath);
         const result = await onSubmit({
           title: title.trim(),
           description: description.trim(),
@@ -141,6 +166,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
       setAgentType('copilot');
       setAutoRun(false);
       setRepoPath('');
+      setBranchName('');
       setBaseBranch('main');
       setUseWorktree(true);
       setPendingImages([]);
@@ -360,7 +386,9 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
               {/* Repository configuration */}
               <div className="space-y-3 rounded-lg border border-border/50 bg-muted/30 p-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Local Path</label>
+                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                    Local Path <span className="text-red-400">*</span>
+                  </label>
                     <input
                       type="text"
                       value={repoPath}
@@ -397,10 +425,23 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
                           onChange={(e) => setUseWorktree(e.target.checked)}
                           className="rounded border-border"
                         />
-                        Git worktree
+                        Use Git Worktree
                       </label>
                     </div>
                   </div>
+                  {useWorktree && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Branch Name</label>
+                      <input
+                        type="text"
+                        value={branchName}
+                        onChange={(e) => setBranchName(e.target.value)}
+                        placeholder={title.trim() ? `task/${slugify(title.trim())}` : 'task/my-feature'}
+                        className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
+                      />
+                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">Leave blank to auto-generate from title</p>
+                    </div>
+                  )}
                 </div>
 
               {/* Actions */}

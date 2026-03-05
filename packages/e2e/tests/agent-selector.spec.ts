@@ -25,6 +25,8 @@ async function createTask(page: Page, title: string, description = 'Test descrip
   await openCreateDialog(page);
   await page.getByPlaceholder('What needs to be done?').fill(title);
   await page.getByPlaceholder('Describe the task for the Copilot agent...').fill(description);
+  // Local path is required — fill with a valid path
+  await page.getByPlaceholder('/host-projects/my-app').fill('/tmp/test-repo');
   await page.getByRole('button', { name: 'Create Task' }).click();
   await expect(page.getByRole('heading', { name: 'Create Task' })).not.toBeVisible({ timeout: 3_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5_000 });
@@ -57,35 +59,21 @@ async function createTaskInProgress(page: Page, title: string, opts?: { agentTyp
   return taskId as string;
 }
 
-/** Open the WorktreeDialog for an in-progress task. Returns the dialog locator. */
-async function openWorktreeDialog(page: Page, title: string) {
-  await page.getByRole('heading', { name: title }).click();
-  await expect(page.getByRole('button', { name: 'Run agent' })).toBeVisible({ timeout: 3_000 });
-  await page.getByRole('button', { name: 'Run agent' }).click();
-  await expect(page.getByText('Configure Agent Run')).toBeVisible({ timeout: 3_000 });
-  return page.locator('[role="dialog"]');
-}
-
-/**
- * Get the 4 agent buttons from the WorktreeDialog's grid.
- * Buttons are rendered in a grid div under the "Agent" label.
- * Display names: "Copilot" | "Code" (from "Claude Code") | "Codex" | "OpenCode"
- */
-function getAgentButtons(dialog: ReturnType<Page['locator']>) {
-  const grid = dialog.locator('.grid');
-  return {
-    copilot: grid.locator('button').nth(0),
-    claude: grid.locator('button').nth(1),
-    codex: grid.locator('button').nth(2),
-    opencode: grid.locator('button').nth(3),
-  };
+/** Open the Create/Edit Task dialog's agent dropdown and return it. */
+async function openAgentDropdown(page: Page) {
+  const dialog = page.locator('[role="dialog"]');
+  // Click the Agent dropdown button
+  const agentLabel = dialog.getByText('Agent', { exact: true });
+  const agentButton = agentLabel.locator('..').locator('button').first();
+  await agentButton.click();
+  return dialog;
 }
 
 // ---------------------------------------------------------------------------
-// Tests – WorktreeDialog agent selector
+// Tests – TaskDialog agent selector
 // ---------------------------------------------------------------------------
 
-test.describe('Agent Selector in WorktreeDialog', () => {
+test.describe('Agent Selector in TaskDialog', () => {
   let createdTaskIds: string[] = [];
 
   test.beforeEach(async ({ page }) => {
@@ -101,83 +89,41 @@ test.describe('Agent Selector in WorktreeDialog', () => {
     createdTaskIds = [];
   });
 
-  test('shows agent selector with 4 agent buttons (Copilot, Claude, Codex, OpenCode)', async ({ page }) => {
-    const title = `AgentSel ${Date.now()}`;
-    const taskId = await createTaskInProgress(page, title);
-    createdTaskIds.push(taskId);
-    const dialog = await openWorktreeDialog(page, title);
+  test('shows agent dropdown with 4 options (Copilot, Claude, Codex, OpenCode)', async ({ page }) => {
+    await openCreateDialog(page);
+    const dialog = await openAgentDropdown(page);
 
-    // The grid should contain exactly 4 agent buttons
-    const { copilot, claude, codex, opencode } = getAgentButtons(dialog);
-    await expect(copilot).toBeVisible();
-    await expect(claude).toBeVisible();
-    await expect(codex).toBeVisible();
-    await expect(opencode).toBeVisible();
-
-    // Verify button labels — displayName.split(' ').pop() gives: Copilot, Code, Codex, OpenCode
-    await expect(copilot).toContainText('Copilot');
-    await expect(claude).toContainText('Code');
-    await expect(codex).toContainText('Codex');
-    await expect(opencode).toContainText('OpenCode');
+    // The dropdown menu should show all 4 agent options as buttons
+    // Use role=button filter to avoid matching the trigger button text
+    const dropdownOptions = dialog.locator('[class*="popover"] button');
+    await expect(dropdownOptions).toHaveCount(4);
+    await expect(dropdownOptions.nth(0)).toContainText('Copilot');
+    await expect(dropdownOptions.nth(1)).toContainText('Claude');
+    await expect(dropdownOptions.nth(2)).toContainText('Codex');
+    await expect(dropdownOptions.nth(3)).toContainText('OpenCode');
   });
 
-  test('clicking an agent button selects it (shows primary/active state)', async ({ page }) => {
-    const title = `AgentClick ${Date.now()}`;
-    const taskId = await createTaskInProgress(page, title);
-    createdTaskIds.push(taskId);
-    const dialog = await openWorktreeDialog(page, title);
-    const { copilot, claude, codex } = getAgentButtons(dialog);
+  test('clicking an agent option selects it', async ({ page }) => {
+    await openCreateDialog(page);
+    const dialog = await openAgentDropdown(page);
 
-    // Copilot should be selected by default (has border-primary class)
-    await expect(copilot).toHaveClass(/border-primary/);
+    // Select Claude from dropdown
+    await dialog.getByText('Claude').click();
 
-    // Try to click an available non-copilot agent to test selection switching
-    const claudeDisabled = await claude.isDisabled();
-    const codexDisabled = await codex.isDisabled();
-
-    if (!claudeDisabled) {
-      await claude.click();
-      await expect(claude).toHaveClass(/border-primary/);
-      // Copilot should no longer be the active one
-      await expect(copilot).not.toHaveClass(/bg-primary\/10/);
-    } else if (!codexDisabled) {
-      await codex.click();
-      await expect(codex).toHaveClass(/border-primary/);
-      await expect(copilot).not.toHaveClass(/bg-primary\/10/);
-    } else {
-      // Both are disabled — verify copilot stays selected
-      await expect(copilot).toHaveClass(/border-primary/);
-    }
+    // The dropdown button should now show Claude
+    const agentLabel = dialog.getByText('Agent', { exact: true });
+    const agentButton = agentLabel.locator('..').locator('button').first();
+    await expect(agentButton).toContainText('Claude');
   });
 
-  test('disabled agents have cursor-not-allowed styling', async ({ page }) => {
-    const title = `AgentDisabled ${Date.now()}`;
-    const taskId = await createTaskInProgress(page, title);
-    createdTaskIds.push(taskId);
-    const dialog = await openWorktreeDialog(page, title);
-    const { copilot, claude, codex } = getAgentButtons(dialog);
+  test('default agent selection is Copilot', async ({ page }) => {
+    await openCreateDialog(page);
+    const dialog = page.locator('[role="dialog"]');
 
-    // Check each agent button — unavailable ones should be disabled with cursor-not-allowed
-    for (const [, btn] of [['copilot', copilot], ['claude', claude], ['codex', codex]] as const) {
-      const isDisabled = await btn.isDisabled();
-      if (isDisabled) {
-        await expect(btn).toHaveClass(/cursor-not-allowed/);
-      } else {
-        await expect(btn).not.toHaveClass(/cursor-not-allowed/);
-      }
-    }
-  });
-
-  test('default agent selection is copilot', async ({ page }) => {
-    const title = `DefaultAgent ${Date.now()}`;
-    const taskId = await createTaskInProgress(page, title);
-    createdTaskIds.push(taskId);
-    const dialog = await openWorktreeDialog(page, title);
-    const { copilot } = getAgentButtons(dialog);
-
-    // Copilot should be selected (primary border + bg)
-    await expect(copilot).toHaveClass(/border-primary/);
-    await expect(copilot).toHaveClass(/bg-primary/);
+    // The agent dropdown button should show Copilot by default
+    const agentLabel = dialog.getByText('Agent', { exact: true });
+    const agentButton = agentLabel.locator('..').locator('button').first();
+    await expect(agentButton).toContainText('Copilot');
   });
 });
 
