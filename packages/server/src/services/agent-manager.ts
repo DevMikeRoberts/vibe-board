@@ -12,6 +12,17 @@ import { broadcast } from '../websocket.js';
 import type { AttachmentStore } from '../routes/attachments.js';
 
 const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
+const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
+
+function loadAttachmentAsBase64(filePath: string, displayName: string, mimeType: string): AgentAttachment | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const data = fs.readFileSync(filePath).toString('base64');
+    return { type: 'base64_image', data, displayName, mediaType: mimeType };
+  } catch {
+    return null;
+  }
+}
 
 interface ManagedSession {
   session?: AgentSession;
@@ -495,12 +506,11 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         if (this.attachmentStore) {
           const taskAttachments = await this.attachmentStore.getByTaskId(task.id);
           if (taskAttachments.length > 0) {
-            const uploadsDir = path.join(process.cwd(), 'data', 'uploads');
             const loaded: AgentAttachment[] = [];
             for (const a of taskAttachments) {
-              const filePath = path.join(uploadsDir, a.taskId, a.filename);
-              if (!fs.existsSync(filePath)) continue;
-              loaded.push({ type: 'local_image', path: filePath, displayName: a.originalName, mediaType: a.mimeType });
+              const filePath = path.join(UPLOADS_DIR, a.taskId, a.filename);
+              const att = loadAttachmentAsBase64(filePath, a.originalName, a.mimeType);
+              if (att) loaded.push(att);
             }
             if (loaded.length > 0) agentAttachments = loaded;
           }
@@ -558,19 +568,13 @@ make precise edits, and verify your changes compile/pass tests when applicable.
     // Load attachments if IDs provided
     let agentAttachments: AgentAttachment[] | undefined;
     if (attachmentIds?.length && this.attachmentStore) {
-      const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
       const loaded: AgentAttachment[] = [];
       for (const id of attachmentIds) {
         const a = await this.attachmentStore.getById(id);
         if (!a) continue;
         const filePath = path.join(UPLOADS_DIR, a.taskId, a.filename);
-        if (!fs.existsSync(filePath)) continue;
-        loaded.push({
-          type: 'local_image' as const,
-          path: filePath,
-          displayName: a.originalName,
-          mediaType: a.mimeType,
-        });
+        const att = loadAttachmentAsBase64(filePath, a.originalName, a.mimeType);
+        if (att) loaded.push(att);
       }
       if (loaded.length > 0) agentAttachments = loaded;
     }
