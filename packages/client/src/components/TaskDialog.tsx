@@ -206,7 +206,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit }: 
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1">
+            <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 min-h-0 px-1">
               {/* Title */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
