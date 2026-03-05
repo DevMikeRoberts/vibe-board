@@ -45,7 +45,7 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
       res.status(400).json({ error: 'invalid agentType: must be one of copilot, claude, codex' });
       return;
     }
-    if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
+    if (typeof branchName === 'string' && branchName !== '' && !isValidGitRef(branchName)) {
       res.status(400).json({ error: 'branchName contains invalid characters' });
       return;
     }

@@ -162,7 +162,7 @@ export function validateTaskFields(body: Record<string, any>): string | null {
   if (branchName !== undefined && typeof branchName !== 'string') {
     return 'branchName must be a string';
   }
-  if (typeof branchName === 'string' && !isValidGitRef(branchName)) {
+  if (typeof branchName === 'string' && branchName !== '' && !isValidGitRef(branchName)) {
     return 'branchName contains invalid characters';
   }
   if (baseBranch !== undefined && typeof baseBranch !== 'string') {
