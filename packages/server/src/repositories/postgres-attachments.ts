@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import type { TaskAttachment } from '../types.js';
-import type { AttachmentStore } from '../routes/attachments.js';
+import type { AttachmentStore } from './attachment-types.js';
 
 interface AttachmentRow {
   id: string;

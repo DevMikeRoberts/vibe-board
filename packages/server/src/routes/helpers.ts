@@ -1,4 +1,4 @@
-import { Request } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { v4 as uuid } from 'uuid';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
@@ -6,9 +6,21 @@ import os from 'os';
 import path from 'path';
 import type { Task, TaskGroup } from '../types.js';
 import { isValidPriority, isValidColumnId, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@ai-agent-board/shared/constants.js';
+import { errorMessage } from '../utils.js';
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
+
+// ─── Async handler wrapper ──────────────────────────────────────────
+
+type AsyncRouteHandler = (req: Request, res: Response, next: NextFunction) => Promise<void>;
+
+/** Wrap async Express handlers so rejected promises forward to the error middleware. */
+export function asyncHandler(fn: AsyncRouteHandler) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+}
 
 // ─── Param helpers ──────────────────────────────────────────────────
 
@@ -63,7 +75,7 @@ export function isAllowedRepoPath(repoPath: string): string | null {
       fs.mkdirSync(resolved, { recursive: true });
       console.log(`[repo-path] created directory ${resolved}`);
     } catch (err: unknown) {
-      return `Failed to create directory: ${err instanceof Error ? err.message : String(err)}`;
+      return `Failed to create directory: ${errorMessage(err)}`;
     }
   }
 
@@ -81,7 +93,7 @@ export function isAllowedRepoPath(repoPath: string): string | null {
       execFileSync('git', ['init'], { cwd: resolved, stdio: 'pipe' });
       console.log(`[repo-path] initialized git repo at ${resolved}`);
     } catch (err: unknown) {
-      return `Failed to initialize git repository: ${err instanceof Error ? err.message : String(err)}`;
+      return `Failed to initialize git repository: ${errorMessage(err)}`;
     }
   }
 
@@ -107,6 +119,7 @@ export function broadcastGroupUpdate(group: TaskGroup): void {
 // ─── Rate limiter ───────────────────────────────────────────────────
 
 const RATE_LIMIT_MS = 5_000;
+const RATE_LIMIT_CLEANUP_THRESHOLD = 100;
 const agentActionTimestamps = new Map<string, number>();
 
 export function isRateLimited(taskId: string): boolean {
@@ -114,7 +127,7 @@ export function isRateLimited(taskId: string): boolean {
   const last = agentActionTimestamps.get(taskId);
   if (last && now - last < RATE_LIMIT_MS) return true;
   agentActionTimestamps.set(taskId, now);
-  if (agentActionTimestamps.size > 100) {
+  if (agentActionTimestamps.size > RATE_LIMIT_CLEANUP_THRESHOLD) {
     for (const [id, ts] of agentActionTimestamps) {
       if (now - ts > RATE_LIMIT_MS) agentActionTimestamps.delete(id);
     }
@@ -196,7 +209,7 @@ export function buildTask(body: Record<string, any>): Task {
     repoPath: typeof repoPath === 'string' ? expandTilde(repoPath) : undefined,
     branchName: branchName || undefined,
     baseBranch: baseBranch || undefined,
-    useWorktree: useWorktree || undefined,
+    useWorktree: useWorktree ?? undefined,
   };
 }
 

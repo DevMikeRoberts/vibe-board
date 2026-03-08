@@ -16,7 +16,7 @@ import {
 import type { Task, AgentStatus } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
 import { getPriorityDisplay } from '@/lib/priority-config';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 
 
 const agentStatusConfig: Record<
@@ -32,20 +32,12 @@ const agentStatusConfig: Record<
 
 function formatElapsed(startedAt?: number): string {
   if (!startedAt) return '';
-  const seconds = Math.floor((Date.now() - startedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${minutes}m ${secs}s`;
+  return formatDuration(Date.now() - startedAt);
 }
 
-function formatDuration(startedAt?: number, completedAt?: number): string {
+function formatCompletedDuration(startedAt?: number, completedAt?: number): string {
   if (!startedAt || !completedAt) return '';
-  const seconds = Math.floor((completedAt - startedAt) / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${minutes}m ${secs}s`;
+  return formatDuration(completedAt - startedAt);
 }
 
 interface TaskCardProps {
@@ -64,6 +56,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       id: task.id,
       disabled: task.archived // Disable dragging for archived tasks
     });
+  const agentDisplay = task.agentType ? getAgentDisplay(task.agentType) : undefined;
 
   // Suppress click that fires immediately after a drag ends
   const wasDragging = useRef(false);
@@ -201,7 +194,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
             {/* Agent type badge */}
             {task.agentType && task.columnId !== 'backlog' && (
               <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {getAgentDisplay(task.agentType)?.emoji} {getAgentDisplay(task.agentType)?.label}
+                {agentDisplay?.emoji} {agentDisplay?.label}
               </span>
             )}
           </div>
@@ -219,7 +212,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
             {!isActive && (task.agentStatus === 'complete' || task.agentStatus === 'failed') && task.startedAt && task.completedAt && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
                 <Clock className="h-3 w-3" />
-                {formatDuration(task.startedAt, task.completedAt)}
+                {formatCompletedDuration(task.startedAt, task.completedAt)}
               </span>
             )}
 

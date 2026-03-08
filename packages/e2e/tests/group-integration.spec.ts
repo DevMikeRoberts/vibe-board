@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -13,7 +13,7 @@ import os from 'os';
  * Skipped when no agents are available (CI-safe).
  */
 
-const API = 'http://localhost:3002';
+import { API } from './helpers';
 const AGENT_TIMEOUT = 180_000; // 3 minutes for all children to complete
 const TEST_REPO_BASE = path.join(os.tmpdir(), 'agentboard-group-e2e');
 

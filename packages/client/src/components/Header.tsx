@@ -5,8 +5,8 @@ import { FilterChips, type StatusFilter } from './FilterChips';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import type { AgentType } from '@/types';
 
-export type SortBy = 'title' | 'priority' | 'created' | 'status';
-export type SortDir = 'asc' | 'desc';
+type SortBy = 'title' | 'priority' | 'created' | 'status';
+type SortDir = 'asc' | 'desc';
 
 interface HeaderProps {
   theme: 'dark' | 'light';

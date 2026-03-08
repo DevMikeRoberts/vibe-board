@@ -1,6 +1,5 @@
 import { test, expect } from '@playwright/test';
-
-const API = 'http://localhost:3002';
+import { API } from './helpers';
 
 // Helper — delete template by ID (cleanup)
 async function deleteTemplate(request: any, id: string) {

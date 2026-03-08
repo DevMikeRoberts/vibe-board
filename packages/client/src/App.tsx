@@ -8,6 +8,8 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useTaskGroups } from '@/hooks/useTaskGroups';
 import { PRIORITY_WEIGHT } from '@/lib/priority-config';
+import { slugify } from '@/lib/utils';
+import { SK_SORT_BY, SK_SORT_DIR, SK_FILTER_AGENTS, SK_FILTER_STATUSES } from '@/lib/storage-keys';
 import { Header } from '@/components/Header';
 import type { StatusFilter } from '@/components/FilterChips';
 import { statusFilterToStatuses } from '@/components/FilterChips';
@@ -18,6 +20,8 @@ import { GroupPanel } from '@/components/GroupPanel';
 import { AgentPanel } from '@/components/AgentPanel';
 import type { TaskGroupWithChildren } from '@/lib/api';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
+
+const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
 
 export function App() {
   const { theme, toggleTheme } = useTheme();
@@ -34,16 +38,16 @@ export function App() {
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'title' | 'priority' | 'created' | 'status'>(
-    () => (localStorage.getItem('kanban-sort-by') as 'title' | 'priority' | 'created' | 'status') || 'title'
+    () => (localStorage.getItem(SK_SORT_BY) as 'title' | 'priority' | 'created' | 'status') || 'title'
   );
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(
-    () => (localStorage.getItem('kanban-sort-dir') as 'asc' | 'desc') || 'asc'
+    () => (localStorage.getItem(SK_SORT_DIR) as 'asc' | 'desc') || 'asc'
   );
   const [activeAgentTypes, setActiveAgentTypes] = useState<AgentType[]>(
-    () => { try { return JSON.parse(localStorage.getItem('kanban-filter-agents') || '[]'); } catch { return []; } }
+    () => { try { return JSON.parse(localStorage.getItem(SK_FILTER_AGENTS) || '[]'); } catch { return []; } }
   );
   const [activeStatuses, setActiveStatuses] = useState<StatusFilter[]>(
-    () => { try { return JSON.parse(localStorage.getItem('kanban-filter-statuses') || '[]'); } catch { return []; } }
+    () => { try { return JSON.parse(localStorage.getItem(SK_FILTER_STATUSES) || '[]'); } catch { return []; } }
   );
 
   // Debounce search query
@@ -51,14 +55,14 @@ export function App() {
 
   // Persist sort preferences
   useEffect(() => {
-    localStorage.setItem('kanban-sort-by', sortBy);
-    localStorage.setItem('kanban-sort-dir', sortDir);
+    localStorage.setItem(SK_SORT_BY, sortBy);
+    localStorage.setItem(SK_SORT_DIR, sortDir);
   }, [sortBy, sortDir]);
 
   // Persist filter preferences
   useEffect(() => {
-    localStorage.setItem('kanban-filter-agents', JSON.stringify(activeAgentTypes));
-    localStorage.setItem('kanban-filter-statuses', JSON.stringify(activeStatuses));
+    localStorage.setItem(SK_FILTER_AGENTS, JSON.stringify(activeAgentTypes));
+    localStorage.setItem(SK_FILTER_STATUSES, JSON.stringify(activeStatuses));
   }, [activeAgentTypes, activeStatuses]);
 
   // Derive live task from tasks array so it stays current with WS updates
@@ -86,14 +90,6 @@ export function App() {
     setSelectedGroupId(group.id);
     setSelectedTaskId(null);
   }, []);
-
-  const handleRunGroup = useCallback(async (id: string) => {
-    await runGroup(id);
-  }, [runGroup]);
-
-  const handleStopGroup = useCallback(async (id: string) => {
-    await stopGroup(id);
-  }, [stopGroup]);
 
   const handleDeleteGroup = useCallback((id: string) => {
     setDeletingGroupId(id);
@@ -145,7 +141,6 @@ export function App() {
   }, [tasks, debouncedSearchQuery, activeAgentTypes, activeStatuses]);
 
   // Sort comparator
-  const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
   const sortTasks = useCallback((a: Task, b: Task): number => {
     const dir = sortDir === 'asc' ? 1 : -1;
     switch (sortBy) {
@@ -222,10 +217,6 @@ export function App() {
     setDialogOpen(true);
   }, []);
 
-  const handleEditSubmit = useCallback(async (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean }) => {
-    return updateTask(id, updates);
-  }, [updateTask]);
-
   const handleDeleteTask = useCallback((task: Task) => {
     setDeletingTask(task);
   }, []);
@@ -266,7 +257,7 @@ export function App() {
       configureAndRunTask(taskId, {
         repoPath: task.repoPath,
         branchName: wantWorktree
-          ? (task.branchName || `task/${task.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60)}`)
+          ? (task.branchName || `task/${slugify(task.title)}`)
           : '',
         baseBranch: task.baseBranch || 'main',
         useWorktree: wantWorktree,
@@ -368,8 +359,8 @@ export function App() {
           showArchived={showArchived}
           onDropInProgress={(task) => setSelectedTaskId(task.id)}
           onClickGroup={handleClickGroup}
-          onRunGroup={handleRunGroup}
-          onStopGroup={handleStopGroup}
+          onRunGroup={runGroup}
+          onStopGroup={stopGroup}
           onDeleteGroup={handleDeleteGroup}
           onEditGroup={handleEditGroup}
         />
@@ -380,7 +371,7 @@ export function App() {
         onClose={handleCloseDialog}
         onSubmit={addTask}
         editTask={editingTask}
-        onEditSubmit={handleEditSubmit}
+        onEditSubmit={updateTask}
         highlightRequired={highlightRequiredFields}
       />
 
@@ -397,8 +388,8 @@ export function App() {
       <GroupPanel
         group={selectedGroup}
         onClose={() => setSelectedGroupId(null)}
-        onRunGroup={handleRunGroup}
-        onStopGroup={handleStopGroup}
+        onRunGroup={runGroup}
+        onStopGroup={stopGroup}
         onRetryChild={handleRetryChild}
         onChildClick={handleChildClick}
       />

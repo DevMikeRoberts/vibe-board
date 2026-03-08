@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import type { APIRequestContext, Page } from '@playwright/test';
+import type { APIRequestContext } from '@playwright/test';
 
-const API = 'http://localhost:3002';
+import { API } from './helpers';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 

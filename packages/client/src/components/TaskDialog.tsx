@@ -5,20 +5,12 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import type { Task, TaskAttachment, ColumnId, AgentType, Priority } from '@/types';
-import { AGENT_DISPLAY } from '@/lib/agent-config';
-import { PRIORITY_DISPLAY } from '@/lib/priority-config';
-import { cn } from '@/lib/utils';
+import { AGENT_OPTIONS } from '@/lib/agent-config';
+import { PRIORITY_OPTIONS } from '@/lib/priority-config';
+import { cn, slugify } from '@/lib/utils';
 import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 import { api } from '@/lib/api';
 import ImageUpload from './ImageUpload';
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-}
 
 interface TaskDialogProps {
   open: boolean;
@@ -32,13 +24,8 @@ interface TaskDialogProps {
   highlightRequired?: boolean;
 }
 
-const agents: { value: AgentType; label: string; emoji: string }[] = (
-  Object.entries(AGENT_DISPLAY) as [AgentType, { emoji: string; label: string }][]
-).map(([value, { emoji, label }]) => ({ value, label, emoji }));
-
-const priorities: { value: Priority; label: string; emoji: string }[] = (
-  Object.entries(PRIORITY_DISPLAY) as [Priority, { emoji: string; label: string }][]
-).map(([value, { emoji, label }]) => ({ value, label, emoji }));
+const agents = AGENT_OPTIONS;
+const priorities = PRIORITY_OPTIONS;
 
 export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, highlightRequired }: TaskDialogProps) {
   const [title, setTitle] = useState('');

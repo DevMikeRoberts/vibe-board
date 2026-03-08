@@ -5,26 +5,20 @@ import path from 'path';
 import fs from 'fs';
 import type { TaskAttachment } from '../types.js';
 import type { TaskRepository } from '../repositories/types.js';
-import { paramId } from './helpers.js';
+import type { AttachmentStore } from '../repositories/attachment-types.js';
+import { asyncHandler, paramId } from './helpers.js';
 
-const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
+export const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const CACHE_MAX_AGE = 86400;
 const MAX_ATTACHMENTS_PER_TASK = 10;
 const ALLOWED_MIME_TYPES = new Set([
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml',
+  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
 ]);
 
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
-// ─── Attachment store interface ─────────────────────────────────────
-
-export interface AttachmentStore {
-  insert(attachment: TaskAttachment): Promise<void>;
-  getByTaskId(taskId: string): Promise<TaskAttachment[]>;
-  getById(id: string): Promise<TaskAttachment | undefined>;
-  deleteById(id: string): Promise<boolean>;
-  countByTaskId(taskId: string): Promise<number>;
-}
+export type { AttachmentStore } from '../repositories/attachment-types.js';
 
 // ─── Multer config ──────────────────────────────────────────────────
 
@@ -98,7 +92,7 @@ export function createAttachmentsRouter(
         });
       }).catch(next);
     }).catch(next);
-  }, async (req: Request, res: Response) => {
+  }, asyncHandler(async (req: Request, res: Response) => {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       res.status(400).json({ error: 'No image files provided' });
@@ -130,10 +124,10 @@ export function createAttachmentsRouter(
       }
       res.status(500).json({ error: 'Failed to save attachment metadata' });
     }
-  });
+  }));
 
   // GET /tasks/:id/attachments — list attachments
-  router.get('/tasks/:id/attachments', async (req: Request, res: Response) => {
+  router.get('/tasks/:id/attachments', asyncHandler(async (req: Request, res: Response) => {
     const taskId = paramId(req);
     const task = await taskRepo.getById(taskId);
     if (!task) {
@@ -142,10 +136,10 @@ export function createAttachmentsRouter(
     }
     const attachments = await store.getByTaskId(taskId);
     res.json(attachments);
-  });
+  }));
 
   // GET /attachments/:id/file — serve image file
-  router.get('/attachments/:id/file', async (req: Request, res: Response) => {
+  router.get('/attachments/:id/file', asyncHandler(async (req: Request, res: Response) => {
     const attachment = await store.getById(paramId(req));
     if (!attachment) {
       res.status(404).json({ error: 'attachment not found' });
@@ -157,12 +151,13 @@ export function createAttachmentsRouter(
       return;
     }
     res.setHeader('Content-Type', attachment.mimeType);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', `public, max-age=${CACHE_MAX_AGE}`);
     res.sendFile(filePath);
-  });
+  }));
 
   // DELETE /attachments/:id — remove attachment
-  router.delete('/attachments/:id', async (req: Request, res: Response) => {
+  router.delete('/attachments/:id', asyncHandler(async (req: Request, res: Response) => {
     const attachment = await store.getById(paramId(req));
     if (!attachment) {
       res.status(404).json({ error: 'attachment not found' });
@@ -172,7 +167,7 @@ export function createAttachmentsRouter(
     fs.unlink(filePath, () => {}); // ignore missing
     await store.deleteById(attachment.id);
     res.status(204).end();
-  });
+  }));
 
   return router;
 }

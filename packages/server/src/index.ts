@@ -12,7 +12,7 @@ import { createGitRouter } from './routes/git.js';
 import { createTemplateRouter } from './routes/templates.js';
 import { createGroupsRouter } from './routes/groups.js';
 import { createAttachmentsRouter } from './routes/attachments.js';
-import type { AttachmentStore } from './routes/attachments.js';
+import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
 import { authMiddleware } from './middleware/auth.js';
 import type { TaskRepository } from './repositories/types.js';
@@ -20,9 +20,9 @@ import type { TemplateRepository } from './repositories/template-types.js';
 import type { TaskGroupRepository } from './repositories/group-types.js';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3001', 10);
+const PORT = parseInt(process.env.PORT || '8080', 10);
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:4175,http://localhost:4176').split(',');
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:8081,http://localhost:4175,http://localhost:4176').split(',');
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '100kb' }));
 
@@ -90,34 +90,31 @@ const agentManager = new AgentManager();
     res.json({ status: 'ok', timestamp: Date.now() });
   });
 
+  // Global error handler — catches errors forwarded by asyncHandler wrappers
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[server] unhandled route error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   const server = createServer(app);
   createWSS(server);
 
   await agentManager.initialize();
 
 
-  // Recover tasks orphaned by a previous server restart.
-  // Any task stuck in 'planning' or 'executing' has no live agent session —
-  // reset to 'failed' so they're not permanently frozen.
-  const allTasks = await taskRepo.getAll();
-  const orphaned = allTasks.filter(t =>
-    t.agentStatus === 'planning' || t.agentStatus === 'executing'
-  );
-  for (const task of orphaned) {
-    await taskRepo.update(task.id, {
-      agentStatus: 'failed',
-      completedAt: Date.now(),
-    });
-    console.warn(`[server] recovered orphaned task ${task.id} "${task.title}" (was ${task.agentStatus})`);
-  }
-
-  // Recover orphaned task groups
+  // Recover orphaned task groups first — group children get group-aware
+  // recovery (planning → idle for re-queue, executing → failed) before the
+  // generic fallback below resets everything to failed.
+  const groupChildIds = new Set<string>();
   try {
     const allGroups = await groupRepo.getAll();
     for (const group of allGroups) {
       if (group.columnId === 'in-progress') {
         const children = await groupRepo.getChildTasks(group.id);
         for (const child of children) {
+          groupChildIds.add(child.id);
           if (child.agentStatus === 'executing') {
             await taskRepo.update(child.id, { agentStatus: 'failed', completedAt: Date.now() });
             console.warn(`[server] recovered orphaned group child ${child.id} "${child.title}" (was executing)`);
@@ -141,11 +138,28 @@ const agentManager = new AgentManager();
     console.error('[server] failed to recover groups:', err);
   }
 
+  // Recover standalone tasks orphaned by a previous server restart.
+  // Skip group children (already handled above with group-aware recovery).
+  const allTasks = await taskRepo.getAll();
+  const orphaned = allTasks.filter(t =>
+    (t.agentStatus === 'planning' || t.agentStatus === 'executing') && !groupChildIds.has(t.id)
+  );
+  for (const task of orphaned) {
+    await taskRepo.update(task.id, {
+      agentStatus: 'failed',
+      completedAt: Date.now(),
+    });
+    console.warn(`[server] recovered orphaned task ${task.id} "${task.title}" (was ${task.agentStatus})`);
+  }
+
   server.listen(PORT, () => {
     console.log(`[server] listening on http://localhost:${PORT}`);
     console.log(`[server] WebSocket at ws://localhost:${PORT}/ws`);
     if (process.env.API_KEY) {
       console.log('[server] API key authentication enabled');
+    } else {
+      console.warn('[server] WARNING: No API_KEY set — all endpoints are open without authentication.');
+      console.warn('[server] Set the API_KEY environment variable to enable authentication.');
     }
   });
 

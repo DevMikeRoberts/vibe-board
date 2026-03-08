@@ -41,5 +41,5 @@ export function useKeyboardShortcuts({ onNewTask, onNewGroup, onCloseAll, isAnyO
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onNewTask, onCloseAll, isAnyOpen]);
+  }, [onNewTask, onNewGroup, onCloseAll, isAnyOpen]);
 }

@@ -1,17 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-
-const API = 'http://localhost:3002';
-
-// ---------------------------------------------------------------------------
-// Helpers (mirrors board.spec.ts patterns)
-// ---------------------------------------------------------------------------
-
-async function waitForBoard(page: Page) {
-  await expect(page.getByRole('heading', { name: 'Backlog', exact: true })).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByRole('heading', { name: 'In Progress', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Review', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Done', exact: true })).toBeVisible();
-}
+import { API, waitForBoard } from './helpers';
 
 async function openCreateDialog(page: Page) {
   const backlogHeading = page.getByRole('heading', { name: 'Backlog', exact: true });

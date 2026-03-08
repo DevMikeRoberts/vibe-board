@@ -2,8 +2,9 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
 import type { TaskTemplate } from '../types.js';
 import { isValidPriority, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@ai-agent-board/shared/constants.js';
+import { errorMessage } from '../utils.js';
 import type { TemplateRepository } from '../repositories/template-types.js';
-import { paramId } from './helpers.js';
+import { asyncHandler, paramId, isAllowedRepoPath, expandTilde } from './helpers.js';
 
 const MAX_TEMPLATE_NAME_LENGTH = 100;
 
@@ -11,22 +12,22 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
   const router = Router();
 
   // GET /api/templates
-  router.get('/', async (_req: Request, res: Response) => {
+  router.get('/', asyncHandler(async (_req: Request, res: Response) => {
     res.json(await templateRepo.getAll());
-  });
+  }));
 
   // GET /api/templates/:id
-  router.get('/:id', async (req: Request, res: Response) => {
+  router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     const template = await templateRepo.getById(paramId(req));
     if (!template) {
       res.status(404).json({ error: 'template not found' });
       return;
     }
     res.json(template);
-  });
+  }));
 
   // POST /api/templates
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', asyncHandler(async (req: Request, res: Response) => {
     const { name, title, description, priority, agentType, repoPath, baseBranch, useWorktree } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
@@ -61,6 +62,11 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       res.status(400).json({ error: 'invalid agentType' });
       return;
     }
+    if (typeof repoPath === 'string' && repoPath) {
+      const expanded = expandTilde(repoPath);
+      const repoErr = isAllowedRepoPath(expanded);
+      if (repoErr) { res.status(400).json({ error: repoErr }); return; }
+    }
 
     const template: TaskTemplate = {
       id: uuid(),
@@ -69,7 +75,7 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       description: (description || '').trim(),
       priority: priority || 'medium',
       agentType: agentType || 'copilot',
-      repoPath: repoPath || undefined,
+      repoPath: typeof repoPath === 'string' ? expandTilde(repoPath) : undefined,
       baseBranch: baseBranch || undefined,
       useWorktree: useWorktree ?? undefined,
       createdAt: Date.now(),
@@ -79,17 +85,17 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       const created = await templateRepo.create(template);
       res.status(201).json(created);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       if (msg.includes('UNIQUE') || msg.includes('unique') || msg.includes('duplicate')) {
         res.status(409).json({ error: 'a template with that name already exists' });
       } else {
         res.status(500).json({ error: 'failed to create template' });
       }
     }
-  });
+  }));
 
   // PATCH /api/templates/:id
-  router.patch('/:id', async (req: Request, res: Response) => {
+  router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
     const existing = await templateRepo.getById(paramId(req));
     if (!existing) {
       res.status(404).json({ error: 'template not found' });
@@ -130,6 +136,11 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       res.status(400).json({ error: `description must be at most ${MAX_DESCRIPTION_LENGTH} characters` });
       return;
     }
+    if (typeof repoPath === 'string' && repoPath) {
+      const expanded = expandTilde(repoPath);
+      const repoErr = isAllowedRepoPath(expanded);
+      if (repoErr) { res.status(400).json({ error: repoErr }); return; }
+    }
 
     const updates: Partial<Omit<TaskTemplate, 'id' | 'createdAt'>> = {};
     if (name !== undefined) updates.name = name.trim();
@@ -137,7 +148,7 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
     if (description !== undefined) updates.description = description;
     if (priority !== undefined) updates.priority = priority;
     if (agentType !== undefined) updates.agentType = agentType;
-    if (repoPath !== undefined) updates.repoPath = repoPath;
+    if (repoPath !== undefined) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
     if (baseBranch !== undefined) updates.baseBranch = baseBranch;
     if (useWorktree !== undefined) updates.useWorktree = useWorktree;
 
@@ -149,24 +160,24 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       }
       res.json(updated);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       if (msg.includes('UNIQUE') || msg.includes('unique') || msg.includes('duplicate')) {
         res.status(409).json({ error: 'a template with that name already exists' });
       } else {
         res.status(500).json({ error: 'failed to update template' });
       }
     }
-  });
+  }));
 
   // DELETE /api/templates/:id
-  router.delete('/:id', async (req: Request, res: Response) => {
+  router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     const deleted = await templateRepo.delete(paramId(req));
     if (!deleted) {
       res.status(404).json({ error: 'template not found' });
       return;
     }
     res.status(204).send();
-  });
+  }));
 
   return router;
 }

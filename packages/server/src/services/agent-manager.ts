@@ -9,10 +9,11 @@ import type { AgentProvider, AgentSession, AgentInfo, AgentAttachment } from '@c
 import type { AgentEvent as CoreAgentEvent } from '@codewithdan/agent-sdk-core';
 import { CopilotProvider, ClaudeProvider, CodexProvider, OpenCodeProvider, detectAgents } from '@codewithdan/agent-sdk-core';
 import { broadcast } from '../websocket.js';
-import type { AttachmentStore } from '../routes/attachments.js';
+import { UPLOADS_DIR } from '../routes/attachments.js';
+import type { AttachmentStore } from '../repositories/attachment-types.js';
+import { errorMessage } from '../utils.js';
 
 const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
-const UPLOADS_DIR = path.join(process.cwd(), 'data', 'uploads');
 
 function loadAttachmentAsBase64(filePath: string, displayName: string, mimeType: string): AgentAttachment | null {
   try {
@@ -43,6 +44,9 @@ const MAX_EVENT_LOG_TASKS = 200;
 
 // Deleted-task guard TTL
 const DELETED_TASK_TTL_MS = 60_000;
+
+const STREAM_BUFFER_FLUSH_MS = 40;
+const STOPPED_TASK_TTL_MS = 30_000;
 
 function getErrorStderr(err: unknown): string {
   if (err instanceof Error && 'stderr' in err) {
@@ -113,12 +117,12 @@ export class AgentManager {
         try {
           await provider.start();
         } catch (err: unknown) {
-          console.error(`[agent-manager] failed to start ${info.displayName}: ${err instanceof Error ? err.message : String(err)}`);
+          console.error(`[agent-manager] failed to start ${info.displayName}: ${errorMessage(err)}`);
           // Mark as unavailable
           const agentInfo = this.availableAgents.find(a => a.name === info.name);
           if (agentInfo) {
             agentInfo.available = false;
-            agentInfo.reason = `Failed to start: ${err instanceof Error ? err.message : String(err)}`;
+            agentInfo.reason = `Failed to start: ${errorMessage(err)}`;
           }
         }
       }
@@ -151,7 +155,7 @@ export class AgentManager {
     // Write-through to database
     if (this.eventRepo) {
       this.eventRepo.insertEvent(event).catch((err: unknown) => {
-        console.error(`[agent-manager] failed to persist event: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`[agent-manager] failed to persist event: ${errorMessage(err)}`);
       });
     }
     const STREAMABLE = new Set(['output', 'thinking']);
@@ -171,11 +175,11 @@ export class AgentManager {
         // Same type — merge content and reset timer
         clearTimeout(existing.timer);
         existing.event.content += event.content;
-        existing.timer = setTimeout(() => flushBuffer(event.taskId), 40);
+        existing.timer = setTimeout(() => flushBuffer(event.taskId), STREAM_BUFFER_FLUSH_MS);
       } else {
         // Different type or no buffer — flush existing, start new buffer
         if (existing) flushBuffer(event.taskId);
-        const timer = setTimeout(() => flushBuffer(event.taskId), 40);
+        const timer = setTimeout(() => flushBuffer(event.taskId), STREAM_BUFFER_FLUSH_MS);
         this.streamBuffer.set(event.taskId, { event: { ...event }, timer });
       }
     } else {
@@ -212,7 +216,7 @@ export class AgentManager {
     this.eventLogs.delete(taskId);
     if (this.eventRepo) {
       this.eventRepo.deleteEventsByTaskId(taskId).catch((err: unknown) => {
-        console.error(`[agent-manager] failed to delete persisted events: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`[agent-manager] failed to delete persisted events: ${errorMessage(err)}`);
       });
     }
   }
@@ -241,8 +245,8 @@ export class AgentManager {
         console.log(`[worktree] attached existing branch ${task.branchName} at ${worktreePath}`);
         return worktreePath;
       } catch (err2: unknown) {
-        console.error(`[worktree] failed:`, err2 instanceof Error ? err2.message : String(err2));
-        throw new Error(`Failed to create worktree: ${err2 instanceof Error ? err2.message : String(err2)}`);
+        console.error(`[worktree] failed:`, errorMessage(err2));
+        throw new Error(`Failed to create worktree: ${errorMessage(err2)}`);
       }
     }
   }
@@ -256,8 +260,8 @@ export class AgentManager {
       });
       console.log(`[worktree] removed ${task.worktreePath}`);
     } catch (err: unknown) {
-      console.error(`[worktree] remove failed:`, err instanceof Error ? err.message : String(err));
-      throw new Error(`Failed to remove worktree: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[worktree] remove failed:`, errorMessage(err));
+      throw new Error(`Failed to remove worktree: ${errorMessage(err)}`);
     }
   }
 
@@ -294,7 +298,7 @@ export class AgentManager {
       return { url };
     } catch (err: unknown) {
       const stderr = getErrorStderr(err);
-      const msg = stderr || (err instanceof Error ? err.message : String(err));
+      const msg = stderr || errorMessage(err);
       console.error(`[pr] creation failed:`, msg);
       throw new Error(`PR creation failed: ${msg.trim()}`);
     }
@@ -331,7 +335,7 @@ export class AgentManager {
       } catch (err: unknown) {
         try { execFileSync('git', ['merge', '--abort'], { cwd: repoPath, stdio: 'pipe' }); } catch { /* already clean */ }
         const stderr = getErrorStderr(err);
-        const msg = stderr || (err instanceof Error ? err.message : String(err));
+        const msg = stderr || errorMessage(err);
         console.error(`[merge] failed:`, msg);
         throw new Error(`Merge failed (conflicts?). Branch ${branchName} was not merged:\n${msg.trim()}`);
       }
@@ -437,10 +441,10 @@ export class AgentManager {
       } catch (err: unknown) {
         this.emitEvent(task.id, {
           id: uuid(), taskId: task.id, type: 'error',
-          content: `Worktree setup failed: ${err instanceof Error ? err.message : String(err)}`,
+          content: `Worktree setup failed: ${errorMessage(err)}`,
           timestamp: Date.now(),
         });
-        terminateOnce('failed', `Worktree setup failed: ${err instanceof Error ? err.message : String(err)}`);
+        terminateOnce('failed', `Worktree setup failed: ${errorMessage(err)}`);
         return;
       }
     }
@@ -589,7 +593,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
           session.destroy().catch(() => {});
         }
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = errorMessage(err);
         const isCliMissing =
           message.includes('ENOENT') ||
           message.includes('not found') ||
@@ -643,7 +647,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       await entry.session.send(message, agentAttachments);
     } catch (err: unknown) {
       const providerName = this.providers.get(entry.agentType)?.displayName || entry.agentType;
-      throw new Error(`${providerName} failed to process follow-up: ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`${providerName} failed to process follow-up: ${errorMessage(err)}`);
     }
     return true;
   }
@@ -658,7 +662,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
     this.sessions.delete(taskId);
     // Mark as stopped so terminateOnce (from the catch block) won't double-broadcast
     this.stoppedTasks.add(taskId);
-    setTimeout(() => this.stoppedTasks.delete(taskId), 30_000);
+    setTimeout(() => this.stoppedTasks.delete(taskId), STOPPED_TASK_TTL_MS);
 
     (async () => {
       try { await entry.session?.abort(); } catch { /* ignore */ }

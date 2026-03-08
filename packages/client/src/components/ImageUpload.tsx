@@ -20,11 +20,9 @@ interface ImageUploadProps {
   onPendingChange?: (files: File[]) => void;
   /** Called after a server-side upload or delete */
   onAttachmentsChange?: (attachments: TaskAttachment[]) => void;
-  /** Compact mode for inline use (e.g., in AgentPanel) */
-  compact?: boolean;
 }
 
-export default function ImageUpload({ taskId, existing = [], onPendingChange, onAttachmentsChange, compact }: ImageUploadProps) {
+export default function ImageUpload({ taskId, existing = [], onPendingChange, onAttachmentsChange }: ImageUploadProps) {
   const [pending, setPending] = useState<PendingFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -122,39 +120,6 @@ export default function ImageUpload({ taskId, existing = [], onPendingChange, on
   }, [addFiles]);
 
   const hasImages = existing.length > 0 || pending.length > 0;
-
-  if (compact) {
-    return (
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Pending thumbnails */}
-        {pending.map((p, i) => (
-          <div key={`pending-${i}`} className="relative group">
-            <img src={p.preview} alt={p.file.name} className="w-10 h-10 object-cover rounded border border-gray-300 dark:border-gray-600" />
-            <button
-              type="button"
-              onClick={() => removePending(i)}
-              className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={totalCount >= MAX_ATTACHMENTS || uploading}
-          className="w-8 h-8 rounded border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:border-gray-400 dark:hover:border-gray-500 transition-colors disabled:opacity-40"
-          title="Attach image"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
-        </button>
-        <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleInputChange} />
-        {error && <span className="text-xs text-red-500">{error}</span>}
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-2">

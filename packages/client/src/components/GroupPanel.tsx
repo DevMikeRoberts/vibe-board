@@ -8,7 +8,7 @@ import type { Task, AgentStatus } from '@/types';
 import type { TaskGroupWithChildren } from '@/lib/api';
 import { AGENT_DISPLAY } from '@/lib/agent-config';
 import { computeGroupStatus, statusIcon } from '@/lib/group-utils';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 
 interface GroupPanelProps {
   group: TaskGroupWithChildren | null;
@@ -17,13 +17,6 @@ interface GroupPanelProps {
   onStopGroup: (id: string) => void;
   onRetryChild: (taskId: string) => void;
   onChildClick: (task: Task) => void;
-}
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m ${s % 60}s`;
 }
 
 function statusLabel(status: AgentStatus): string {
@@ -37,9 +30,9 @@ function statusLabel(status: AgentStatus): string {
 }
 
 export function GroupPanel({ group, onClose, onRunGroup, onStopGroup, onRetryChild, onChildClick }: GroupPanelProps) {
-  if (!group) return null;
+  const status = useMemo(() => group ? computeGroupStatus(group.children) : null, [group]);
 
-  const status = useMemo(() => computeGroupStatus(group.children), [group.children]);
+  if (!group || !status) return null;
 
   const isRunning = status.executing > 0 || status.planning > 0;
   const pct = status.total > 0 ? (status.completed / status.total) * 100 : 0;

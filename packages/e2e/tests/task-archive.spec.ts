@@ -1,38 +1,19 @@
 import { test, expect } from '@playwright/test';
-
-const API = 'http://localhost:3002';
-
-// Helper — create a task in a specific column
-async function createTask(request: any, overrides: Record<string, any> = {}): Promise<any> {
-  const res = await request.post(`${API}/api/tasks`, {
-    data: {
-      title: overrides.title || 'Archive Test Task',
-      description: 'Test',
-      columnId: overrides.columnId || 'backlog',
-      ...overrides,
-    },
-  });
-  return res.json();
-}
-
-// Helper — delete a task by ID (cleanup)
-async function deleteTask(request: any, id: string) {
-  await request.delete(`${API}/api/tasks/${id}`);
-}
+import { API, createTaskViaAPI, deleteTaskViaAPI } from './helpers';
 
 test.describe('Task Archive/Unarchive', () => {
   let createdIds: string[] = [];
 
   test.afterEach(async ({ request }) => {
     for (const id of createdIds) {
-      await deleteTask(request, id);
+      await deleteTaskViaAPI(request, id);
     }
     createdIds = [];
   });
 
   test('PATCH /api/tasks/:id/archive archives a completed task', async ({ request }) => {
     // Create a task and move it to done
-    const task = await createTask(request, { title: 'Archivable Task' });
+    const task = await createTaskViaAPI(request, { title: 'Archivable Task' });
     createdIds.push(task.id);
 
     // Move to in-progress, then review, then done
@@ -47,7 +28,7 @@ test.describe('Task Archive/Unarchive', () => {
   });
 
   test('PATCH /api/tasks/:id/archive rejects non-completed task', async ({ request }) => {
-    const task = await createTask(request, { title: 'Backlog Task' });
+    const task = await createTaskViaAPI(request, { title: 'Backlog Task' });
     createdIds.push(task.id);
 
     const res = await request.patch(`${API}/api/tasks/${task.id}/archive`);
@@ -62,7 +43,7 @@ test.describe('Task Archive/Unarchive', () => {
   });
 
   test('PATCH /api/tasks/:id/unarchive restores an archived task', async ({ request }) => {
-    const task = await createTask(request, { title: 'Unarchive Test' });
+    const task = await createTaskViaAPI(request, { title: 'Unarchive Test' });
     createdIds.push(task.id);
 
     // Move to done and archive
@@ -78,7 +59,7 @@ test.describe('Task Archive/Unarchive', () => {
   });
 
   test('PATCH /api/tasks/:id/unarchive rejects non-archived task', async ({ request }) => {
-    const task = await createTask(request, { title: 'Not Archived' });
+    const task = await createTaskViaAPI(request, { title: 'Not Archived' });
     createdIds.push(task.id);
 
     // Move to done but don't archive
@@ -93,7 +74,7 @@ test.describe('Task Archive/Unarchive', () => {
   });
 
   test('GET /api/tasks excludes archived tasks by default', async ({ request }) => {
-    const task = await createTask(request, { title: 'Hidden After Archive' });
+    const task = await createTaskViaAPI(request, { title: 'Hidden After Archive' });
     createdIds.push(task.id);
 
     // Move to done and archive
@@ -109,7 +90,7 @@ test.describe('Task Archive/Unarchive', () => {
   });
 
   test('GET /api/tasks?includeArchived=true includes archived tasks', async ({ request }) => {
-    const task = await createTask(request, { title: 'Visible With Flag' });
+    const task = await createTaskViaAPI(request, { title: 'Visible With Flag' });
     createdIds.push(task.id);
 
     // Move to done and archive

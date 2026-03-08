@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import type { Task, Priority, ColumnId, AgentStatus, AgentType, AgentEvent } from '../types.js';
 import type { TaskRepository } from './types.js';
 import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType } from '@ai-agent-board/shared/constants.js';
+import { errorMessage } from '../utils.js';
 
 interface TaskRow {
   id: string;
@@ -94,8 +95,9 @@ export class PostgresTaskRepository implements TaskRepository {
   async create(task: Task): Promise<Task> {
     await this.pool.query(
       `INSERT INTO tasks (id, title, description, priority, column_id, agent_status, agent_type,
-        created_at, started_at, completed_at, repo_path, branch_name, base_branch, use_worktree, worktree_path, archived)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        created_at, started_at, completed_at, repo_path, branch_name, base_branch, use_worktree, worktree_path, archived,
+        group_id, group_order)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
       [
         task.id,
         task.title,
@@ -113,6 +115,8 @@ export class PostgresTaskRepository implements TaskRepository {
         task.useWorktree ?? null,
         task.worktreePath ?? null,
         task.archived ?? false,
+        task.groupId ?? null,
+        task.groupOrder ?? null,
       ]
     );
     return task;
@@ -213,7 +217,7 @@ export class PostgresTaskRepository implements TaskRepository {
           metadata = JSON.parse(row.metadata);
         } catch (err: unknown) {
           // Log malformed metadata
-          console.warn(`[postgres] Failed to parse metadata for event ${row.id}:`, err instanceof Error ? err.message : String(err));
+          console.warn(`[postgres] Failed to parse metadata for event ${row.id}:`, errorMessage(err));
         }
       }
       return {

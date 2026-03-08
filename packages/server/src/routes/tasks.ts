@@ -1,13 +1,12 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import type { Task } from '../types.js';
-import { VALID_TRANSITIONS } from '../types.js';
-import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@ai-agent-board/shared/constants.js';
+import { isValidPriority, isValidColumnId, isValidAgentStatus, isValidAgentType, VALID_AGENT_TYPES, VALID_TRANSITIONS, MAX_TITLE_LENGTH, MAX_DESCRIPTION_LENGTH } from '@ai-agent-board/shared/constants.js';
 import type { TaskRepository } from '../repositories/types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
 import {
-  paramId, isAllowedRepoPath, expandTilde,
+  asyncHandler, paramId, isAllowedRepoPath, expandTilde,
   validateTaskFields, buildTask, broadcastTaskUpdate,
   startAgentForTask,
 } from './helpers.js';
@@ -16,18 +15,18 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
   const router = Router();
 
   // GET /api/tasks
-  router.get('/', async (req: Request, res: Response) => {
+  router.get('/', asyncHandler(async (req: Request, res: Response) => {
     const includeArchived = req.query.includeArchived === 'true';
     res.json(await repo.getAll(includeArchived));
-  });
+  }));
 
   // GET /api/tasks/archived
-  router.get('/archived', async (_req: Request, res: Response) => {
+  router.get('/archived', asyncHandler(async (_req: Request, res: Response) => {
     res.json(await repo.getArchivedTasks());
-  });
+  }));
 
   // POST /api/tasks
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', asyncHandler(async (req: Request, res: Response) => {
     const validationError = validateTaskFields(req.body);
     if (validationError) {
       res.status(400).json({ error: validationError });
@@ -57,10 +56,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
 
     res.status(201).json(task);
-  });
+  }));
 
   // POST /api/tasks/batch — create multiple tasks, optionally auto-run them
-  router.post('/batch', async (req: Request, res: Response) => {
+  router.post('/batch', asyncHandler(async (req: Request, res: Response) => {
     const { tasks: taskDefs } = req.body;
 
     if (!Array.isArray(taskDefs) || taskDefs.length === 0) {
@@ -113,10 +112,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
 
     res.status(201).json({ tasks: created });
-  });
+  }));
 
   // GET /api/tasks/:id/status — lightweight polling endpoint
-  router.get('/:id/status', async (req: Request, res: Response) => {
+  router.get('/:id/status', asyncHandler(async (req: Request, res: Response) => {
     const task = await repo.getById(paramId(req));
     if (!task) {
       res.status(404).json({ error: 'task not found' });
@@ -129,10 +128,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       columnId: task.columnId,
       isRunning: agentManager.isRunning(task.id),
     });
-  });
+  }));
 
   // PATCH /api/tasks/:id
-  router.patch('/:id', async (req: Request, res: Response) => {
+  router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
     const task = await repo.getById(paramId(req));
     if (!task) {
       res.status(404).json({ error: 'task not found' });
@@ -170,7 +169,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       return;
     }
     if (agentType !== undefined && !isValidAgentType(agentType)) {
-      res.status(400).json({ error: 'invalid agentType: must be one of copilot, claude, codex' });
+      res.status(400).json({ error: `invalid agentType: must be one of ${VALID_AGENT_TYPES.join(', ')}` });
       return;
     }
     if (repoPath !== undefined && typeof repoPath !== 'string') {
@@ -227,10 +226,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
     broadcastTaskUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   // DELETE /api/tasks/:id
-  router.delete('/:id', async (req: Request, res: Response) => {
+  router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     if (!await repo.getById(id)) {
       res.status(404).json({ error: 'task not found' });
@@ -242,10 +241,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     await repo.delete(id);
     broadcast({ type: 'task_deleted', payload: { id } });
     res.status(204).send();
-  });
+  }));
 
   // PATCH /api/tasks/:id/archive
-  router.patch('/:id/archive', async (req: Request, res: Response) => {
+  router.patch('/:id/archive', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -263,10 +262,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
     broadcastTaskUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   // PATCH /api/tasks/:id/unarchive
-  router.patch('/:id/unarchive', async (req: Request, res: Response) => {
+  router.patch('/:id/unarchive', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -284,7 +283,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     }
     broadcastTaskUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   return router;
 }

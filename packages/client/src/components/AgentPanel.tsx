@@ -348,6 +348,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [descExpanded, setDescExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'events' | 'terminal' | 'changes'>('events');
+  const agentDisplay = task?.agentType ? getAgentDisplay(task.agentType) : undefined;
   const [showWorktreeConfirm, setShowWorktreeConfirm] = useState(false);
   const [hasRemote, setHasRemote] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -537,9 +538,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-semibold">{task.title}</h3>
               <div className="mt-0.5 flex items-center gap-2">
-                {task.agentType && (
+                {task.agentType && agentDisplay && (
                   <span className="text-[10px] text-muted-foreground">
-                    {getAgentDisplay(task.agentType)?.emoji} {getAgentDisplay(task.agentType)?.label}
+                    {agentDisplay.emoji} {agentDisplay.label}
                   </span>
                 )}
                 {isActive && (
@@ -734,47 +735,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                 </div>
               )}
 
-              {/* PR error with copy-able commands */}
-              {prError && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="whitespace-pre-wrap font-mono text-xs text-red-300">{prError}</p>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(prError);
-                      }}
-                      className="shrink-0 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setPrError(null)}
-                    className="mt-2 text-[10px] text-zinc-300 hover:text-white"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
-              {mergeError && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="whitespace-pre-wrap font-mono text-xs text-red-300">{mergeError}</p>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(mergeError)}
-                      className="shrink-0 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20"
-                    >
-                      Copy
-                    </button>
-                  </div>
-                  <button
-                    onClick={() => setMergeError(null)}
-                    className="mt-2 text-[10px] text-zinc-300 hover:text-white"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              )}
+              {/* PR / merge errors */}
+              {prError && <ErrorBanner message={prError} onDismiss={() => setPrError(null)} />}
+              {mergeError && <ErrorBanner message={mergeError} onDismiss={() => setMergeError(null)} />}
             </div>
           )}
           {showWorktreeConfirm && (
@@ -959,7 +922,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {followUpImages.map((f, i) => (
                   <div key={i} className="relative group">
-                    <img src={URL.createObjectURL(f)} alt={f.name} className="w-10 h-10 object-cover rounded border border-border" />
+                    <FollowUpImagePreview file={f} />
                     <button
                       type="button"
                       onClick={() => setFollowUpImages(prev => prev.filter((_, j) => j !== i))}
@@ -1023,4 +986,32 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
       )}
     </AnimatePresence>
   );
+}
+
+function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="whitespace-pre-wrap font-mono text-xs text-red-300">{message}</p>
+        <button
+          onClick={() => navigator.clipboard.writeText(message)}
+          className="shrink-0 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20"
+        >
+          Copy
+        </button>
+      </div>
+      <button
+        onClick={onDismiss}
+        className="mt-2 text-[10px] text-zinc-300 hover:text-white"
+      >
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
+function FollowUpImagePreview({ file }: { file: File }) {
+  const url = useMemo(() => URL.createObjectURL(file), [file]);
+  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  return <img src={url} alt={file.name} className="w-10 h-10 object-cover rounded border border-border" />;
 }

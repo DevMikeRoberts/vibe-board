@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import type { Task, Priority, ColumnId, AgentStatus, AgentType, AgentEvent } from '../types.js';
 import type { TaskRepository } from './types.js';
+import { errorMessage } from '../utils.js';
 
 interface TaskRow {
   id: string;
@@ -202,7 +203,7 @@ export class SqliteTaskRepository implements TaskRepository {
           metadata = JSON.parse(row.metadata);
         } catch (err: unknown) {
           // Log malformed metadata
-          console.warn(`[sqlite] Failed to parse metadata for event ${row.id}:`, err instanceof Error ? err.message : String(err));
+          console.warn(`[sqlite] Failed to parse metadata for event ${row.id}:`, errorMessage(err));
         }
       }
       return {

@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 // API_URL can override the default proxy target
-const apiTarget = process.env.API_URL || 'http://localhost:3001';
+const apiTarget = process.env.API_URL || 'http://localhost:8080';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -15,7 +15,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 4175,
+    port: 8081,
     allowedHosts: true,
     proxy: {
       '/api': apiTarget,

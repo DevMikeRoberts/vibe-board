@@ -5,6 +5,7 @@ import {
   isValidPriority,
   isValidAgentType,
   isValidColumnId,
+  isValidMaxConcurrency,
   MAX_TITLE_LENGTH,
   MAX_DESCRIPTION_LENGTH,
   MAX_GROUP_CHILDREN,
@@ -14,6 +15,7 @@ import type { TaskGroupRepository } from '../repositories/group-types.js';
 import type { TaskRepository } from '../repositories/types.js';
 import type { AgentManager } from '../services/agent-manager.js';
 import {
+  asyncHandler,
   paramId,
   expandTilde,
   isAllowedRepoPath,
@@ -33,7 +35,7 @@ export function createGroupsRouter(
   const router = Router();
 
   // GET /api/groups — list all groups
-  router.get('/', async (_req: Request, res: Response) => {
+  router.get('/', asyncHandler(async (_req: Request, res: Response) => {
     const includeArchived = _req.query.archived === 'true';
     const groups = await groupRepo.getAll(includeArchived);
     // Attach child task summaries
@@ -44,19 +46,19 @@ export function createGroupsRouter(
       }),
     );
     res.json(result);
-  });
+  }));
 
   // GET /api/groups/:id — get group with children
-  router.get('/:id', async (req: Request, res: Response) => {
+  router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
     const children = await groupRepo.getChildTasks(id);
     res.json({ ...group, children });
-  });
+  }));
 
   // POST /api/groups — create group with children
-  router.post('/', async (req: Request, res: Response) => {
+  router.post('/', asyncHandler(async (req: Request, res: Response) => {
     const { title, description, priority, repoPath, baseBranch, maxConcurrency, children, autoRun } = req.body;
 
     // Validate group fields
@@ -96,7 +98,7 @@ export function createGroupsRouter(
 
     // Validate concurrency
     const concurrency = typeof maxConcurrency === 'number' ? maxConcurrency : 2;
-    if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > children.length) {
+    if (!isValidMaxConcurrency(concurrency, children.length)) {
       res.status(400).json({ error: `maxConcurrency must be between 1 and ${children.length}` }); return;
     }
 
@@ -164,10 +166,10 @@ export function createGroupsRouter(
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create group' });
     }
-  });
+  }));
 
   // PATCH /api/groups/:id — update group metadata
-  router.patch('/:id', async (req: Request, res: Response) => {
+  router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
@@ -198,7 +200,7 @@ export function createGroupsRouter(
     if (req.body.maxConcurrency !== undefined) {
       const children = await groupRepo.getChildTasks(id);
       const mc = req.body.maxConcurrency;
-      if (typeof mc !== 'number' || !Number.isInteger(mc) || mc < 1 || mc > children.length) {
+      if (!isValidMaxConcurrency(mc, children.length)) {
         res.status(400).json({ error: `maxConcurrency must be an integer between 1 and ${children.length}` }); return;
       }
       updates.maxConcurrency = mc;
@@ -243,10 +245,10 @@ export function createGroupsRouter(
     } else {
       res.status(500).json({ error: 'Failed to update group' });
     }
-  });
+  }));
 
   // DELETE /api/groups/:id — delete group + cascade children + stop agents
-  router.delete('/:id', async (req: Request, res: Response) => {
+  router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
@@ -265,10 +267,10 @@ export function createGroupsRouter(
     // CASCADE delete handles children
     await groupRepo.delete(id);
     res.status(204).send();
-  });
+  }));
 
   // POST /api/groups/:id/run — start group execution
-  router.post('/:id/run', async (req: Request, res: Response) => {
+  router.post('/:id/run', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     if (isRateLimited(id)) {
       res.status(429).json({ error: 'Rate limited — wait a few seconds' }); return;
@@ -294,10 +296,10 @@ export function createGroupsRouter(
     const finalGroup = await groupRepo.getById(id);
     const children = await groupRepo.getChildTasks(id);
     res.json({ ...(finalGroup || updated), children });
-  });
+  }));
 
   // POST /api/groups/:id/stop — stop all running children
-  router.post('/:id/stop', async (req: Request, res: Response) => {
+  router.post('/:id/stop', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
@@ -317,10 +319,10 @@ export function createGroupsRouter(
     if (updated) broadcastGroupUpdate(updated);
 
     res.json({ stopped: true });
-  });
+  }));
 
   // PATCH /api/groups/:id/archive — archive group + all children
-  router.patch('/:id/archive', async (req: Request, res: Response) => {
+  router.patch('/:id/archive', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
@@ -336,29 +338,31 @@ export function createGroupsRouter(
       if (child.worktreePath) {
         try { agentManager.removeWorktree(child); } catch { /* best effort */ }
       }
-      await taskRepo.update(child.id, { archived: true, worktreePath: undefined });
+      const t = await taskRepo.update(child.id, { archived: true, worktreePath: undefined });
+      if (t) broadcastTaskUpdate(t);
     }
 
     const updated = await groupRepo.update(id, { archived: true });
     if (updated) broadcastGroupUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   // PATCH /api/groups/:id/unarchive — restore group + children to backlog
-  router.patch('/:id/unarchive', async (req: Request, res: Response) => {
+  router.patch('/:id/unarchive', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const group = await groupRepo.getById(id);
     if (!group) { res.status(404).json({ error: 'group not found' }); return; }
 
     const children = await groupRepo.getChildTasks(id);
     for (const child of children) {
-      await taskRepo.update(child.id, { archived: false, agentStatus: 'idle', columnId: 'backlog' });
+      const t = await taskRepo.update(child.id, { archived: false, agentStatus: 'idle', columnId: 'backlog' });
+      if (t) broadcastTaskUpdate(t);
     }
 
     const updated = await groupRepo.update(id, { archived: false, columnId: 'backlog', startedAt: undefined, completedAt: undefined });
     if (updated) broadcastGroupUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   return router;
 }

@@ -15,6 +15,11 @@ export const PRIORITY_WEIGHT: Record<Priority, number> = {
   low: 3,
 };
 
+/** Dropdown-friendly array derived from PRIORITY_DISPLAY */
+export const PRIORITY_OPTIONS: { value: Priority; label: string; emoji: string }[] = (
+  Object.entries(PRIORITY_DISPLAY) as [Priority, { emoji: string; label: string }][]
+).map(([value, { emoji, label }]) => ({ value, label, emoji }));
+
 /** Safe lookup — returns undefined for unknown priorities */
 export function getPriorityDisplay(priority: string): { label: string; emoji: string; color: string; borderClass: string } | undefined {
   return PRIORITY_DISPLAY[priority as Priority];

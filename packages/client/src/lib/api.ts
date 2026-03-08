@@ -1,6 +1,4 @@
-import type { Task, TaskGroup, TaskTemplate, TaskAttachment, AgentEvent, AgentInfo, AgentType, ColumnId, Priority } from '@/types';
-
-export type { AgentInfo };
+import type { Task, TaskGroup, TaskAttachment, AgentEvent, AgentInfo, AgentType, ColumnId, Priority, WSMessage } from '@/types';
 
 export interface TaskGroupWithChildren extends TaskGroup {
   children: Task[];
@@ -45,9 +43,6 @@ export const api = {
 
   createTask: (data: { title: string; description?: string; priority?: Priority; columnId?: ColumnId; agentType?: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean; autoRun?: boolean }) =>
     request<Task>('/tasks', { method: 'POST', body: JSON.stringify(data) }),
-
-  batchCreateTasks: (tasks: Array<{ title: string; description?: string; priority?: Priority; columnId?: ColumnId; agentType?: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean; autoRun?: boolean }>) =>
-    request<{ tasks: Task[] }>('/tasks/batch', { method: 'POST', body: JSON.stringify({ tasks }) }),
 
   updateTask: (id: string, data: Partial<Task>) =>
     request<Task>(`/tasks/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -112,19 +107,6 @@ export const api = {
   unarchiveTask: (id: string) =>
     request<Task>(`/tasks/${id}/unarchive`, { method: 'PATCH' }),
 
-  // --- Templates ---
-  getTemplates: () =>
-    request<TaskTemplate[]>('/templates'),
-
-  createTemplate: (data: { name: string; title?: string; description?: string; priority?: Priority; agentType?: AgentType; repoPath?: string; baseBranch?: string; useWorktree?: boolean }) =>
-    request<TaskTemplate>('/templates', { method: 'POST', body: JSON.stringify(data) }),
-
-  updateTemplate: (id: string, data: Partial<Omit<TaskTemplate, 'id' | 'createdAt'>>) =>
-    request<TaskTemplate>(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-
-  deleteTemplate: (id: string) =>
-    request<void>(`/templates/${id}`, { method: 'DELETE' }),
-
   // --- Groups ---
   getGroups: (includeArchived = false) =>
     request<TaskGroupWithChildren[]>(`/groups${includeArchived ? '?archived=true' : ''}`),
@@ -155,16 +137,11 @@ export const api = {
   stopGroup: (id: string) =>
     request<{ stopped: boolean }>(`/groups/${id}/stop`, { method: 'POST' }),
 
-  archiveGroup: (id: string) =>
-    request<TaskGroupWithChildren>(`/groups/${id}/archive`, { method: 'PATCH' }),
-
-  unarchiveGroup: (id: string) =>
-    request<TaskGroupWithChildren>(`/groups/${id}/unarchive`, { method: 'PATCH' }),
 };
 
 // --- WebSocket (shared singleton) ---
 
-export type WSMessageHandler = (msg: { type: string; payload: any }) => void;
+export type WSMessageHandler = (msg: WSMessage) => void;
 type ReconnectHandler = () => void;
 
 const listeners = new Set<WSMessageHandler>();
@@ -222,7 +199,7 @@ function ensureConnection() {
 
   ws.onmessage = (e) => {
     try {
-      const msg = JSON.parse(e.data);
+      const msg = JSON.parse(e.data) as WSMessage;
       if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
       listeners.forEach((fn) => fn(msg));
     } catch { /* ignore malformed messages */ }

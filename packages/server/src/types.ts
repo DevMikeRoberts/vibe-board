@@ -8,16 +8,11 @@ export type {
   TaskGroup,
   TaskTemplate,
   TaskAttachment,
-  AgentEventType,
   AgentEvent,
   WSMessage,
 } from '../../../shared/types.js';
 
 export {
-  VALID_PRIORITIES,
-  VALID_COLUMNS,
-  VALID_AGENT_STATUSES,
-  VALID_AGENT_TYPES,
   VALID_TRANSITIONS,
   isValidPriority,
   isValidColumnId,
@@ -25,5 +20,4 @@ export {
   isValidAgentType,
   MAX_GROUP_CHILDREN,
   MIN_GROUP_CHILDREN,
-  isValidMaxConcurrency,
 } from '../../../shared/constants.js';

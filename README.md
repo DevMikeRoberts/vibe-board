@@ -11,6 +11,8 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+[![CI](https://github.com/DanWahlin/ai-agent-board/actions/workflows/ci.yml/badge.svg)](https://github.com/DanWahlin/ai-agent-board/actions/workflows/ci.yml)
+
 # AI Agent Board
 
 A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, or OpenCode. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
@@ -28,7 +30,7 @@ A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub
 
 ### Multi-Agent Architecture
 
-The server uses a **provider pattern** (via `@codewithdan/agent-sdk-core`) to support multiple AI coding agents behind a common interface:
+The server uses a **provider pattern** (via [`@codewithdan/agent-sdk-core`](https://github.com/DanWahlin/agent-sdk-core)) to support multiple AI coding agents behind a common interface:
 
 - **`AgentProvider`** — creates sessions, reports availability
 - **`AgentSession`** — runs a task, emits events, supports abort
@@ -155,7 +157,7 @@ ai-agent-board/
 │   │   └── src/
 │   │       ├── middleware/     # Bearer token auth
 │   │       ├── routes/        # REST API split: tasks, agent, git (merge/PR/worktree), templates, groups
-│   │       ├── services/      # Agent session orchestration via @codewithdan/agent-sdk-core
+│   │       ├── services/      # Agent session orchestration via agent-sdk-core
 │   │       ├── repositories/  # SQLite + PostgreSQL data access (tasks + templates + groups)
 │   │       ├── db.ts          # Database init + migrations
 │   │       └── websocket.ts   # Real-time event broadcast
@@ -192,7 +194,7 @@ cd packages/e2e && npx playwright test --reporter=list
 | Frontend | React 19, Vite, Tailwind CSS 4, Framer Motion |
 | Drag & Drop | @dnd-kit |
 | Backend | Express, better-sqlite3 / PostgreSQL, ws (WebSocket) |
-| AI Agents | @codewithdan/agent-sdk-core (wraps @github/copilot-sdk, @anthropic-ai/claude-agent-sdk, @openai/codex-sdk, @opencode-ai/sdk) |
+| AI Agents | [@codewithdan/agent-sdk-core](https://github.com/DanWahlin/agent-sdk-core) (wraps @github/copilot-sdk, @anthropic-ai/claude-agent-sdk, @openai/codex-sdk, @opencode-ai/sdk) |
 | Terminal UI | @xterm/xterm |
 | Monorepo | npm workspaces |
 | Dev Environment | Direct install (Linux, macOS, Windows) |

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { APIRequestContext } from '@playwright/test';
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
 import os from 'os';
 
@@ -10,7 +10,7 @@ import os from 'os';
  * worktree cleanup, and worktree auto-cleanup after merge/PR.
  */
 
-const API = 'http://localhost:3002';
+import { API } from './helpers';
 const TEST_REPO_BASE = path.join(os.tmpdir(), 'agentboard-git-e2e');
 
 function createTestRepo(): string {
@@ -31,7 +31,8 @@ function cleanRepo(repo: string) {
 
 // Create a task, configure it with worktree, simulate agent work (create branch + commit),
 // and mark it as complete. Returns the task with worktreePath set.
-async function createConfiguredTask(
+// Exported to suppress noUnusedLocals — kept for future worktree tests.
+export async function createConfiguredTask(
   request: APIRequestContext,
   repo: string,
   branchName: string,
@@ -267,7 +268,7 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     await request.patch(`${API}/api/tasks/${task.id}`, { data: { agentStatus: 'complete' } });
 
     // Push will succeed to bare remote; gh pr create will fail (no GitHub)
-    const prRes = await request.post(`${API}/api/tasks/${task.id}/create-pr`);
+    await request.post(`${API}/api/tasks/${task.id}/create-pr`);
     // Either 200 (gh CLI worked) or 500 (gh CLI failed after push)
     // Either way, the branch should be pushed to the remote
     const remoteBranches = execSync('git branch', { cwd: bareRemote }).toString();

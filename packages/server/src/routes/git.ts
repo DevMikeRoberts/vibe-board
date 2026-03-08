@@ -2,13 +2,13 @@ import { Router, Request, Response } from 'express';
 import { execFileSync } from 'child_process';
 import type { TaskRepository } from '../repositories/types.js';
 import type { AgentManager } from '../services/agent-manager.js';
-import { paramId, broadcastTaskUpdate } from './helpers.js';
+import { asyncHandler, paramId, broadcastTaskUpdate } from './helpers.js';
 
 export function createGitRouter(repo: TaskRepository, agentManager: AgentManager): Router {
   const router = Router();
 
   // GET /api/tasks/:id/git-info — check if repo has a remote
-  router.get('/:id/git-info', async (req: Request, res: Response) => {
+  router.get('/:id/git-info', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) { res.status(404).json({ error: 'task not found' }); return; }
@@ -22,10 +22,10 @@ export function createGitRouter(repo: TaskRepository, agentManager: AgentManager
     } catch {
       res.json({ hasRemote: false });
     }
-  });
+  }));
 
   // POST /api/tasks/:id/create-pr — create a PR from the worktree branch
-  router.post('/:id/create-pr', async (req: Request, res: Response) => {
+  router.post('/:id/create-pr', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -47,10 +47,10 @@ export function createGitRouter(repo: TaskRepository, agentManager: AgentManager
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to create PR' });
     }
-  });
+  }));
 
   // POST /api/tasks/:id/cleanup-worktree — remove worktree after done
-  router.post('/:id/cleanup-worktree', async (req: Request, res: Response) => {
+  router.post('/:id/cleanup-worktree', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -70,10 +70,10 @@ export function createGitRouter(repo: TaskRepository, agentManager: AgentManager
     const updated = await repo.update(id, { worktreePath: undefined });
     if (updated) broadcastTaskUpdate(updated);
     res.json({ success: true });
-  });
+  }));
 
   // POST /api/tasks/:id/merge-local — merge worktree branch into base branch locally
-  router.post('/:id/merge-local', async (req: Request, res: Response) => {
+  router.post('/:id/merge-local', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -95,7 +95,7 @@ export function createGitRouter(repo: TaskRepository, agentManager: AgentManager
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to merge' });
     }
-  });
+  }));
 
   return router;
 }

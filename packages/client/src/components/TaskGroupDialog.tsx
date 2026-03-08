@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, Plus, Trash2, ChevronDown, AlertTriangle } from 'lucide-react';
 import type { AgentType, Priority } from '@/types';
 import { MAX_GROUP_CHILDREN, MIN_GROUP_CHILDREN } from '@/types';
-import { AGENT_DISPLAY } from '@/lib/agent-config';
-import { PRIORITY_DISPLAY } from '@/lib/priority-config';
+import { AGENT_OPTIONS } from '@/lib/agent-config';
+import { PRIORITY_OPTIONS } from '@/lib/priority-config';
 import { cn } from '@/lib/utils';
 import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 import ParallelismSlider from './ParallelismSlider';
@@ -35,13 +35,8 @@ interface TaskGroupDialogProps {
   onEditSubmit?: (id: string, updates: { title: string; description?: string; priority: Priority; maxConcurrency: number }) => Promise<unknown>;
 }
 
-const agents: { value: AgentType; label: string; emoji: string }[] = (
-  Object.entries(AGENT_DISPLAY) as [AgentType, { emoji: string; label: string }][]
-).map(([value, { emoji, label }]) => ({ value, label, emoji }));
-
-const priorities: { value: Priority; label: string; emoji: string }[] = (
-  Object.entries(PRIORITY_DISPLAY) as [Priority, { emoji: string; label: string }][]
-).map(([value, { emoji, label }]) => ({ value, label, emoji }));
+const agents = AGENT_OPTIONS;
+const priorities = PRIORITY_OPTIONS;
 
 let nextKey = 0;
 function makeRow(): ChildRow {
@@ -179,16 +174,16 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
           onClick={onClose}
         >
           <motion.div
-            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-zinc-700 px-6 py-4">
-              <h2 className="text-lg font-semibold text-zinc-100">{isEditMode ? 'Edit Task Group' : 'Create Task Group'}</h2>
-              <button onClick={onClose} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+              <h2 className="text-lg font-semibold text-foreground">{isEditMode ? 'Edit Task Group' : 'Create Task Group'}</h2>
+              <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -197,26 +192,26 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
             <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {/* Group title */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">Group Title</label>
+                <label className="mb-1 block text-sm font-medium text-muted-foreground">Group Title</label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g., Q2 Feature Sprint"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                   autoFocus
                 />
               </div>
 
               {/* Description */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">Description</label>
+                <label className="mb-1 block text-sm font-medium text-muted-foreground">Description</label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Optional group description..."
                   rows={2}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                 />
               </div>
 
@@ -224,22 +219,22 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
               <div className="grid grid-cols-3 gap-3">
                 {/* Priority dropdown */}
                 <div className="relative">
-                  <label className="mb-1 block text-sm font-medium text-zinc-300">Priority</label>
+                  <label className="mb-1 block text-sm font-medium text-muted-foreground">Priority</label>
                   <button
                     type="button"
                     onClick={() => setShowPriority(!showPriority)}
-                    className="flex w-full items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100"
+                    className="flex w-full items-center justify-between rounded-lg border border-border bg-background px-3 py-2 text-sm hover:bg-accent transition-colors"
                   >
                     <span>{priorities.find((p) => p.value === priority)?.emoji} {priorities.find((p) => p.value === priority)?.label}</span>
-                    <ChevronDown className="h-4 w-4 text-zinc-400" />
+                    <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showPriority && 'rotate-180')} />
                   </button>
                   {showPriority && (
-                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 py-1 shadow-xl">
+                    <div className="absolute z-10 mt-1 w-full rounded-lg border border-border bg-popover py-1 shadow-xl">
                       {priorities.map((p) => (
                         <button
                           key={p.value}
                           onClick={() => { setPriority(p.value); setShowPriority(false); }}
-                          className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-zinc-700', priority === p.value && 'bg-zinc-700')}
+                          className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors', priority === p.value && 'bg-accent')}
                         >
                           <span>{p.emoji}</span> {p.label}
                         </button>
@@ -250,15 +245,15 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
 
                 {/* Local path */}
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-300">Local Path</label>
+                  <label className="mb-1 block text-sm font-medium text-muted-foreground">Local Path</label>
                   <input
                     type="text"
                     value={repoPath}
                     onChange={(e) => { setRepoPath(e.target.value); setPathError(''); }}
                     placeholder="/host-projects/my-app"
                     list="recent-group-repo-paths"
-                    className={`w-full rounded-lg border bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none ${
-                      pathError ? 'border-red-500 focus:border-red-500' : 'border-zinc-700 focus:border-blue-500'
+                    className={`w-full rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none ${
+                      pathError ? 'border-red-500 focus:border-red-500' : 'border-border focus:border-primary'
                     }`}
                   />
                   {pathError && (
@@ -271,31 +266,31 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
 
                 {/* Base branch */}
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-zinc-300">Base Branch</label>
+                  <label className="mb-1 block text-sm font-medium text-muted-foreground">Base Branch</label>
                   <input
                     type="text"
                     value={baseBranch}
                     onChange={(e) => setBaseBranch(e.target.value)}
                     placeholder="main"
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                   />
                 </div>
               </div>
 
               {/* Parallelism slider */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-zinc-300">Parallelism</label>
+                <label className="mb-1 block text-sm font-medium text-muted-foreground">Parallelism</label>
                 <ParallelismSlider value={maxConcurrency} max={children.length} onChange={setMaxConcurrency} />
               </div>
 
               {/* Children */}
               <div>
-                <label className="mb-2 block text-sm font-medium text-zinc-300">Tasks ({children.length})</label>
+                <label className="mb-2 block text-sm font-medium text-muted-foreground">Tasks ({children.length})</label>
                 <div className="space-y-3">
                   {children.map((child, idx) => (
-                    <div key={child.key} className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-3 space-y-2">
+                    <div key={child.key} className="rounded-lg border border-border bg-muted/30 p-3 space-y-2">
                       <div className="flex items-start gap-2">
-                        <span className="mt-2 text-xs font-medium text-zinc-500">{idx + 1}.</span>
+                        <span className="mt-2 text-xs font-medium text-muted-foreground/60">{idx + 1}.</span>
                         <div className="flex-1 space-y-2">
                           {/* Title */}
                           <input
@@ -303,7 +298,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                             value={child.title}
                             onChange={(e) => updateChild(child.key, { title: e.target.value })}
                             placeholder="Task title"
-                            className="w-full rounded border border-zinc-600 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+                            className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                           />
                           {/* Description */}
                           <textarea
@@ -311,7 +306,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                             onChange={(e) => updateChild(child.key, { description: e.target.value })}
                             placeholder="Task description (optional)"
                             rows={2}
-                            className="w-full rounded border border-zinc-600 bg-zinc-800 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none"
+                            className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                           />
                           {/* Agent + Worktree row */}
                           <div className="flex items-center gap-3">
@@ -319,19 +314,19 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                             <select
                               value={child.agentType}
                               onChange={(e) => updateChild(child.key, { agentType: e.target.value as AgentType })}
-                              className="rounded border border-zinc-600 bg-zinc-800 px-2 py-1 text-sm text-zinc-100"
+                              className="rounded border border-border bg-background px-2 py-1 text-sm"
                             >
                               {agents.map((a) => (
                                 <option key={a.value} value={a.value}>{a.emoji} {a.label}</option>
                               ))}
                             </select>
                             {/* Worktree toggle */}
-                            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-zinc-400">
+                            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
                               <input
                                 type="checkbox"
                                 checked={child.useWorktree}
                                 onChange={(e) => updateChild(child.key, { useWorktree: e.target.checked })}
-                                className="rounded border-zinc-600"
+                                className="rounded border-border"
                               />
                               Worktree
                             </label>
@@ -341,7 +336,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                         {children.length > MIN_GROUP_CHILDREN && (
                           <button
                             onClick={() => removeChild(child.key)}
-                            className="mt-1 rounded p-1 text-zinc-500 hover:bg-zinc-700 hover:text-red-400"
+                            className="mt-1 rounded p-1 text-muted-foreground hover:bg-accent hover:text-red-400"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -354,7 +349,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                 {children.length < MAX_GROUP_CHILDREN && (
                   <button
                     onClick={addChild}
-                    className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-blue-400 hover:bg-zinc-800"
+                    className="mt-2 flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-primary hover:bg-accent"
                   >
                     <Plus className="h-4 w-4" /> Add Task
                   </button>
@@ -367,9 +362,9 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                   type="checkbox"
                   checked={autoRun}
                   onChange={(e) => setAutoRun(e.target.checked)}
-                  className="rounded border-zinc-600"
+                  className="rounded border-border accent-primary"
                 />
-                <span className="text-sm text-zinc-300">Auto-run — start agents immediately after creating</span>
+                <span className="text-sm text-muted-foreground">Auto-run — start agents immediately after creating</span>
               </label>
 
               {/* Worktree warning */}
@@ -384,10 +379,10 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 border-t border-zinc-700 px-6 py-4">
+            <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
               <button
                 onClick={onClose}
-                className="rounded-lg px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+                className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
               >
                 Cancel
               </button>
@@ -404,7 +399,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                   <button
                     onClick={() => { setAutoRun(false); handleSubmit(); }}
                     disabled={!title.trim() || children.some((c) => !c.title.trim()) || submitting}
-                    className="rounded-lg bg-zinc-700 px-4 py-2 text-sm font-medium text-zinc-100 hover:bg-zinc-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded-lg bg-muted px-4 py-2 text-sm font-medium text-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {submitting ? 'Creating…' : 'Create Group'}
                   </button>

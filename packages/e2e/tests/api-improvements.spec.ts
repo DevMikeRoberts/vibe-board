@@ -1,7 +1,6 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import WebSocket from 'ws';
-
-const API = 'http://localhost:3002';
+import { API, waitForBoard, deleteTaskViaAPI } from './helpers';
 
 /**
  * E2E tests for the API Improvements (Items 1–5):
@@ -11,16 +10,6 @@ const API = 'http://localhost:3002';
  * 4. POST /api/tasks/batch endpoint
  * 5. Task result summary events on completion
  */
-
-// Helper — wait for the board to render
-async function waitForBoard(page: Page) {
-  await expect(page.getByRole('heading', { name: 'Backlog', exact: true })).toBeVisible({ timeout: 10_000 });
-}
-
-// Helper — delete a task by ID (cleanup)
-async function deleteTask(request: any, id: string) {
-  await request.delete(`${API}/api/tasks/${id}`);
-}
 
 // ---------------------------------------------------------------------------
 // Item 1: Single-call task creation + autoRun
@@ -47,7 +36,7 @@ test.describe('Single-call task creation + autoRun', () => {
     expect(task.agentStatus).toBe('idle');
 
     // Cleanup
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('POST /api/tasks with autoRun=true but columnId=backlog does NOT auto-run', async ({ request }) => {
@@ -65,7 +54,7 @@ test.describe('Single-call task creation + autoRun', () => {
     expect(task.agentStatus).toBe('idle');
     expect(task.columnId).toBe('backlog');
 
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('POST /api/tasks with autoRun=true and columnId=in-progress starts agent', async ({ request }) => {
@@ -87,7 +76,7 @@ test.describe('Single-call task creation + autoRun', () => {
 
     // Cleanup: stop agent if running, then delete
     await request.post(`${API}/api/tasks/${task.id}/stop`);
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('POST /api/tasks with autoRun=false (default) does NOT auto-run', async ({ request }) => {
@@ -102,7 +91,7 @@ test.describe('Single-call task creation + autoRun', () => {
     const task = await res.json();
     expect(task.agentStatus).toBe('idle');
 
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('POST /api/tasks validates new fields', async ({ request }) => {
@@ -150,7 +139,7 @@ test.describe('Lightweight status endpoint', () => {
     expect(status.title).toBeUndefined();
     expect(status.description).toBeUndefined();
 
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('GET /api/tasks/:id/status returns 404 for unknown task', async ({ request }) => {
@@ -187,7 +176,7 @@ test.describe('Batch create endpoint', () => {
 
     // Cleanup
     for (const t of body.tasks) {
-      await deleteTask(request, t.id);
+      await deleteTaskViaAPI(request, t.id);
     }
   });
 
@@ -259,7 +248,7 @@ test.describe('Batch create endpoint', () => {
     // Cleanup
     for (const t of body.tasks) {
       await request.post(`${API}/api/tasks/${t.id}/stop`);
-      await deleteTask(request, t.id);
+      await deleteTaskViaAPI(request, t.id);
     }
   });
 });
@@ -319,7 +308,7 @@ test.describe('agent_complete WebSocket event', () => {
 
     // Cleanup
     ws.close();
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 });
 
@@ -371,13 +360,9 @@ test.describe('Task result summary events', () => {
     expect(summaryEvent.metadata.agentType).toBe('copilot');
 
     // Cleanup
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 });
-
-// ---------------------------------------------------------------------------
-// Existing API backward compatibility
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Item 6: POST /api/tasks/:id/message — follow-up messages
@@ -418,7 +403,7 @@ test.describe('Follow-up message endpoint', () => {
     });
     expect(res3.status()).toBe(400);
 
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('POST /message returns 409 when no agent is running', async ({ request }) => {
@@ -435,7 +420,7 @@ test.describe('Follow-up message endpoint', () => {
     const body = await res.json();
     expect(body.error).toContain('no running agent');
 
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 });
 
@@ -455,7 +440,7 @@ test.describe('Backward compatibility', () => {
     expect(task.columnId).toBe('backlog');
     expect(task.agentType).toBe('copilot');
 
-    await deleteTask(request, task.id);
+    await deleteTaskViaAPI(request, task.id);
   });
 
   test('existing PATCH, DELETE, events endpoints still work', async ({ request }) => {

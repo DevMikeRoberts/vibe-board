@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import path from 'path';
 import type { Task } from '../types.js';
-import { isValidAgentType } from '@ai-agent-board/shared/constants.js';
+import { isValidAgentType, VALID_AGENT_TYPES } from '@ai-agent-board/shared/constants.js';
 import type { TaskRepository } from '../repositories/types.js';
 import type { TaskGroupRepository } from '../repositories/group-types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
 import {
-  paramId, isAllowedRepoPath, expandTilde, isValidGitRef,
+  asyncHandler, paramId, isAllowedRepoPath, expandTilde, isValidGitRef,
   broadcastTaskUpdate, broadcastGroupUpdate, makeStatusCallback, makeWorktreeCallback, isRateLimited,
 } from './helpers.js';
 
@@ -15,7 +15,7 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
   const router = Router();
 
   // POST /api/tasks/:id/configure — store worktree config before running
-  router.post('/:id/configure', async (req: Request, res: Response) => {
+  router.post('/:id/configure', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -42,7 +42,7 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
       return;
     }
     if (agentType !== undefined && !isValidAgentType(agentType)) {
-      res.status(400).json({ error: 'invalid agentType: must be one of copilot, claude, codex' });
+      res.status(400).json({ error: `invalid agentType: must be one of ${VALID_AGENT_TYPES.join(', ')}` });
       return;
     }
     if (typeof branchName === 'string' && branchName !== '' && !isValidGitRef(branchName)) {
@@ -80,10 +80,10 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
     }
     broadcastTaskUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   // POST /api/tasks/:id/run
-  router.post('/:id/run', async (req: Request, res: Response) => {
+  router.post('/:id/run', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     if (isRateLimited(id)) {
       res.status(429).json({ error: 'too many requests, try again shortly' });
@@ -132,10 +132,10 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
     agentManager.startAgent(updated, makeStatusCallback(repo, task.id), makeWorktreeCallback(repo, task.id));
 
     res.json(updated);
-  });
+  }));
 
   // POST /api/tasks/:id/stop
-  router.post('/:id/stop', async (req: Request, res: Response) => {
+  router.post('/:id/stop', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     if (isRateLimited(id)) {
       res.status(429).json({ error: 'too many requests, try again shortly' });
@@ -158,10 +158,10 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
     }
     broadcastTaskUpdate(updated);
     res.json(updated);
-  });
+  }));
 
   // POST /api/tasks/:id/message — send a follow-up message to a running agent
-  router.post('/:id/message', async (req: Request, res: Response) => {
+  router.post('/:id/message', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
     const task = await repo.getById(id);
     if (!task) {
@@ -188,10 +188,10 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
     } catch (err: unknown) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'failed to send message' });
     }
-  });
+  }));
 
   // GET /api/tasks/:id/events?since=<timestamp>&limit=<n>
-  router.get('/:id/events', async (req: Request, res: Response) => {
+  router.get('/:id/events', asyncHandler(async (req: Request, res: Response) => {
     if (!await repo.getById(paramId(req))) {
       res.status(404).json({ error: 'task not found' });
       return;
@@ -206,7 +206,7 @@ export function createAgentRouter(repo: TaskRepository, agentManager: AgentManag
       events = events.slice(-limit);
     }
     res.json(events);
-  });
+  }));
 
   return router;
 }
