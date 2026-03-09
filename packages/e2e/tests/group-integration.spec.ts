@@ -41,7 +41,11 @@ test.describe('Task Group Integration — Real Agent Execution', () => {
   const createdGroupIds: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    agentType = await getAvailableAgent(request);
+    if (process.env.CI) {
+      agentType = null; // Agent CLIs on CI runners are not authenticated
+    } else {
+      agentType = await getAvailableAgent(request);
+    }
   });
 
   test.beforeEach(() => {
