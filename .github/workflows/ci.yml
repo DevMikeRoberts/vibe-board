@@ -30,11 +30,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Fix client native deps (npm/cli#4828)
-        run: rm -rf node_modules && npm install --ignore-scripts=false
-        working-directory: packages/client
+        run: npm install
 
       - name: Build shared types
         run: npx tsc -b shared/tsconfig.json
