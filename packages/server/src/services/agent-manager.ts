@@ -688,6 +688,22 @@ make precise edits, and verify your changes compile/pass tests when applicable.
       },
     });
 
+    // Clean up stale group queue entry if this task belongs to a running group
+    for (const [groupId, q] of this.groupQueues) {
+      if (q.runningTaskIds.delete(taskId)) {
+        q.failedTaskIds.add(taskId);
+        Promise.resolve(q.onChildComplete(taskId)).catch((err: unknown) =>
+          console.error('[group] onChildComplete failed:', err),
+        );
+        if (q.pendingTaskIds.length === 0 && q.runningTaskIds.size === 0) {
+          this.groupQueues.delete(groupId);
+        } else {
+          queueMicrotask(() => this.drainGroupQueue(groupId));
+        }
+        break;
+      }
+    }
+
     return true;
   }
 

@@ -31,7 +31,7 @@ export function paramId(req: Request): string {
 
 // ─── Git ref validation ─────────────────────────────────────────────
 
-const GIT_REF_RE = /^[a-zA-Z0-9_/][a-zA-Z0-9_./-]*$/;
+const GIT_REF_RE = /^[a-zA-Z0-9_][a-zA-Z0-9_./-]*$/;
 export function isValidGitRef(ref: string): boolean {
   return GIT_REF_RE.test(ref) && !ref.includes('..') && !ref.endsWith('.lock') && ref.length <= 200;
 }

@@ -59,47 +59,50 @@ export function createAttachmentsRouter(
   const upload = createUpload();
 
   // POST /tasks/:id/attachments — upload images
-  router.post('/tasks/:id/attachments', (req: Request, res: Response, next) => {
+  router.post('/tasks/:id/attachments', asyncHandler(async (req: Request, res: Response) => {
     const taskId = paramId(req);
-    taskRepo.getById(taskId).then((task) => {
-      if (!task) {
-        res.status(404).json({ error: 'task not found' });
-        return;
-      }
-      // Check existing attachment count
-      store.countByTaskId(taskId).then((count) => {
-        if (count >= MAX_ATTACHMENTS_PER_TASK) {
-          res.status(400).json({ error: `Maximum ${MAX_ATTACHMENTS_PER_TASK} attachments per task` });
+    const task = await taskRepo.getById(taskId);
+    if (!task) {
+      res.status(404).json({ error: 'task not found' });
+      return;
+    }
+
+    const count = await store.countByTaskId(taskId);
+    if (count >= MAX_ATTACHMENTS_PER_TASK) {
+      res.status(400).json({ error: `Maximum ${MAX_ATTACHMENTS_PER_TASK} attachments per task` });
+      return;
+    }
+
+    const remaining = MAX_ATTACHMENTS_PER_TASK - count;
+    await new Promise<void>((resolve) => {
+      upload.array('images', remaining)(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            res.status(400).json({ error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB` });
+          } else if (err.code === 'LIMIT_FILE_COUNT') {
+            res.status(400).json({ error: `Too many files. Maximum ${remaining} more allowed` });
+          } else {
+            res.status(400).json({ error: err.message });
+          }
+          resolve();
           return;
         }
-        const remaining = MAX_ATTACHMENTS_PER_TASK - count;
-        upload.array('images', remaining)(req, res, async (err) => {
-          if (err instanceof multer.MulterError) {
-            if (err.code === 'LIMIT_FILE_SIZE') {
-              res.status(400).json({ error: `File too large. Maximum size: ${MAX_FILE_SIZE / 1024 / 1024}MB` });
-            } else if (err.code === 'LIMIT_FILE_COUNT') {
-              res.status(400).json({ error: `Too many files. Maximum ${remaining} more allowed` });
-            } else {
-              res.status(400).json({ error: err.message });
-            }
-            return;
-          }
-          if (err) {
-            res.status(400).json({ error: err.message });
-            return;
-          }
-          next();
-        });
-      }).catch(next);
-    }).catch(next);
-  }, asyncHandler(async (req: Request, res: Response) => {
+        if (err) {
+          res.status(400).json({ error: err.message });
+          resolve();
+          return;
+        }
+        resolve();
+      });
+    });
+
+    if (res.headersSent) return;
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
       res.status(400).json({ error: 'No image files provided' });
       return;
     }
 
-    const taskId = paramId(req);
     const attachments: TaskAttachment[] = [];
 
     try {
