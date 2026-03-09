@@ -32,8 +32,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fix native modules (npm/cli#4828)
-        run: npm i @rollup/rollup-linux-x64-gnu lightningcss-linux-x64-gnu --no-save
+      - name: Rebuild native modules (npm/cli#4828)
+        run: npm rebuild
         working-directory: packages/client
 
       - name: Build shared types
