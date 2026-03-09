@@ -78,7 +78,7 @@ Groups appear as a single card on the board showing aggregate progress. Click to
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - npm 10+
 - At least one agent CLI authenticated on your machine:
   - **GitHub Copilot**: CLI installed and authenticated
