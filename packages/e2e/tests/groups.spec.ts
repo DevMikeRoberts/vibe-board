@@ -464,7 +464,7 @@ test.describe('Task Groups UI', () => {
 
     // With 3 children, each row has a delete button (the small icon button at the end)
     // The Trash2 icon renders as an SVG. Find the last small button in a child row.
-    const childRows = page.locator('[class*="rounded-lg border"][class*="bg-zinc-800"]').filter({
+    const childRows = page.locator('[class*="rounded-lg border"][class*="bg-muted"]').filter({
       has: page.getByPlaceholder('Task title'),
     });
     await expect(childRows).toHaveCount(3);
