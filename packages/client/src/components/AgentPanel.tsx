@@ -80,11 +80,32 @@ interface CoalescedEvent extends AgentEvent {
   toolArgs?: string;
 }
 
+/** Strip build-progress noise (dotnet timestamps, bare fragments) from output content */
+function stripProgressNoise(content: string): string {
+  return content.split('\n').filter(l => {
+    const trimmed = l.trim();
+    if (trimmed.length === 0) return false;
+    const clean = trimmed.replace(/\x1b\[[0-9;]*m/g, '');
+    // Filter progress timestamps: (0.3s), (1.2s)csproj, etc.
+    if (/^\(?\d+\.\d+s\)/.test(clean)) return false;
+    // Filter bare fragments that are just part of progress output
+    if (/^(csproj|sln|props|targets)$/i.test(clean)) return false;
+    return true;
+  }).join('\n');
+}
+
 /** Merge consecutive events of the same mergeable type */
 function coalesceEvents(events: AgentEvent[], streaming: boolean): CoalescedEvent[] {
   const result: CoalescedEvent[] = [];
   for (let i = 0; i < events.length; i++) {
-    const event = events[i];
+    let event = events[i];
+
+    // Strip build-progress noise from command output
+    if (event.type === 'command_output') {
+      const cleaned = stripProgressNoise(event.content);
+      if (!cleaned.trim()) continue; // nothing meaningful left
+      event = { ...event, content: cleaned };
+    }
 
     // Skip empty content events (shouldn't exist but guards against bad data)
     if (!event.content?.trim() && event.type !== 'complete' && event.type !== 'error') continue;
