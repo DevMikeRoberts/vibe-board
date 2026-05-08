@@ -7,11 +7,12 @@ import type { Task, TaskGroup, AgentEvent, AgentType } from '../types.js';
 import type { TaskRepository } from '../repositories/types.js';
 import type { AgentProvider, AgentSession, AgentInfo, AgentAttachment } from '@codewithdan/agent-sdk-core';
 import type { AgentEvent as CoreAgentEvent } from '@codewithdan/agent-sdk-core';
-import { CopilotProvider, ClaudeProvider, CodexProvider, OpenCodeProvider, detectAgents } from '@codewithdan/agent-sdk-core';
+import { CopilotProvider, ClaudeProvider, CodexProvider, OpenCodeProvider } from '@codewithdan/agent-sdk-core';
 import { broadcast } from '../websocket.js';
 import { UPLOADS_DIR } from '../routes/attachments.js';
 import type { AttachmentStore } from '../repositories/attachment-types.js';
 import { errorMessage } from '../utils.js';
+import { detectAvailableAgents } from './agent-detection.js';
 
 const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
 
@@ -103,7 +104,7 @@ export class AgentManager {
     this.providers.set('opencode', new OpenCodeProvider());
 
     // Detect which agents are actually available on this system
-    this.availableAgents = await detectAgents();
+    this.availableAgents = await detectAvailableAgents();
     const available = this.availableAgents.filter(a => a.available);
 
     console.log(
@@ -352,36 +353,7 @@ export class AgentManager {
     if (this.sessions.has(task.id)) return;
 
     const agentType = task.agentType || 'copilot';
-    const provider = this.providers.get(agentType);
-    if (!provider) {
-      this.emitEvent(task.id, {
-        id: uuid(), taskId: task.id, type: 'error',
-        content: `No provider registered for agent type: ${agentType}`,
-        timestamp: Date.now(),
-      });
-      onStatusChange('failed');
-      return;
-    }
-
-    // Check if agent is available
-    const agentInfo = this.availableAgents.find(a => a.name === agentType);
-    if (!agentInfo?.available) {
-      this.emitEvent(task.id, {
-        id: uuid(), taskId: task.id, type: 'error',
-        content: `Agent ${provider.displayName} is not available: ${agentInfo?.reason || 'unknown reason'}`,
-        timestamp: Date.now(),
-      });
-      onStatusChange('failed');
-      return;
-    }
-
-    // Track start time for duration reporting
     const sessionStartTime = Date.now();
-
-    // Synchronous placeholder to prevent duplicate starts during async session creation
-    this.sessions.set(task.id, { startTime: sessionStartTime, agentType });
-
-    // Guard for single terminal state (complete OR failed — prevents races)
     let terminated = false;
     const terminateOnce = async (status: 'complete' | 'failed', errorMessage?: string) => {
       if (terminated) return;
@@ -423,6 +395,22 @@ export class AgentManager {
 
       onStatusChange(status);
     };
+
+    const provider = this.providers.get(agentType);
+    if (!provider) {
+      void terminateOnce('failed', `No provider registered for agent type: ${agentType}`);
+      return;
+    }
+
+    // Check if agent is available
+    const agentInfo = this.availableAgents.find(a => a.name === agentType);
+    if (!agentInfo?.available) {
+      void terminateOnce('failed', `Agent ${provider.displayName} is not available: ${agentInfo?.reason || 'unknown reason'}`);
+      return;
+    }
+
+    // Synchronous placeholder to prevent duplicate starts during async session creation
+    this.sessions.set(task.id, { startTime: sessionStartTime, agentType });
 
     // Set up worktree if configured
     let worktreePath: string | undefined;

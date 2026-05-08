@@ -5,7 +5,7 @@ import type { AgentType, Priority } from '@/types';
 import { MAX_GROUP_CHILDREN, MIN_GROUP_CHILDREN } from '@/types';
 import { AGENT_OPTIONS } from '@/lib/agent-config';
 import { PRIORITY_OPTIONS } from '@/lib/priority-config';
-import { cn } from '@/lib/utils';
+import { cn, getRepoPathHelpText, getRepoPathPlaceholder, isAbsoluteRepoPath } from '@/lib/utils';
 import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 import ParallelismSlider from './ParallelismSlider';
 import type { CreateGroupChild, TaskGroupWithChildren } from '@/lib/api';
@@ -94,6 +94,8 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
   }, [children.length, maxConcurrency]);
 
   const hasWorktreeWarning = children.length >= 2 && children.some((c) => !c.useWorktree);
+  const repoPathPlaceholder = getRepoPathPlaceholder();
+  const repoPathHelpText = getRepoPathHelpText();
 
   async function handleSubmit() {
     if (!title.trim() || submitting) return;
@@ -101,8 +103,8 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
     // Client-side path validation
     const trimmedPath = repoPath.trim();
     if (trimmedPath) {
-      if (!trimmedPath.startsWith('/') && !trimmedPath.startsWith('~')) {
-        setPathError('Path must be absolute (start with / or ~)');
+      if (!isAbsoluteRepoPath(trimmedPath)) {
+        setPathError('Path must be absolute (use /, ~, D:\\, or \\\\server\\share)');
         return;
       }
     }
@@ -245,12 +247,13 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
 
                 {/* Local path */}
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-muted-foreground">Local Path</label>
+                  <label htmlFor="group-repo-path" className="mb-1 block text-sm font-medium text-muted-foreground">Local Path</label>
                   <input
+                    id="group-repo-path"
                     type="text"
                     value={repoPath}
                     onChange={(e) => { setRepoPath(e.target.value); setPathError(''); }}
-                    placeholder="/host-projects/my-app"
+                    placeholder={repoPathPlaceholder}
                     list="recent-group-repo-paths"
                     className={`w-full rounded-lg border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:outline-none ${
                       pathError ? 'border-red-500 focus:border-red-500' : 'border-border focus:border-primary'
@@ -258,6 +261,9 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                   />
                   {pathError && (
                     <p className="mt-1 text-xs text-red-500">{pathError}</p>
+                  )}
+                  {!pathError && (
+                    <p className="mt-1 text-xs text-muted-foreground/60">{repoPathHelpText}</p>
                   )}
                   <datalist id="recent-group-repo-paths">
                     {getRecentRepoPaths().map((p) => <option key={p} value={p} />)}

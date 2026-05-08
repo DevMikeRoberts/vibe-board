@@ -20,15 +20,15 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `cd ../server && PORT=${TEST_SERVER_PORT} DATABASE_URL= npx tsx src/index.ts`,
+      command: 'node ../../scripts/e2e-server.cjs',
       port: TEST_SERVER_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 15_000,
     },
     {
-      command: `cd ../client && API_URL=http://localhost:${TEST_SERVER_PORT} npx vite --port ${TEST_CLIENT_PORT}`,
+      command: 'node ../../scripts/e2e-client.cjs',
       port: TEST_CLIENT_PORT,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 15_000,
     },
   ],

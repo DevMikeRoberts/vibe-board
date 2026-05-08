@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { execSync } from 'child_process';
-import { mkdirSync, rmSync } from 'fs';
-import path from 'path';
-import os from 'os';
+import { API, cleanupTestPath, git, prepareTestRepo } from './helpers';
 
 /**
  * Full integration test for Task Groups with real agent execution.
@@ -10,12 +7,10 @@ import os from 'os';
  * (so one queues), verifies execution completes, and checks worktree cleanup.
  *
  * Requires at least one agent CLI installed and authenticated.
- * Skipped when no agents are available (CI-safe).
+ * Skipped only when no authenticated agent is available.
  */
 
-import { API } from './helpers';
 const AGENT_TIMEOUT = 180_000; // 3 minutes for all children to complete
-const TEST_REPO_BASE = path.join(os.tmpdir(), 'agentboard-group-e2e');
 
 async function getAvailableAgent(request: any): Promise<string | null> {
   const res = await request.get(`${API}/api/agents`);
@@ -41,21 +36,12 @@ test.describe('Task Group Integration — Real Agent Execution', () => {
   const createdGroupIds: string[] = [];
 
   test.beforeAll(async ({ request }) => {
-    if (process.env.CI) {
-      agentType = null; // Agent CLIs on CI runners are not authenticated
-    } else {
-      agentType = await getAvailableAgent(request);
-    }
+    agentType = await getAvailableAgent(request);
   });
 
-  test.beforeEach(() => {
+  test.beforeEach(({}, testInfo) => {
     // Create a fresh temp repo for each test
-    testRepo = path.join(TEST_REPO_BASE, `repo-${Date.now()}`);
-    mkdirSync(testRepo, { recursive: true });
-    execSync('git init -b main', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git config user.email "test@test.com"', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git config user.name "Test"', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git commit --allow-empty -m "init"', { cwd: testRepo, stdio: 'pipe' });
+    testRepo = prepareTestRepo(`group-integration-${testInfo.title}`, { clean: true });
   });
 
   test.afterEach(async ({ request }) => {
@@ -67,13 +53,11 @@ test.describe('Task Group Integration — Real Agent Execution', () => {
 
     // Clean up worktrees before removing repo
     try {
-      execSync('git worktree prune', { cwd: testRepo, stdio: 'pipe' });
+      git(['worktree', 'prune'], testRepo);
     } catch { /* repo may already be gone */ }
 
     // Remove temp repo
-    try {
-      rmSync(testRepo, { recursive: true, force: true });
-    } catch { /* best effort */ }
+    try { cleanupTestPath(testRepo); } catch { /* best effort */ }
   });
 
   test('create and run a group with 3 tasks using real agents', async ({ request }) => {

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import WebSocket from 'ws';
-import { API, waitForBoard, deleteTaskViaAPI } from './helpers';
+import { API, deleteTaskViaAPI, prepareTestRepo, waitForBoard } from './helpers';
 
 /**
  * E2E tests for the API Improvements (Items 1–5):
@@ -17,6 +17,7 @@ import { API, waitForBoard, deleteTaskViaAPI } from './helpers';
 
 test.describe('Single-call task creation + autoRun', () => {
   test('POST /api/tasks with all fields creates task with repoPath and agentType', async ({ request }) => {
+    const repoPath = prepareTestRepo('api-improvements');
     const res = await request.post(`${API}/api/tasks`, {
       data: {
         title: 'API test task',
@@ -24,14 +25,14 @@ test.describe('Single-call task creation + autoRun', () => {
         priority: 'high',
         columnId: 'backlog',
         agentType: 'claude',
-        repoPath: '/tmp/test-repo',
+        repoPath,
       },
     });
     expect(res.status()).toBe(201);
     const task = await res.json();
     expect(task.title).toBe('API test task');
     expect(task.agentType).toBe('claude');
-    expect(task.repoPath).toBe('/tmp/test-repo');
+    expect(task.repoPath).toBe(repoPath);
     expect(task.columnId).toBe('backlog');
     expect(task.agentStatus).toBe('idle');
 
@@ -58,13 +59,14 @@ test.describe('Single-call task creation + autoRun', () => {
   });
 
   test('POST /api/tasks with autoRun=true and columnId=in-progress starts agent', async ({ request }) => {
+    const repoPath = prepareTestRepo('api-improvements');
     const res = await request.post(`${API}/api/tasks`, {
       data: {
         title: 'Auto-run task',
         description: 'Should auto-start the agent',
         columnId: 'in-progress',
         agentType: 'copilot',
-        repoPath: '/tmp',
+        repoPath,
         autoRun: true,
       },
     });
@@ -219,6 +221,7 @@ test.describe('Batch create endpoint', () => {
   });
 
   test('POST /api/tasks/batch with autoRun creates and starts agents', async ({ request }) => {
+    const repoPath = prepareTestRepo('api-improvements');
     const res = await request.post(`${API}/api/tasks/batch`, {
       data: {
         tasks: [
@@ -226,7 +229,7 @@ test.describe('Batch create endpoint', () => {
             title: 'Batch autoRun',
             columnId: 'in-progress',
             agentType: 'copilot',
-            repoPath: '/tmp',
+            repoPath,
             autoRun: true,
           },
           {
@@ -260,6 +263,7 @@ test.describe('Batch create endpoint', () => {
 test.describe('agent_complete WebSocket event', () => {
   test('receives agent_complete on WS when agent is stopped', async ({ request }) => {
     test.setTimeout(60_000);
+    const repoPath = prepareTestRepo('api-improvements');
 
     // 1. Connect to WebSocket FIRST so we don't miss the event
     const ws = new WebSocket('ws://localhost:3002/ws');
@@ -284,7 +288,7 @@ test.describe('agent_complete WebSocket event', () => {
         description: 'Agent will be stopped to trigger agent_complete',
         columnId: 'in-progress',
         agentType: 'copilot',
-        repoPath: '/tmp',
+        repoPath,
         autoRun: true,
       },
     });
@@ -319,6 +323,7 @@ test.describe('agent_complete WebSocket event', () => {
 test.describe('Task result summary events', () => {
   test('events include structured summary with metadata on completion', async ({ request }) => {
     test.setTimeout(60_000);
+    const repoPath = prepareTestRepo('api-improvements');
 
     // Create a task with autoRun — agent starts executing
     const createRes = await request.post(`${API}/api/tasks`, {
@@ -327,7 +332,7 @@ test.describe('Task result summary events', () => {
         description: 'Should generate summary event',
         columnId: 'in-progress',
         agentType: 'copilot',
-        repoPath: '/tmp',
+        repoPath,
         autoRun: true,
       },
     });

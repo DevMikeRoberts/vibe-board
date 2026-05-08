@@ -1,5 +1,23 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API, waitForBoard } from './helpers';
+import { API, fillLocalPath, waitForBoard } from './helpers';
+
+const AGENT_LABELS: Record<string, string> = {
+  copilot: 'Copilot',
+  claude: 'Claude',
+  codex: 'Codex',
+  opencode: 'OpenCode',
+};
+
+async function getPreferredAgent(request: any): Promise<{ name: string; label: string; hasAvailableAgent: boolean }> {
+  const res = await request.get(`${API}/api/agents`);
+  const agents = await res.json();
+  const preferred = agents.find((agent: any) => agent.available)?.name ?? 'copilot';
+  return {
+    name: preferred,
+    label: AGENT_LABELS[preferred] ?? preferred,
+    hasAvailableAgent: agents.some((agent: any) => agent.available),
+  };
+}
 
 async function openCreateDialog(page: Page) {
   const backlogHeading = page.getByRole('heading', { name: 'Backlog', exact: true });
@@ -14,7 +32,7 @@ async function createTask(page: Page, title: string, description = 'Test descrip
   await page.getByPlaceholder('What needs to be done?').fill(title);
   await page.getByPlaceholder('Describe the task for the Copilot agent...').fill(description);
   // Local path is required — fill with a valid path
-  await page.getByPlaceholder('/host-projects/my-app').fill('/tmp/test-repo');
+  await fillLocalPath(page);
   await page.getByRole('button', { name: 'Create Task' }).click();
   await expect(page.getByRole('heading', { name: 'Create Task' })).not.toBeVisible({ timeout: 3_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5_000 });
@@ -91,27 +109,35 @@ test.describe('Agent Selector in TaskDialog', () => {
     await expect(dropdownOptions.nth(3)).toContainText('OpenCode');
   });
 
-  test('clicking an agent option selects it', async ({ page }) => {
+  test('clicking an available agent option selects it', async ({ page, request }) => {
     await openCreateDialog(page);
     const dialog = await openAgentDropdown(page);
+    const selected = await getPreferredAgent(request);
+    const dropdownOptions = dialog.locator('[class*="popover"] button');
 
-    // Select Claude from dropdown
-    await dialog.getByText('Claude').click();
+    if (!selected.hasAvailableAgent) {
+      await expect(dropdownOptions).toHaveCount(4);
+      await expect(dropdownOptions.filter({ hasText: 'Unavailable' })).toHaveCount(4);
+      return;
+    }
 
-    // The dropdown button should now show Claude
+    await dropdownOptions.filter({ hasText: selected.label }).first().click();
+
+    // The dropdown button should now show the selected agent.
     const agentLabel = dialog.getByText('Agent', { exact: true });
     const agentButton = agentLabel.locator('..').locator('button').first();
-    await expect(agentButton).toContainText('Claude');
+    await expect(agentButton).toContainText(selected.label);
   });
 
-  test('default agent selection is Copilot', async ({ page }) => {
+  test('default agent selection follows provider availability', async ({ page, request }) => {
     await openCreateDialog(page);
     const dialog = page.locator('[role="dialog"]');
+    const expected = await getPreferredAgent(request);
 
-    // The agent dropdown button should show Copilot by default
+    // If Copilot is unavailable, the dialog defaults to the first available provider.
     const agentLabel = dialog.getByText('Agent', { exact: true });
     const agentButton = agentLabel.locator('..').locator('button').first();
-    await expect(agentButton).toContainText('Copilot');
+    await expect(agentButton).toContainText(expected.label);
   });
 });
 

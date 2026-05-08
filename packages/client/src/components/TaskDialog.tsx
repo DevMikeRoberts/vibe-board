@@ -4,10 +4,10 @@ import {
   X,
   ChevronDown,
 } from 'lucide-react';
-import type { Task, TaskAttachment, ColumnId, AgentType, Priority } from '@/types';
+import type { Task, TaskAttachment, ColumnId, AgentType, AgentInfo, Priority } from '@/types';
 import { AGENT_OPTIONS } from '@/lib/agent-config';
 import { PRIORITY_OPTIONS } from '@/lib/priority-config';
-import { cn, slugify } from '@/lib/utils';
+import { cn, getRepoPathHelpText, getRepoPathPlaceholder, isAbsoluteRepoPath, slugify } from '@/lib/utils';
 import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 import { api } from '@/lib/api';
 import ImageUpload from './ImageUpload';
@@ -43,6 +43,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const [pathError, setPathError] = useState('');
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<TaskAttachment[]>([]);
+  const [availableAgents, setAvailableAgents] = useState<AgentInfo[]>([]);
 
   const isEditMode = !!editTask;
 
@@ -83,6 +84,30 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
     }
   }, [editTask, open, highlightRequired]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+    api.getAgents()
+      .then((result) => {
+        if (cancelled) return;
+        setAvailableAgents(result);
+
+        const selectedInfo = result.find((agent) => agent.name === agentType);
+        const firstAvailable = result.find((agent) => agent.available);
+        if (!editTask && selectedInfo && !selectedInfo.available && firstAvailable) {
+          setAgentType(firstAvailable.name);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAvailableAgents([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, editTask, agentType]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || submitting) return;
@@ -93,8 +118,8 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setPathError('Local path is required');
       return;
     }
-    if (!trimmedPath.startsWith('/') && !trimmedPath.startsWith('~')) {
-      setPathError('Path must be absolute (start with / or ~)');
+    if (!isAbsoluteRepoPath(trimmedPath)) {
+      setPathError('Path must be absolute (use /, ~, D:\\, or \\\\server\\share)');
       return;
     }
     setPathError('');
@@ -183,6 +208,10 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
 
   const selectedAgent = agents.find((a) => a.value === agentType)!;
   const selectedPriority = priorities.find((p) => p.value === priority)!;
+  const agentAvailability = new Map(availableAgents.map((agent) => [agent.name, agent]));
+  const selectedAgentInfo = agentAvailability.get(agentType);
+  const repoPathPlaceholder = getRepoPathPlaceholder();
+  const repoPathHelpText = getRepoPathHelpText();
 
   return (
     <AnimatePresence>
@@ -321,6 +350,9 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                   <span className="flex items-center gap-2">
                     <span>{selectedAgent.emoji}</span>
                     {selectedAgent.label}
+                    {selectedAgentInfo && !selectedAgentInfo.available && (
+                      <span className="text-xs text-red-500">Unavailable</span>
+                    )}
                   </span>
                   <ChevronDown className={cn('h-4 w-4 text-muted-foreground transition-transform', showAgent && 'rotate-180')} />
                 </button>
@@ -333,23 +365,37 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                       exit={{ opacity: 0, y: -4 }}
                       className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-border bg-popover shadow-lg"
                     >
-                      {agents.map((a) => (
-                        <button
-                          key={a.value}
-                          type="button"
-                          onClick={() => {
-                            setAgentType(a.value);
-                            setShowAgent(false);
-                          }}
-                          className={cn(
-                            'flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors',
-                            agentType === a.value && 'bg-accent'
-                          )}
-                        >
-                          <span>{a.emoji}</span>
-                          {a.label}
-                        </button>
-                      ))}
+                      {agents.map((a) => {
+                        const info = agentAvailability.get(a.value);
+                        const unavailable = info?.available === false;
+                        return (
+                          <button
+                            key={a.value}
+                            type="button"
+                            disabled={unavailable}
+                            onClick={() => {
+                              setAgentType(a.value);
+                              setShowAgent(false);
+                            }}
+                            className={cn(
+                              'flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
+                              agentType === a.value && 'bg-accent'
+                            )}
+                            title={unavailable ? info?.reason || `${a.label} is unavailable` : undefined}
+                          >
+                            <span>{a.emoji}</span>
+                            <span className="flex-1 text-left">{a.label}</span>
+                            {info && (
+                              <span className={cn(
+                                'text-[10px]',
+                                info.available ? 'text-emerald-500' : 'text-red-500'
+                              )}>
+                                {info.available ? 'Available' : info.reason || 'Unavailable'}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -373,14 +419,15 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
               {/* Repository configuration */}
               <div className="space-y-3 rounded-lg border border-border/50 bg-muted/30 p-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                  <label htmlFor="task-repo-path" className="mb-1 block text-xs font-medium text-muted-foreground">
                     Local Path <span className="text-red-400">*</span>
                   </label>
                     <input
+                      id="task-repo-path"
                       type="text"
                       value={repoPath}
                       onChange={(e) => { setRepoPath(e.target.value); setPathError(''); }}
-                      placeholder="/host-projects/my-app"
+                      placeholder={repoPathPlaceholder}
                       list="task-recent-repo-paths"
                       className={`w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50 focus:outline-none ${
                         pathError ? 'border-red-500 focus:border-red-500' : 'border-border focus:border-primary'
@@ -388,6 +435,9 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                     />
                     {pathError && (
                       <p className="mt-1 text-xs text-red-500">{pathError}</p>
+                    )}
+                    {!pathError && (
+                      <p className="mt-1 text-xs text-muted-foreground/60">{repoPathHelpText}</p>
                     )}
                     <datalist id="task-recent-repo-paths">
                       {getRecentRepoPaths().map((p) => <option key={p} value={p} />)}

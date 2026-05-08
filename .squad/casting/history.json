@@ -1,0 +1,33 @@
+{
+  "universe_usage_history": [
+    {
+      "universe": "The Matrix",
+      "assignment_id": "ai-agent-board-2026-05-07",
+      "used_at": "2026-05-07T12:01:42.360-07:00",
+      "casted_agents": 9,
+      "exempt_core_infrastructure": 2,
+      "note": "9 casted domain agents + 2 exempt core infrastructure (Scribe, Ralph)"
+    }
+  ],
+  "assignment_cast_snapshots": {
+    "ai-agent-board-2026-05-07": {
+      "universe": "The Matrix",
+      "agents": {
+        "lead": "Morpheus",
+        "frontend-dev": "Trinity",
+        "backend-dev": "Tank",
+        "agent-runtime": "Neo",
+        "tester": "Switch",
+        "devops": "Dozer",
+        "security": "Cypher",
+        "independent-reviewer": "Oracle",
+        "deep-reasoning-reviewer": "Seraph"
+      },
+      "exempt_core_infrastructure": {
+        "scribe": "Scribe",
+        "ralph": "Ralph"
+      },
+      "created_at": "2026-05-07T12:01:42.360-07:00"
+    }
+  }
+}

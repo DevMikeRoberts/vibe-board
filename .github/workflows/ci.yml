@@ -31,21 +31,12 @@ jobs:
       - name: Install dependencies
         run: rm -f package-lock.json && npm install
 
-      - name: Build shared types
-        run: npx tsc -b shared/tsconfig.json
-
-      - name: Build server
-        run: npm run build:server
-
-      - name: Build client
-        run: npm run build:client
-
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
         working-directory: packages/e2e
 
-      - name: Run E2E tests
-        run: npm test
+      - name: Run required gate
+        run: npm run gate:required
 
       - name: Upload test artifacts
         if: failure()

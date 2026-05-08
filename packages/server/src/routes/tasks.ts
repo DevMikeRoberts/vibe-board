@@ -8,7 +8,7 @@ import type { AgentManager } from '../services/agent-manager.js';
 import {
   asyncHandler, paramId, isAllowedRepoPath, expandTilde,
   validateTaskFields, buildTask, broadcastTaskUpdate,
-  startAgentForTask,
+  failTaskWithEvent, startAgentForTask,
 } from './helpers.js';
 
 export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager): Router {
@@ -44,8 +44,11 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       const agents = agentManager.getAvailableAgents();
       const agentInfo = agents.find(a => a.name === task.agentType);
       if (!agentInfo?.available) {
-        const failed = await repo.update(task.id, { agentStatus: 'failed' });
-        if (failed) broadcastTaskUpdate(failed);
+        const failed = await failTaskWithEvent(
+          repo,
+          task,
+          `Agent ${agentInfo?.displayName || task.agentType || 'unknown'} is not available: ${agentInfo?.reason || 'unknown reason'}`,
+        );
         res.status(201).json(failed || { ...task, agentStatus: 'failed' });
         return;
       }
@@ -98,11 +101,12 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
         const agents = agentManager.getAvailableAgents();
         const agentInfo = agents.find(a => a.name === task.agentType);
         if (!agentInfo?.available) {
-          const failed = await repo.update(task.id, { agentStatus: 'failed' });
-          if (failed) {
-            broadcastTaskUpdate(failed);
-            created[i] = failed;
-          }
+          const failed = await failTaskWithEvent(
+            repo,
+            task,
+            `Agent ${agentInfo?.displayName || task.agentType || 'unknown'} is not available: ${agentInfo?.reason || 'unknown reason'}`,
+          );
+          if (failed) created[i] = failed;
         } else {
           await startAgentForTask(task, repo, agentManager);
           const latest = await repo.getById(task.id);

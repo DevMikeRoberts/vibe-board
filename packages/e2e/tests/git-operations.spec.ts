@@ -1,32 +1,18 @@
 import { test, expect } from '@playwright/test';
 import type { APIRequestContext } from '@playwright/test';
-import { execSync } from 'child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
-import os from 'os';
 
 /**
  * E2E tests for git operations: merge-local, create-pr (simulated),
  * worktree cleanup, and worktree auto-cleanup after merge/PR.
  */
 
-import { API } from './helpers';
-const TEST_REPO_BASE = path.join(os.tmpdir(), 'agentboard-git-e2e');
-
-function createTestRepo(): string {
-  const repo = path.join(TEST_REPO_BASE, `repo-${Date.now()}`);
-  mkdirSync(repo, { recursive: true });
-  execSync('git init -b main', { cwd: repo, stdio: 'pipe' });
-  execSync('git config user.email "test@test.com"', { cwd: repo, stdio: 'pipe' });
-  execSync('git config user.name "Test"', { cwd: repo, stdio: 'pipe' });
-  writeFileSync(path.join(repo, 'README.md'), '# Test Project\n');
-  execSync('git add . && git commit -m "init"', { cwd: repo, stdio: 'pipe' });
-  return repo;
-}
+import { API, cleanupTestPath, getTestRepoPath, git, prepareTestRepo } from './helpers';
 
 function cleanRepo(repo: string) {
-  try { execSync('git worktree prune', { cwd: repo, stdio: 'pipe' }); } catch { /* */ }
-  try { rmSync(repo, { recursive: true, force: true }); } catch { /* */ }
+  try { git(['worktree', 'prune'], repo); } catch { /* */ }
+  cleanupTestPath(repo);
 }
 
 // Create a task, configure it with worktree, simulate agent work (create branch + commit),
@@ -49,11 +35,12 @@ export async function createConfiguredTask(
   });
 
   // Simulate what agent-manager does: create worktree, make a commit
-  const worktreePath = path.join(os.tmpdir(), `agentboard-test-wt-${Date.now()}`);
-  mkdirSync(worktreePath, { recursive: true });
-  execSync(`git worktree add -b ${branchName} ${worktreePath} main`, { cwd: repo, stdio: 'pipe' });
+  const worktreePath = getTestRepoPath(`git-operations-worktree-${branchName}`);
+  cleanupTestPath(worktreePath);
+  git(['worktree', 'add', '-b', branchName, worktreePath, 'main'], repo);
   writeFileSync(path.join(worktreePath, 'hello.py'), 'print("Hello, World!")\n');
-  execSync('git add . && git commit -m "Add hello.py"', { cwd: worktreePath, stdio: 'pipe' });
+  git(['add', '.'], worktreePath);
+  git(['commit', '-m', 'Add hello.py'], worktreePath);
 
   // Run the task so the server creates its internal state, then stop it immediately
   // (This sets agentStatus properly). Instead, we'll use the run+stop flow.
@@ -90,8 +77,8 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
   let testRepo: string;
   const createdTaskIds: string[] = [];
 
-  test.beforeEach(() => {
-    testRepo = createTestRepo();
+  test.beforeEach(({}, testInfo) => {
+    testRepo = prepareTestRepo(`git-operations-${testInfo.title}`, { clean: true });
   });
 
   test.afterEach(async ({ request }) => {
@@ -155,10 +142,11 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     });
 
     // Create the branch manually so git push has something to push
-    execSync(`git checkout -b ${branchName}`, { cwd: testRepo, stdio: 'pipe' });
+    git(['checkout', '-b', branchName], testRepo);
     writeFileSync(path.join(testRepo, 'test.txt'), 'test\n');
-    execSync('git add . && git commit -m "test"', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git checkout main', { cwd: testRepo, stdio: 'pipe' });
+    git(['add', '.'], testRepo);
+    git(['commit', '-m', 'test'], testRepo);
+    git(['checkout', 'main'], testRepo);
 
     // Mark as complete
     await request.patch(`${API}/api/tasks/${task.id}`, { data: { agentStatus: 'complete' } });
@@ -186,10 +174,11 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     });
 
     // Create the branch and make changes
-    execSync(`git checkout -b ${branchName}`, { cwd: testRepo, stdio: 'pipe' });
+    git(['checkout', '-b', branchName], testRepo);
     writeFileSync(path.join(testRepo, 'hello.py'), 'print("Hello")\n');
-    execSync('git add . && git commit -m "Add hello"', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git checkout main', { cwd: testRepo, stdio: 'pipe' });
+    git(['add', '.'], testRepo);
+    git(['commit', '-m', 'Add hello'], testRepo);
+    git(['checkout', 'main'], testRepo);
 
     await request.patch(`${API}/api/tasks/${task.id}`, { data: { agentStatus: 'complete' } });
 
@@ -201,7 +190,7 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     expect(body.baseBranch).toBe('main');
 
     // Verify hello.py exists on main
-    const files = execSync('git ls-files', { cwd: testRepo }).toString();
+    const files = git(['ls-files'], testRepo);
     expect(files).toContain('hello.py');
   });
 
@@ -219,14 +208,16 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     });
 
     // Create branch with a change
-    execSync(`git checkout -b ${branchName}`, { cwd: testRepo, stdio: 'pipe' });
+    git(['checkout', '-b', branchName], testRepo);
     writeFileSync(path.join(testRepo, 'hello.py'), 'print("From branch")\n');
-    execSync('git add . && git commit -m "branch change"', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git checkout main', { cwd: testRepo, stdio: 'pipe' });
+    git(['add', '.'], testRepo);
+    git(['commit', '-m', 'branch change'], testRepo);
+    git(['checkout', 'main'], testRepo);
 
     // Create conflicting change on main
     writeFileSync(path.join(testRepo, 'hello.py'), 'print("From main")\n');
-    execSync('git add . && git commit -m "main change"', { cwd: testRepo, stdio: 'pipe' });
+    git(['add', '.'], testRepo);
+    git(['commit', '-m', 'main change'], testRepo);
 
     await request.patch(`${API}/api/tasks/${task.id}`, { data: { agentStatus: 'complete' } });
 
@@ -237,15 +228,17 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     expect(body.error).toContain('Merge failed');
 
     // Repo should be clean (merge aborted)
-    const status = execSync('git status --porcelain', { cwd: testRepo }).toString().trim();
+    const status = git(['status', '--porcelain'], testRepo).trim();
     expect(status).toBe('');
   });
 
   test('POST /create-pr with simulated remote pushes branch', async ({ request }) => {
     // Set up a bare remote to simulate GitHub
-    const bareRemote = path.join(TEST_REPO_BASE, `remote-${Date.now()}.git`);
-    execSync(`git clone --bare ${testRepo} ${bareRemote}`, { stdio: 'pipe' });
-    execSync(`git remote add origin ${bareRemote}`, { cwd: testRepo, stdio: 'pipe' });
+    const remoteRoot = getTestRepoPath('git-operations-remotes');
+    mkdirSync(remoteRoot, { recursive: true });
+    const bareRemote = path.join(remoteRoot, `remote-${Date.now()}.git`);
+    git(['clone', '--bare', testRepo, bareRemote], process.cwd());
+    git(['remote', 'add', 'origin', bareRemote], testRepo);
 
     const branchName = `feature/pr-push-${Date.now()}`;
 
@@ -260,10 +253,11 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     });
 
     // Create branch with changes
-    execSync(`git checkout -b ${branchName}`, { cwd: testRepo, stdio: 'pipe' });
+    git(['checkout', '-b', branchName], testRepo);
     writeFileSync(path.join(testRepo, 'feature.py'), 'print("Feature")\n');
-    execSync('git add . && git commit -m "Add feature"', { cwd: testRepo, stdio: 'pipe' });
-    execSync('git checkout main', { cwd: testRepo, stdio: 'pipe' });
+    git(['add', '.'], testRepo);
+    git(['commit', '-m', 'Add feature'], testRepo);
+    git(['checkout', 'main'], testRepo);
 
     await request.patch(`${API}/api/tasks/${task.id}`, { data: { agentStatus: 'complete' } });
 
@@ -271,7 +265,7 @@ test.describe('Git Operations — Merge, PR, Worktree Cleanup', () => {
     await request.post(`${API}/api/tasks/${task.id}/create-pr`);
     // Either 200 (gh CLI worked) or 500 (gh CLI failed after push)
     // Either way, the branch should be pushed to the remote
-    const remoteBranches = execSync('git branch', { cwd: bareRemote }).toString();
+    const remoteBranches = git(['--git-dir', bareRemote, 'branch'], process.cwd());
     expect(remoteBranches).toContain(branchName);
 
     // Cleanup

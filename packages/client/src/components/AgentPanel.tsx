@@ -237,7 +237,10 @@ function EventItem({ event }: { event: CoalescedEvent }) {
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.2 }}
-      className="group"
+      className={cn(
+        'group',
+        event.type === 'error' && 'rounded-lg border border-red-500/20 bg-red-500/5'
+      )}
     >
       <button
         onClick={() => setExpanded(!expanded)}
@@ -288,7 +291,12 @@ function EventItem({ event }: { event: CoalescedEvent }) {
                     {event.content}
                   </div>
                 ) : (
-                  <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                  <p className={cn(
+                    'text-xs leading-relaxed whitespace-pre-wrap',
+                    event.type === 'error'
+                      ? 'font-mono text-red-700 dark:text-red-300'
+                      : 'text-muted-foreground'
+                  )}>
                     {event.content}
                   </p>
                 )
@@ -376,6 +384,8 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
 
   const taskId = task?.id ?? null;
   const agentStatus = task?.agentStatus;
+  const errorEvents = useMemo(() => events.filter((event) => event.type === 'error'), [events]);
+  const latestError = errorEvents[errorEvents.length - 1];
 
   useEffect(() => {
     if (!taskId) {
@@ -487,6 +497,8 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
     return [...files.entries()].map(([path, info]) => ({ path, ...info }));
   }, [events]);
 
+  const failedWithoutDetails = task?.agentStatus === 'failed' && !latestError;
+
   const handleSendFollowUp = async () => {
     if (!task || (!followUpMessage.trim() && followUpImages.length === 0) || sending) return;
     const message = followUpMessage.trim();
@@ -577,6 +589,12 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                   <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
                     <CheckCircle2 className="h-3 w-3" />
                     Complete
+                  </span>
+                )}
+                {task.agentStatus === 'failed' && (
+                  <span className="flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400">
+                    <AlertCircle className="h-3 w-3" />
+                    Failed
                   </span>
                 )}
                 <span className="text-[10px] text-muted-foreground">
@@ -787,6 +805,12 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             </div>
           )}
 
+          {task.agentStatus === 'failed' && (
+            <FailureSummary
+              message={latestError?.content || 'The agent failed before it wrote an error log. Retry or reconfigure the task to capture the current failure reason.'}
+            />
+          )}
+
           {/* Tab bar */}
           <div className="shrink-0 flex items-center justify-between border-b border-border px-2 pt-1">
             <div className="flex gap-1">
@@ -886,7 +910,21 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             ref={scrollRef}
             className="flex-1 overflow-y-auto p-2 space-y-0.5"
           >
-            {coalescedEvents.length === 0 && !streaming && (
+            {coalescedEvents.length === 0 && !streaming && failedWithoutDetails && (
+              <div className="flex h-full items-center justify-center p-4">
+                <div className="w-full rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-center">
+                  <AlertCircle className="mx-auto h-10 w-10 text-red-500/80 dark:text-red-400/80" />
+                  <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
+                    Agent failed
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-red-700/70 dark:text-red-300/70">
+                    This run did not record an error event. Use Reconfigure or Retry to run it again and capture details.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {coalescedEvents.length === 0 && !streaming && !failedWithoutDetails && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center">
                   <Brain className="mx-auto h-10 w-10 text-muted-foreground/20" />
@@ -1027,6 +1065,25 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
       >
         Dismiss
       </button>
+    </div>
+  );
+}
+
+function FailureSummary({ message }: { message: string }) {
+  return (
+    <div className="shrink-0 border-b border-border px-4 py-3">
+      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+        <div className="flex items-start gap-2">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-red-700 dark:text-red-300">Agent failed</p>
+            <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-red-700/80 dark:text-red-300/80">
+              {message}
+            </p>
+          </div>
+          <CopyButton text={message} />
+        </div>
+      </div>
     </div>
   );
 }

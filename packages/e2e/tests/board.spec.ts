@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { API, waitForBoard } from './helpers';
+import { API, fillLocalPath, waitForBoard } from './helpers';
 
 // Helper to open the create task dialog
 async function openCreateDialog(page: Page) {
@@ -16,7 +16,7 @@ async function createTask(page: Page, title: string, description = 'Test descrip
   await page.getByPlaceholder('What needs to be done?').fill(title);
   await page.getByPlaceholder('Describe the task for the Copilot agent...').fill(description);
   // Local path is required
-  await page.getByPlaceholder('/host-projects/my-app').fill('/tmp/test-repo');
+  await fillLocalPath(page);
   await page.getByRole('button', { name: 'Create Task' }).click();
   await expect(page.getByRole('heading', { name: 'Create Task' })).not.toBeVisible({ timeout: 3_000 });
   await expect(page.getByRole('heading', { name: title })).toBeVisible({ timeout: 5_000 });
@@ -196,7 +196,7 @@ test.describe('Task Priority', () => {
     await openCreateDialog(page);
     await page.getByPlaceholder('What needs to be done?').fill(taskTitle);
     // Local path is required
-    await page.getByPlaceholder('/host-projects/my-app').fill('/tmp/test-repo');
+    await fillLocalPath(page);
 
     // Open priority dropdown within the dialog and select High
     const dialog = page.getByRole('dialog');
@@ -385,4 +385,3 @@ test.describe('Retry Failed Tasks', () => {
     await expect(taskCard.getByRole('button', { name: 'Retry task' })).toBeVisible();
   });
 });
-

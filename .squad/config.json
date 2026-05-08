@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "defaultModel": "claude-sonnet-4.6",
+  "agentModelOverrides": {
+    "scribe": "claude-haiku-4.5",
+    "ralph": "claude-haiku-4.5",
+    "oracle": "gpt-5.5",
+    "seraph": "claude-opus-4.7-xhigh"
+  }
+}

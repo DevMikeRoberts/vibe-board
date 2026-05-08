@@ -127,6 +127,17 @@ npm run build:server
 npm run build:client
 ```
 
+### Required Gate
+
+Use the deterministic gate before pushing changes. It runs the client build, server build, and required Playwright E2E suite; if E2E cannot run, the command fails.
+
+```bash
+npm run gate:required
+
+# Enable the committed pre-push hook for this clone
+npm run hooks:install
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -140,7 +151,7 @@ npm run build:client
 | `CLAUDE_MODEL` | `claude-opus-4-20250514` | Model for Claude Code sessions |
 | `CODEX_MODEL` | `gpt-5.2-codex` | Model for OpenAI Codex sessions |
 | `COPILOT_DENIED_TOOLS` | _(unset)_ | Comma-separated tool names to deny in Copilot sessions |
-| `ALLOWED_REPO_ROOTS` | `$HOME,/tmp` | Allowed repo root paths (comma-separated) |
+| `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Allowed repo root paths (comma-separated) |
 | `ALLOWED_ORIGINS` | `http://localhost:8081,http://localhost:4175,http://localhost:4176` | CORS origins |
 | `AGENT_TIMEOUT_MS` | `600000` | Max agent execution time (ms) |
 | `API_URL` | `http://localhost:8080` | Vite proxy target |
@@ -171,12 +182,17 @@ ai-agent-board/
 ## Tests
 
 ```bash
-# Run all E2E tests (requires client + server running)
-npm test
+# Required deterministic gate: client build, server build, E2E
+npm run gate:required
 
-# Run directly
+# Required E2E only; starts isolated test app processes on ports 3002/4176
+npm run test:e2e:required
+
+# Run directly from the E2E workspace
 cd packages/e2e && npx playwright test --reporter=list
 ```
+
+The local pre-push hook in `.githooks/pre-push` runs `npm run gate:required`. Run `npm run hooks:install` once per clone to enable it with `core.hooksPath .githooks`.
 
 7 test files covering 81 tests:
 

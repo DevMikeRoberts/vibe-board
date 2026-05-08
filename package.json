@@ -21,7 +21,10 @@
     "dev:server": "npm run dev -w @ai-agent-board/server",
     "build:client": "npm run build -w @ai-agent-board/client",
     "build:server": "npm run build -w @ai-agent-board/server",
-    "test": "npm run test -w @ai-agent-board/e2e",
-    "test:e2e": "npm run test -w @ai-agent-board/e2e"
+    "test": "npm run test:e2e:required",
+    "test:e2e": "npm run test:e2e:required",
+    "test:e2e:required": "npm run test:required -w @ai-agent-board/e2e",
+    "gate:required": "node scripts/run-required-gate.cjs",
+    "hooks:install": "node scripts/install-hooks.cjs"
   }
 }

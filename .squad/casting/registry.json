@@ -1,0 +1,83 @@
+{
+  "agents": {
+    "lead": {
+      "persistent_name": "Morpheus",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "frontend-dev": {
+      "persistent_name": "Trinity",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "backend-dev": {
+      "persistent_name": "Tank",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "agent-runtime": {
+      "persistent_name": "Neo",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "tester": {
+      "persistent_name": "Switch",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "devops": {
+      "persistent_name": "Dozer",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "security": {
+      "persistent_name": "Cypher",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "independent-reviewer": {
+      "persistent_name": "Oracle",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    },
+    "deep-reasoning-reviewer": {
+      "persistent_name": "Seraph",
+      "universe": "The Matrix",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "legacy_named": false,
+      "status": "active"
+    }
+  },
+  "exempt_core_infrastructure": {
+    "scribe": {
+      "persistent_name": "Scribe",
+      "role": "Session Logger",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "status": "active",
+      "exempt_reason": "Core infrastructure; not counted against universe capacity"
+    },
+    "ralph": {
+      "persistent_name": "Ralph",
+      "role": "Work Monitor",
+      "created_at": "2026-05-07T12:01:42.360-07:00",
+      "status": "active",
+      "exempt_reason": "Core infrastructure; not counted against universe capacity"
+    }
+  }
+}

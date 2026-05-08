@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { APIRequestContext } from '@playwright/test';
 
-import { API } from './helpers';
+import { API, prepareTestRepo } from './helpers';
 
 // ─── Helpers ────────────────────────────────────────────────────────
 
@@ -223,10 +223,11 @@ test.describe('Task Groups API', () => {
   });
 
   test('children inherit group-level repo and branch config', async ({ request }) => {
+    const repoPath = prepareTestRepo('groups');
     const res = await request.post(`${API}/api/groups`, {
       data: {
         title: 'Config Inheritance Group',
-        repoPath: '/tmp/test-repo',
+        repoPath,
         baseBranch: 'develop',
         maxConcurrency: 1,
         children: makeChildren(2),
@@ -237,9 +238,9 @@ test.describe('Task Groups API', () => {
     createdGroupIds.push(body.id);
 
     // Children should inherit repo config
-    expect(body.children[0].repoPath).toBe('/tmp/test-repo');
+    expect(body.children[0].repoPath).toBe(repoPath);
     expect(body.children[0].baseBranch).toBe('develop');
-    expect(body.children[1].repoPath).toBe('/tmp/test-repo');
+    expect(body.children[1].repoPath).toBe(repoPath);
     expect(body.children[1].baseBranch).toBe('develop');
   });
 

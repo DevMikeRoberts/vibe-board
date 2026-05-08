@@ -26,7 +26,7 @@ ai-agent-board/
 │   │       └── index.ts     # Express app setup + graceful shutdown
 │   └── e2e/             # Playwright tests
 ├── shared/              # Shared types (Task, TaskGroup, TaskTemplate, AgentEvent, ColumnId, AgentType, etc.) + validation constants
-├── scripts/             # test-sdk-e2e.sh
+├── scripts/             # required gate, hook install, and E2E process helpers
 └── k8s/                 # Kubernetes manifests (namespace, deployments, services, ingress)
 ```
 
@@ -83,6 +83,7 @@ systemctl restart ai-agent-board-client
 ## Build
 
 ```bash
+npm run gate:required  # required gate: client build, server build, E2E
 npm run build:client   # tsc + vite build
 npm run build:server   # tsc -b tsconfig.build.json
 ```
@@ -100,7 +101,7 @@ npm run build:server   # tsc -b tsconfig.build.json
 | `CLAUDE_MODEL` | `claude-opus-4-20250514` | Model for Claude Code sessions |
 | `CODEX_MODEL` | `gpt-5.2-codex` | Model for OpenAI Codex sessions |
 | `COPILOT_DENIED_TOOLS` | _(none)_ | Comma-separated tool names to deny in Copilot sessions |
-| `ALLOWED_REPO_ROOTS` | `$HOME,/tmp` | Comma-separated allowed repo root paths (security whitelist) |
+| `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Comma-separated allowed repo root paths (security whitelist) |
 | `ALLOWED_ORIGINS` | `http://localhost:4175,http://localhost:4176` | CORS origins |
 | `AGENT_TIMEOUT_MS` | `600000` (10 min) | Max agent execution time |
 | `API_URL` | `http://localhost:3001` | Vite proxy target |
@@ -109,14 +110,17 @@ npm run build:server   # tsc -b tsconfig.build.json
 ## Tests
 
 ```bash
-# E2E tests (requires both client and server running)
-npm test
+# Deterministic required gate (client build, server build, E2E)
+npm run gate:required
 
-# Or directly
-cd packages/e2e && npx playwright test
+# Required E2E only; Playwright starts isolated test app processes on ports 3002/4176
+npm run test:e2e:required
+
+# Enable the committed pre-push hook for this clone
+npm run hooks:install
 ```
 
-7 test files, 81 tests (79 active, 2 skipped integration): board (CRUD, drag, theme, priority, sort, filter, retry), API improvements (auto-run, batch, status, events), agent selector, task groups (CRUD, validation, edge cases, UI), git operations (merge, PR, worktree), group integration (real agent execution), agent SDK.
+The committed `.githooks/pre-push` hook runs `npm run gate:required` and must not silently skip E2E. 7 test files, 81 tests (79 active, 2 skipped integration): board (CRUD, drag, theme, priority, sort, filter, retry), API improvements (auto-run, batch, status, events), agent selector, task groups (CRUD, validation, edge cases, UI), git operations (merge, PR, worktree), group integration (real agent execution), agent SDK. Portability/setup problems are blockers to fix, not reasons to skip affected e2e coverage.
 
 ## Code Patterns
 
@@ -131,6 +135,13 @@ cd packages/e2e && npx playwright test
 - **Group queue**: `GroupQueue` in agent-manager tracks pending/running/completed/failed per group. `drainQueue()` fills slots up to `maxConcurrency` as children complete.
 - **Per-repo mutex**: `withRepoLock()` serializes git operations (merge, checkout) on the same repository to prevent concurrent modification races.
 - **Startup recovery**: Orphaned tasks (`executing`/`planning` without live session) reset to `failed` on server restart. Groups reconstruct queue from DB state.
+
+## Squad Operating Mode
+
+- **Roster/routing**: Use `.squad/team.md` and `.squad/routing.md` for domain ownership before non-trivial work.
+- **Critical behaviors**: Use `.squad/coverage-matrix.md` to classify risk for agent runtime, git/worktrees, auth/path safety, event streaming, task groups, repositories, and board workflows. Browser workflow/client-server changes must produce deterministic e2e evidence or fail the gate.
+- **Skills**: Check `.copilot/skills/` for general process skills and `.squad/skills/` for project-specific patterns before starting work.
+- **Completion summaries**: After significant agent batches, report `Asked:`, `Completed:`, and `Open issues:` so blockers are not hidden in logs.
 
 ## Known Issues (LOW priority)
 
