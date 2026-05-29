@@ -80,7 +80,7 @@ const agentManager = new AgentManager();
   agentManager.initEventPersistence(taskRepo);
   agentManager.initAttachmentStore(attachmentStore);
 
-  app.use('/api/projects', createProjectsRouter(projectRepo));
+  app.use('/api/projects', createProjectsRouter(projectRepo, taskRepo, groupRepo, agentManager));
   app.use('/api/tasks', createTaskRouter(taskRepo, agentManager, projectRepo));
   app.use('/api/tasks', createAgentRouter(taskRepo, agentManager, groupRepo, projectRepo));
   app.use('/api/tasks', createGitRouter(taskRepo, agentManager));

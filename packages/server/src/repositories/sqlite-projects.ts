@@ -140,9 +140,10 @@ export class SqliteProjectRepository implements ProjectRepository {
     return this.db.transaction(() => {
       const project = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
       if (!project) return false;
-      const taskCount = (this.db.prepare('SELECT COUNT(*) AS count FROM tasks WHERE project_id = ?').get(id) as { count: number }).count;
-      const groupCount = (this.db.prepare('SELECT COUNT(*) AS count FROM task_groups WHERE project_id = ?').get(id) as { count: number }).count;
-      if (taskCount > 0 || groupCount > 0) return false;
+      // Cascade: delete tasks (their events cascade via FK, and group children share
+      // project_id so they are removed too), then groups, then the project itself.
+      this.db.prepare('DELETE FROM tasks WHERE project_id = ?').run(id);
+      this.db.prepare('DELETE FROM task_groups WHERE project_id = ?').run(id);
       const result = this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
       if (project.is_default) {
         this.db.prepare('UPDATE projects SET is_default = 1 WHERE id = ?').run('default');

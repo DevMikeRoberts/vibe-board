@@ -162,12 +162,10 @@ export class PostgresProjectRepository implements ProjectRepository {
         await client.query('ROLLBACK');
         return false;
       }
-      const [{ count: taskCount }] = (await client.query<{ count: string }>('SELECT COUNT(*) AS count FROM tasks WHERE project_id = $1', [id])).rows;
-      const [{ count: groupCount }] = (await client.query<{ count: string }>('SELECT COUNT(*) AS count FROM task_groups WHERE project_id = $1', [id])).rows;
-      if (Number(taskCount) > 0 || Number(groupCount) > 0) {
-        await client.query('ROLLBACK');
-        return false;
-      }
+      // Cascade: delete tasks (their events cascade via FK, and group children share
+      // project_id so they are removed too), then groups, then the project itself.
+      await client.query('DELETE FROM tasks WHERE project_id = $1', [id]);
+      await client.query('DELETE FROM task_groups WHERE project_id = $1', [id]);
       const result = await client.query('DELETE FROM projects WHERE id = $1', [id]);
       if (rows[0].is_default) {
         await client.query('UPDATE projects SET is_default = TRUE WHERE id = $1', ['default']);

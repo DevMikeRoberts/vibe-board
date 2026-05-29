@@ -210,7 +210,7 @@ export function ProjectsPage({
         description={(
           <p className="text-sm text-muted-foreground mb-5">
             <span className="font-medium text-foreground">{deletingProject?.name}</span> will be permanently
-            deleted. Only empty non-default projects can be deleted.
+            deleted, along with all of its tasks and groups. This cannot be undone.
           </p>
         )}
         onCancel={() => setDeletingProject(null)}

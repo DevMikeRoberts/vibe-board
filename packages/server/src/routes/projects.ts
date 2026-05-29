@@ -4,6 +4,10 @@ import path from 'path';
 import { v4 as uuid } from 'uuid';
 import type { AgentType, Priority } from '../types.js';
 import type { ProjectRepository } from '../repositories/project-types.js';
+import type { TaskRepository } from '../repositories/types.js';
+import type { TaskGroupRepository } from '../repositories/group-types.js';
+import type { AgentManager } from '../services/agent-manager.js';
+import { broadcast } from '../websocket.js';
 import { MAX_TITLE_LENGTH, isValidAgentType, isValidPriority } from '@ai-agent-board/shared/constants.js';
 import { errorMessage } from '../utils.js';
 import {
@@ -90,7 +94,12 @@ function parseProjectDefaults(body: Record<string, unknown>, allowNull: boolean)
   return out;
 }
 
-export function createProjectsRouter(projectRepo: ProjectRepository): Router {
+export function createProjectsRouter(
+  projectRepo: ProjectRepository,
+  taskRepo: TaskRepository,
+  groupRepo: TaskGroupRepository,
+  agentManager: AgentManager,
+): Router {
   const router = Router();
 
   router.get('/', asyncHandler(async (_req: Request, res: Response) => {
@@ -244,8 +253,36 @@ export function createProjectsRouter(projectRepo: ProjectRepository): Router {
 
   router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
     const id = paramId(req);
+    if (id === 'default') { res.status(409).json({ error: 'the default project cannot be deleted' }); return; }
+    const project = await projectRepo.getById(id);
+    if (!project) { res.status(404).json({ error: 'project not found' }); return; }
+
+    // Stop any running group queues + their agents before removing rows.
+    const groups = await groupRepo.getAll(true, id);
+    for (const group of groups) {
+      await agentManager.stopGroup(group.id);
+    }
+
+    // Collect every task in the project: standalone tasks plus group children.
+    const standaloneTasks = await taskRepo.getAll(true, id);
+    const childTasks = (await Promise.all(groups.map((g) => groupRepo.getChildTasks(g.id)))).flat();
+    const tasks = [...standaloneTasks, ...childTasks];
+
+    // Stop agents, drop cached events, and clean up worktrees (best effort).
+    for (const task of tasks) {
+      await agentManager.stopAgent(task.id);
+      agentManager.clearEvents(task.id);
+      if (task.worktreePath) {
+        try { agentManager.removeWorktree(task); } catch { /* best effort */ }
+      }
+    }
+
     const deleted = await projectRepo.delete(id);
     if (!deleted) { res.status(409).json({ error: 'project cannot be deleted' }); return; }
+
+    for (const task of tasks) {
+      broadcast({ type: 'task_deleted', payload: { id: task.id } });
+    }
     broadcastProjectDelete(id);
     res.status(204).send();
   }));

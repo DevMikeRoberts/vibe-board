@@ -381,7 +381,43 @@ test.describe('Projects API', () => {
     });
 
     const deleteRes = await request.delete(`${API}/api/projects/${project.id}`);
+    expect(deleteRes.status()).toBe(204);
+  });
+
+  test('deletes a non-empty project and cascades its tasks and groups', async ({ request }) => {
+    const repoPath = prepareTestRepo('projects-api-cascade-delete', { clean: true });
+    const project = await createProject(request, {
+      name: 'Cascade Delete Project',
+      repoPath,
+    });
+
+    const task = await createTask(request, {
+      title: 'Cascade Task',
+      projectId: project.id,
+    });
+    const group = await createGroup(request, {
+      title: 'Cascade Group',
+      projectId: project.id,
+    });
+
+    const deleteRes = await request.delete(`${API}/api/projects/${project.id}`);
+    expect(deleteRes.status()).toBe(204);
+
+    const projectAfter = await request.get(`${API}/api/projects/${project.id}`);
+    expect(projectAfter.status()).toBe(404);
+
+    const taskAfter = await request.get(`${API}/api/tasks/${task.id}/events`);
+    expect(taskAfter.status()).toBe(404);
+
+    const groupAfter = await request.get(`${API}/api/groups/${group.id}`);
+    expect(groupAfter.status()).toBe(404);
+  });
+
+  test('refuses to delete the default project', async ({ request }) => {
+    const deleteRes = await request.delete(`${API}/api/projects/default`);
     expect(deleteRes.status()).toBe(409);
+    const stillThere = await request.get(`${API}/api/projects/default`);
+    expect(stillThere.status()).toBe(200);
   });
 
   test('summarizes only board-visible standalone tasks and groups', async ({ request }) => {
