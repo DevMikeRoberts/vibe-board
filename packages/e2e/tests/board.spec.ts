@@ -112,6 +112,53 @@ test.describe('Task CRUD', () => {
     await expect(page.getByText('No agent activity yet')).toBeVisible();
   });
 
+  test('Summary tab appears for review tasks and opens by default', async ({ page }) => {
+    const taskTitle = `Review Panel ${Date.now()}`;
+    const taskId = await createTask(page, taskTitle);
+    createdTaskIds.push(taskId);
+
+    // Move backlog -> in-progress -> review via valid transitions
+    await page.evaluate(async (id) => {
+      const patch = (body: unknown) =>
+        fetch(`/api/tasks/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      await patch({ columnId: 'in-progress' });
+      await patch({ columnId: 'review' });
+    }, taskId);
+
+    await page.reload();
+    await waitForBoard(page);
+    await page.getByRole('heading', { name: taskTitle }).click();
+
+    // Summary tab is present and selected by default (empty-state visible)
+    await expect(page.getByRole('button', { name: 'Summary', exact: true })).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByText('No summary was provided for this task.')).toBeVisible();
+  });
+
+  test('Summary tab is hidden for in-progress tasks', async ({ page }) => {
+    const taskTitle = `Progress Panel ${Date.now()}`;
+    const taskId = await createTask(page, taskTitle);
+    createdTaskIds.push(taskId);
+
+    await page.evaluate(async (id) => {
+      await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ columnId: 'in-progress' }),
+      });
+    }, taskId);
+
+    await page.reload();
+    await waitForBoard(page);
+    await page.getByRole('heading', { name: taskTitle }).click();
+
+    await expect(page.getByRole('button', { name: 'Run agent' })).toBeVisible({ timeout: 3_000 });
+    await expect(page.getByRole('button', { name: 'Summary', exact: true })).toHaveCount(0);
+  });
+
   test('dragging task to In Progress starts the agent', async ({ page }) => {
     const taskTitle = `Drag Start Task ${Date.now()}`;
     const taskId = await createTask(page, taskTitle);

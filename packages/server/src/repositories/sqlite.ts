@@ -23,6 +23,7 @@ interface TaskRow {
   project_id: string;
   group_id: string | null;
   group_order: number | null;
+  summary: string | null;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -46,6 +47,7 @@ function rowToTask(row: TaskRow): Task {
     archived: Boolean(row.archived),
     groupId: row.group_id ?? undefined,
     groupOrder: row.group_order ?? undefined,
+    summary: row.summary ?? null,
   };
 }
 
@@ -74,9 +76,9 @@ export class SqliteTaskRepository implements TaskRepository {
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
       insert: db.prepare(`
         INSERT INTO tasks (id, project_id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at,
-          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived, group_id, group_order)
+          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived, group_id, group_order, summary)
         VALUES (@id, @project_id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at,
-          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived, @group_id, @group_order)
+          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived, @group_id, @group_order, @summary)
       `),
       update: db.prepare(`
         UPDATE tasks SET
@@ -93,7 +95,8 @@ export class SqliteTaskRepository implements TaskRepository {
           base_branch = @base_branch,
           use_worktree = @use_worktree,
           worktree_path = @worktree_path,
-          archived = @archived
+          archived = @archived,
+          summary = @summary
         WHERE id = @id
       `),
       delete: db.prepare('DELETE FROM tasks WHERE id = ?'),
@@ -138,6 +141,7 @@ export class SqliteTaskRepository implements TaskRepository {
       archived: task.archived ? 1 : 0,
       group_id: task.groupId ?? null,
       group_order: task.groupOrder ?? null,
+      summary: task.summary ?? null,
     });
     return task;
   }
@@ -164,6 +168,7 @@ export class SqliteTaskRepository implements TaskRepository {
         use_worktree: merged.useWorktree != null ? (merged.useWorktree ? 1 : 0) : null,
         worktree_path: merged.worktreePath ?? null,
         archived: merged.archived ? 1 : 0,
+        summary: merged.summary ?? null,
       });
       return merged;
     })();

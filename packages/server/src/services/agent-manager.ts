@@ -49,6 +49,31 @@ const DELETED_TASK_TTL_MS = 60_000;
 const STREAM_BUFFER_FLUSH_MS = 40;
 const STOPPED_TASK_TTL_MS = 30_000;
 
+// Upper bound on accumulated assistant prose kept for summary extraction.
+// We only need the tail (the final <task-summary> block), so cap memory use.
+const MAX_SUMMARY_BUFFER = 64_000;
+
+/**
+ * Extract the agent-authored task summary from accumulated assistant prose.
+ * Returns the trimmed contents of the LAST `<task-summary>…</task-summary>`
+ * block, or null when no usable block is present.
+ */
+function extractTaskSummary(buffer: string): string | null {
+  if (!buffer) return null;
+  const closed = [...buffer.matchAll(/<task-summary>([\s\S]*?)<\/task-summary>/g)];
+  if (closed.length > 0) {
+    const body = closed[closed.length - 1][1].trim();
+    return body.length > 0 ? body : null;
+  }
+  // Tolerate a missing closing tag: take everything after the last opening tag.
+  const openIdx = buffer.lastIndexOf('<task-summary>');
+  if (openIdx >= 0) {
+    const body = buffer.slice(openIdx + '<task-summary>'.length).replace(/<\/task-summary>/g, '').trim();
+    return body.length > 0 ? body : null;
+  }
+  return null;
+}
+
 function getErrorStderr(err: unknown): string {
   if (err instanceof Error && 'stderr' in err) {
     const stderr = (err as Error & { stderr?: Buffer | string }).stderr;
@@ -225,8 +250,54 @@ export class AgentManager {
 
   // ─── Worktree Management (moved from copilot.ts) ──────────────────
 
+  // Returns true when `worktreePath` is registered with git as a worktree
+  // checked out on `branchName`. Used to safely reuse a worktree left over
+  // from a prior (e.g. failed) run instead of colliding on the branch.
+  private worktreeRegisteredForBranch(repoPath: string, worktreePath: string, branchName: string): boolean {
+    try {
+      const out = execFileSync('git', ['worktree', 'list', '--porcelain'], {
+        cwd: repoPath,
+        stdio: 'pipe',
+      }).toString();
+      const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+      const target = norm(worktreePath);
+      for (const block of out.split(/\r?\n\r?\n/)) {
+        const lines = block.split(/\r?\n/);
+        const wtLine = lines.find((l) => l.startsWith('worktree '));
+        if (!wtLine) continue;
+        if (norm(wtLine.slice('worktree '.length)) !== target) continue;
+        return lines.includes(`branch refs/heads/${branchName}`);
+      }
+    } catch {
+      /* fall through — treat as not reusable */
+    }
+    return false;
+  }
+
   setupWorktree(task: Task): string | undefined {
     if (!task.useWorktree || !task.repoPath || !task.branchName) return undefined;
+
+    // Reuse a valid worktree left over from a prior run (e.g. after a failed
+    // attempt). Without this, a restart would mint a new temp dir and fail with
+    // "branch already used by worktree", since the old worktree still holds the
+    // branch — and any in-progress work in it would be stranded.
+    if (
+      task.worktreePath &&
+      path.resolve(task.worktreePath) !== path.resolve(task.repoPath) &&
+      fs.existsSync(task.worktreePath) &&
+      this.worktreeRegisteredForBranch(task.repoPath, task.worktreePath, task.branchName)
+    ) {
+      console.log(`[worktree] reusing existing ${task.worktreePath}`);
+      return task.worktreePath;
+    }
+
+    // Clear stale worktree records (e.g. dirs deleted out from under git) so a
+    // fresh add for this branch isn't blocked by a dangling registration.
+    try {
+      execFileSync('git', ['worktree', 'prune'], { cwd: task.repoPath, stdio: 'pipe' });
+    } catch {
+      /* best effort */
+    }
 
     const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), `agentboard-${task.id}-`));
     const baseBranch = task.baseBranch || 'main';
@@ -356,6 +427,12 @@ export class AgentManager {
     const agentType = task.agentType || 'copilot';
     const sessionStartTime = Date.now();
     let terminated = false;
+
+    // Clear any prior run's summary so a rerun never displays a stale result
+    // (e.g. if this run fails before producing a new summary).
+    if (task.summary != null) {
+      void this.eventRepo?.update(task.id, { summary: null }).catch(() => {});
+    }
     const terminateOnce = async (status: 'complete' | 'failed', errorMessage?: string) => {
       if (terminated) return;
       // If the task was stopped by the user, stopAgent already handled cleanup
@@ -416,14 +493,27 @@ export class AgentManager {
     // Set up worktree if configured
     let worktreePath: string | undefined;
     if (task.useWorktree) {
+      const priorWorktree = task.worktreePath;
       try {
         worktreePath = this.setupWorktree(task);
         if (worktreePath) {
           task.worktreePath = worktreePath;
           if (onWorktreeCreated) onWorktreeCreated(worktreePath);
+          const reused = priorWorktree != null && path.resolve(priorWorktree) === path.resolve(worktreePath);
+          let dirtyHint = '';
+          if (reused) {
+            try {
+              const status = execFileSync('git', ['status', '--porcelain'], {
+                cwd: worktreePath, stdio: 'pipe',
+              }).toString().trim();
+              dirtyHint = status ? '\nNote: worktree has uncommitted changes from a prior run.' : '';
+            } catch {
+              /* ignore status probe failures */
+            }
+          }
           this.emitEvent(task.id, {
             id: uuid(), taskId: task.id, type: 'output',
-            content: `Git worktree created at ${worktreePath}\nBranch: ${task.branchName}\nBase: ${task.baseBranch || 'main'}`,
+            content: `${reused ? 'Reusing existing git worktree at' : 'Git worktree created at'} ${worktreePath}\nBranch: ${task.branchName}\nBase: ${task.baseBranch || 'main'}${dirtyHint}`,
             timestamp: Date.now(),
           });
         }
@@ -453,12 +543,26 @@ ${worktreePath ? `\nIMPORTANT: All file paths MUST be under ${worktreePath}. Do 
 ${!hasGit ? `\nIMPORTANT: This directory is not a git repository. Run \`git init\` first before making any changes, so all work is tracked.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
 make precise edits, and verify your changes compile/pass tests when applicable.
+
+When you have finished, end your VERY LAST message with a task summary in EXACTLY this format (keep the tags on their own lines):
+<task-summary>
+## Completed
+A clear description of what you accomplished. This section is required and must not be empty.
+## Comments
+Optional notes, caveats, decisions, or context. Omit the body if there is nothing to add.
+## Remaining
+Optional list of any work you did not complete or that should be followed up. Omit the body if everything is done.
+</task-summary>
 </context>
 `;
 
         // Track file context across tool_execution_start → command_output pairs
         let lastFileEventFile: string | null = null;
         let lastFileEventType: string | null = null;
+
+        // Accumulate assistant prose ('output' events) to extract the agent's
+        // end-of-task <task-summary> marker block after completion.
+        let summaryBuffer = '';
 
         const session = await provider.createSession({
           contextId: task.id,
@@ -468,6 +572,19 @@ make precise edits, and verify your changes compile/pass tests when applicable.
           onEvent: (coreEvent: CoreAgentEvent) => {
             const metadata: Record<string, unknown> = { ...coreEvent.metadata };
             let eventType = coreEvent.type;
+            let content = coreEvent.content;
+
+            // Accumulate raw assistant prose for summary extraction, then strip
+            // the literal sentinel tags so they don't render in the Events tab.
+            if (coreEvent.type === 'output') {
+              summaryBuffer += content;
+              if (summaryBuffer.length > MAX_SUMMARY_BUFFER) {
+                summaryBuffer = summaryBuffer.slice(-MAX_SUMMARY_BUFFER);
+              }
+              if (content.includes('task-summary')) {
+                content = content.replace(/<\/?task-summary>/g, '');
+              }
+            }
 
             // Reclassify 'create' tool as file_write
             if (coreEvent.type === 'command' && metadata.command === 'create') {
@@ -518,7 +635,7 @@ make precise edits, and verify your changes compile/pass tests when applicable.
               id: coreEvent.id,
               taskId: task.id,
               type: eventType as AgentEvent['type'],
-              content: coreEvent.content,
+              content,
               timestamp: coreEvent.timestamp,
               metadata,
             });
@@ -578,6 +695,18 @@ make precise edits, and verify your changes compile/pass tests when applicable.
         // Primary completion path — status comes from the provider
         if (this.sessions.has(task.id)) {
           this.sessions.delete(task.id);
+          // On success, persist the agent-authored summary BEFORE the status
+          // transition so the task-update broadcast carries it to clients.
+          // Always write (extracted value or null) so a rerun can't leave a
+          // stale summary from a previous run. Never let this block completion.
+          if (result.status === 'complete') {
+            try {
+              const summary = extractTaskSummary(summaryBuffer);
+              await this.eventRepo?.update(task.id, { summary });
+            } catch (err) {
+              console.error(`[agent-manager] failed to persist summary for task ${task.id}:`, errorMessage(err));
+            }
+          }
           terminateOnce(result.status, result.error);
           session.destroy().catch(() => {});
         }

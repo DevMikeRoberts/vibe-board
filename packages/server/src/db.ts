@@ -57,7 +57,8 @@ function migrate(db: Database.Database): void {
       agent_status  TEXT NOT NULL DEFAULT 'idle',
       created_at    INTEGER NOT NULL,
       started_at    INTEGER,
-      completed_at  INTEGER
+      completed_at  INTEGER,
+      summary       TEXT
     )
   `);
 
@@ -136,6 +137,9 @@ function migrate(db: Database.Database): void {
   }
   if (!colNames.has('group_order')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN group_order INTEGER`);
+  }
+  if (!colNames.has('summary')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN summary TEXT`);
   }
 
   // Task groups table
@@ -285,6 +289,7 @@ function ensureSqliteProjectForeignKeys(db: Database.Database): void {
         project_id    TEXT NOT NULL DEFAULT 'default',
         group_id      TEXT,
         group_order   INTEGER,
+        summary       TEXT,
         FOREIGN KEY (project_id) REFERENCES projects(id),
         FOREIGN KEY (group_id) REFERENCES task_groups(id) ON DELETE CASCADE
       );
@@ -292,12 +297,12 @@ function ensureSqliteProjectForeignKeys(db: Database.Database): void {
       INSERT INTO tasks_new (
         id, title, description, priority, column_id, agent_status, created_at,
         started_at, completed_at, repo_path, branch_name, base_branch, use_worktree,
-        worktree_path, agent_type, archived, project_id, group_id, group_order
+        worktree_path, agent_type, archived, project_id, group_id, group_order, summary
       )
       SELECT
         id, title, description, priority, column_id, agent_status, created_at,
         started_at, completed_at, repo_path, branch_name, base_branch, use_worktree,
-        worktree_path, agent_type, archived, project_id, group_id, group_order
+        worktree_path, agent_type, archived, project_id, group_id, group_order, summary
       FROM tasks;
 
       DROP TABLE tasks;
@@ -412,6 +417,7 @@ export async function initPostgresDatabase(pool: Pool): Promise<void> {
   await addCol('project_id', "TEXT NOT NULL DEFAULT 'default'");
   await addCol('group_id', 'TEXT');
   await addCol('group_order', 'INTEGER');
+  await addCol('summary', 'TEXT');
 
   // Task groups table
   await pool.query(`

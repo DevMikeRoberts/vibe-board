@@ -276,7 +276,8 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 overflow-y-auto flex-1 min-h-0 px-1">
+            <form onSubmit={handleSubmit} className="flex flex-1 min-h-0 flex-col">
+              <div className="space-y-4 overflow-y-auto flex-1 min-h-0 px-1">
               {/* Title */}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -522,8 +523,10 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                   )}
                 </div>
 
+              </div>
+
               {/* Actions */}
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-4 mt-2 border-t border-border shrink-0">
                 <button
                   type="button"
                   onClick={onClose}

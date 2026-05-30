@@ -32,6 +32,7 @@ export interface Task {
   groupOrder?: number;
   attachments?: TaskAttachment[];
   projectId: string;
+  summary?: string | null;
 }
 
 export interface TaskGroup {

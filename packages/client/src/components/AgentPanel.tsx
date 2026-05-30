@@ -376,7 +376,10 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
   const [followUpImages, setFollowUpImages] = useState<File[]>([]);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [descExpanded, setDescExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'events' | 'terminal' | 'changes'>('events');
+  const [activeTab, setActiveTab] = useState<'summary' | 'events' | 'terminal' | 'changes'>('events');
+  // Tracks whether the user manually picked a tab for the current task, so the
+  // auto-default (Summary for review/done) doesn't clobber an explicit choice.
+  const userSelectedTabRef = useRef(false);
   const agentDisplay = task?.agentType ? getAgentDisplay(task.agentType) : undefined;
   const [showWorktreeConfirm, setShowWorktreeConfirm] = useState(false);
   const [hasRemote, setHasRemote] = useState<boolean | null>(null);
@@ -407,6 +410,8 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
     setFollowUpMessage('');
     setSending(false);
     setFollowUpImages([]);
+    // Allow the auto-default tab to apply for the newly selected task
+    userSelectedTabRef.current = false;
 
     // Load existing events from server
     api.getEvents(taskId).then(setEvents).catch(console.error);
@@ -458,6 +463,19 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
     setStreaming(isActive);
   }, [taskId, agentStatus]);
 
+  // Default to the Summary tab for review/done tasks (and auto-switch when a task
+  // moves into review on completion), unless the user picked a tab themselves.
+  const columnId = task?.columnId;
+  useEffect(() => {
+    if (!taskId) return;
+    if (userSelectedTabRef.current) return;
+    if (columnId === 'review' || columnId === 'done') {
+      setActiveTab('summary');
+    } else {
+      setActiveTab('events');
+    }
+  }, [taskId, columnId]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
@@ -466,6 +484,19 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
   }, [events]);
 
   const isActive = task?.agentStatus === 'executing' || task?.agentStatus === 'planning';
+
+  const selectTab = (tab: 'summary' | 'events' | 'terminal' | 'changes') => {
+    userSelectedTabRef.current = true;
+    setActiveTab(tab);
+  };
+  const showSummaryTab = columnId === 'review' || columnId === 'done';
+  const summaryText = task?.summary ?? null;
+  // The "Completed" section is required; flag when it's missing or empty.
+  const completedSectionFilled = useMemo(() => {
+    if (!summaryText) return false;
+    const m = summaryText.match(/##\s*Completed\s*\r?\n([\s\S]*?)(?:\r?\n##\s|$)/i);
+    return !!(m && m[1].trim().length > 0);
+  }, [summaryText]);
 
   const coalescedEvents = useMemo(
     () => coalesceEvents(events, streaming),
@@ -814,8 +845,21 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
           {/* Tab bar */}
           <div className="shrink-0 flex items-center justify-between border-b border-border px-2 pt-1">
             <div className="flex gap-1">
+            {showSummaryTab && (
+              <button
+                onClick={() => selectTab('summary')}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
+                  activeTab === 'summary'
+                    ? 'bg-card border border-border border-b-card text-foreground -mb-px'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Summary
+              </button>
+            )}
             <button
-              onClick={() => setActiveTab('events')}
+              onClick={() => selectTab('events')}
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
                 activeTab === 'events'
@@ -826,7 +870,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
               Events
             </button>
             <button
-              onClick={() => setActiveTab('terminal')}
+              onClick={() => selectTab('terminal')}
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
                 activeTab === 'terminal'
@@ -837,7 +881,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
               Terminal
             </button>
             <button
-              onClick={() => setActiveTab('changes')}
+              onClick={() => selectTab('changes')}
               className={cn(
                 'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
                 activeTab === 'changes'
@@ -845,7 +889,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >
-              Changes{fileChanges.length > 0 ? ` (${fileChanges.length})` : ''}
+              Actions{fileChanges.length > 0 ? ` (${fileChanges.length})` : ''}
             </button>
             </div>
             {events.length > 0 && (
@@ -871,6 +915,32 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             )}
           </div>
 
+          {/* Summary view */}
+          {activeTab === 'summary' && (
+            <div className="flex-1 overflow-y-auto p-4">
+              {summaryText ? (
+                <>
+                  {!completedSectionFilled && (
+                    <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      The required “Completed” section is empty or missing.
+                    </div>
+                  )}
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-foreground [&_h2]:mt-4 [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h2:first-child]:mt-0">
+                    <Markdown>{summaryText}</Markdown>
+                  </div>
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <div className="text-center">
+                    <FileText className="mx-auto h-10 w-10 text-muted-foreground/20" />
+                    <p className="mt-3 text-sm text-muted-foreground/50">No summary was provided for this task.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Terminal view */}
           {activeTab === 'terminal' && (
             <div className={cn('flex-1 overflow-hidden rounded-none', theme === 'light' ? 'bg-[#f8f9fb]' : 'bg-[#0f172a]')}>
@@ -885,7 +955,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
                     <FileCode2 className="mx-auto h-10 w-10 text-muted-foreground/20" />
-                    <p className="mt-3 text-sm text-muted-foreground/50">No file changes yet</p>
+                    <p className="mt-3 text-sm text-muted-foreground/50">No actions yet</p>
                   </div>
                 </div>
               )}
@@ -893,7 +963,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                 <details key={file.path} className="group rounded-lg border border-border bg-card">
                   <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-accent/50">
                     <span>{file.type === 'created' ? '🟢' : file.type === 'modified' ? '🟡' : '📖'}</span>
-                    <span className="flex-1 font-mono text-xs text-foreground truncate">{file.path}</span>
+                    <span className="flex-1 font-mono text-xs text-foreground truncate" title={file.path}>{file.path}</span>
                     <span className="text-[10px] text-muted-foreground capitalize">{file.type}</span>
                   </summary>
                   <div className="border-t border-border px-3 py-2 overflow-x-auto">

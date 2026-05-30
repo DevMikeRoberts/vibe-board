@@ -147,9 +147,10 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
                   : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
               }`}
               aria-label="Toggle filters"
+              title="Filter"
             >
               <Filter className="h-3.5 w-3.5 shrink-0" />
-              <span>Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}</span>
+              {hasActiveFilters && <span>{activeAgentTypes.length + activeStatuses.length}</span>}
             </button>
 
             {/* Sort control — joined group */}
@@ -178,15 +179,15 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             {/* Archive toggle */}
             <button
               onClick={onToggleArchived}
-              className={`flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
+              className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
                 showArchived
                   ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
                   : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
               }`}
-              aria-label={showArchived ? 'Hide archived' : 'Show archived'}
+              aria-label={showArchived ? 'Hide Archived' : 'Show Archived'}
+              title={showArchived ? 'Hide Archived' : 'Show Archived'}
             >
               <Archive className="h-3.5 w-3.5 shrink-0" />
-              <span>{showArchived ? 'Hide' : 'Show'} Archived</span>
             </button>
           </div>
 

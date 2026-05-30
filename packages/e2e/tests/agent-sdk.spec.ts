@@ -143,8 +143,10 @@ test.describe('Copilot SDK Agent', () => {
     const wtDiff = git(['diff', 'HEAD', '--', 'README.md'], finalTask.worktreePath);
     expect(wtDiff.length).toBeGreaterThan(0);
 
-    // 7. Open agent panel in UI and verify events rendered
+    // 7. Open agent panel in UI and verify events rendered.
+    // Review/done tasks default to the Summary tab, so switch to Events first.
     await page.getByRole('heading', { name: title }).click();
+    await page.getByRole('button', { name: 'Events', exact: true }).click();
     await expect(page.getByText(/worktree created|task_complete/i).first())
       .toBeVisible({ timeout: 5_000 });
 
