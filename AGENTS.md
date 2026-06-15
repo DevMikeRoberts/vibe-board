@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Agentic AI Kanban Board — a drag-and-drop Kanban board that delegates coding tasks to AI coding agents (GitHub Copilot, Claude Code, OpenAI Codex, OpenCode). Monorepo with npm workspaces.
+Agentic AI Kanban Board — a drag-and-drop Kanban board that delegates coding tasks to AI coding agents (GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, Hermes, OpenClaw). Monorepo with npm workspaces.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ ai-agent-board/
 
 ## Key Technical Decisions
 
-- **Multi-agent support** — pluggable `AgentProvider`/`AgentSession` interfaces from `@codewithdan/agent-sdk-core`. Four providers: `copilot` (`@github/copilot-sdk`), `claude` (`@anthropic-ai/claude-agent-sdk`), `codex` (`@openai/codex-sdk`), `opencode` (`@opencode-ai/sdk`). Auto-detected at startup via `detectAgents()`.
+- **Multi-agent support** — pluggable `AgentProvider`/`AgentSession` interfaces from `@codewithdan/agent-sdk-core`. Six providers: `copilot` (`@github/copilot-sdk`), `claude` (`@anthropic-ai/claude-agent-sdk`), `codex` (`@openai/codex-sdk`), `opencode` (`@opencode-ai/sdk`), `hermes`, and `openclaw`. Auto-detected at startup via `detectAgents()`.
 - **Agent SDK abstraction** — all provider implementations live in the external `@codewithdan/agent-sdk-core` package. The server imports providers and the detection function from this package.
 - **Dual database backends** — SQLite via `better-sqlite3` (default, zero config) or PostgreSQL via `pg` (set `DATABASE_URL`). Both implement the `TaskRepository` and `TemplateRepository` interfaces.
 - **Route splitting** — REST API is split across `tasks.ts` (CRUD), `agent.ts` (start/stop/events/follow-up), `git.ts` (merge-local, create-pr, worktree cleanup, git-info), `templates.ts` (task template CRUD), and `groups.ts` (group CRUD + run/stop/archive).
@@ -100,6 +100,9 @@ npm run build:server   # tsc -b tsconfig.build.json
 | `COPILOT_MODEL` | `claude-opus-4-20250514` | Model for Copilot SDK sessions |
 | `CLAUDE_MODEL` | `claude-opus-4-20250514` | Model for Claude Code sessions |
 | `CODEX_MODEL` | `gpt-5.2-codex` | Model for OpenAI Codex sessions |
+| `HERMES_COMMAND` | `hermes` | Hermes CLI command or absolute path used to start the ACP server |
+| `OPENCLAW_COMMAND` | `openclaw` | OpenClaw CLI command or absolute path used to start the ACP bridge |
+| `OPENCLAW_GATEWAY_URL` | _(none)_ | Optional OpenClaw Gateway WebSocket URL forwarded to `openclaw acp` |
 | `COPILOT_DENIED_TOOLS` | _(none)_ | Comma-separated tool names to deny in Copilot sessions |
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Comma-separated allowed repo root paths (security whitelist) |
 | `ALLOWED_ORIGINS` | `http://localhost:4175,http://localhost:4176` | CORS origins |
@@ -126,7 +129,7 @@ The committed `.githooks/pre-push` hook runs `npm run gate:required` and must no
 
 - **Task lifecycle**: backlog → in-progress → review → done (validated transitions in `VALID_TRANSITIONS` from `shared/constants.ts`)
 - **Agent lifecycle**: idle → planning → executing → complete/failed (set via `agentStatus`)
-- **Agent types**: `copilot | claude | codex | opencode` — each task can specify which agent to use via `agentType`
+- **Agent types**: `copilot | claude | codex | opencode | hermes | openclaw` — each task can specify which agent to use via `agentType`
 - **Provider pattern**: `AgentProvider` creates `AgentSession`s (from `@codewithdan/agent-sdk-core`). `AgentManager` orchestrates sessions with timeouts, event caching, and graceful cleanup.
 - **Repository pattern**: `TaskRepository`, `TemplateRepository`, and `TaskGroupRepository` interfaces with SQLite and PostgreSQL implementations.
 - **Event coalescing**: AgentPanel merges consecutive thinking/output events for readability

@@ -15,7 +15,7 @@
 
 # AI Agent Board
 
-A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, or Hermes. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
+A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, Hermes, or OpenClaw. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
 
 ![AI Agent Board in action](images/agent-board-in-action.gif)
 
@@ -36,7 +36,7 @@ The server uses a **provider pattern** (via [`@codewithdan/agent-sdk-core`](http
 - **`AgentSession`** — runs a task, emits events, supports abort
 - **`AgentManager`** — orchestrates sessions with timeouts, event caching, and graceful cleanup
 
-Each task can specify which agent to use. Available agents are auto-detected at startup by checking for installed CLIs. Five providers are supported: Copilot, Claude Code, Codex, OpenCode, and Hermes. Events from all providers are normalized into a common `AgentEvent` format and streamed to the UI via WebSocket.
+Each task can specify which agent to use. Available agents are auto-detected at startup by checking for installed CLIs. Six providers are supported: Copilot, Claude Code, Codex, OpenCode, Hermes, and OpenClaw. Events from all providers are normalized into a common `AgentEvent` format and streamed to the UI via WebSocket.
 
 ### Task Groups
 
@@ -53,7 +53,7 @@ Groups appear as a single card on the board showing aggregate progress. Click to
 ## Features
 
 - Kanban board with Backlog, In Progress, Review, Done columns
-- **Multi-agent support** — choose GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, or Hermes per task
+- **Multi-agent support** — choose GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, Hermes, or OpenClaw per task
 - Auto-detection of available agents at startup
 - Drag-and-drop task management with transition validation
 - Real-time agent activity streaming via WebSocket
@@ -86,6 +86,7 @@ Groups appear as a single card on the board showing aggregate progress. Click to
   - **OpenAI Codex**: CLI installed and authenticated
   - **OpenCode**: CLI installed and authenticated
   - **Hermes**: Hermes Agent installed and `hermes acp --check` succeeds
+  - **OpenClaw**: OpenClaw CLI installed and Gateway/session access configured
 
 Works on **Linux**, **macOS**, and **Windows**.
 
@@ -154,6 +155,9 @@ npm run hooks:install
 | `HERMES_COMMAND` | `hermes` | Hermes CLI command or absolute path used to start the ACP server |
 | `HERMES_MODEL` | `configured default` | Display/configured model label for Hermes sessions; Hermes ACP uses its own active config |
 | `HERMES_ACCEPT_HOOKS` | _(unset)_ | Set to `true` to auto-approve Hermes startup hook prompts in headless ACP sessions |
+| `OPENCLAW_COMMAND` | `openclaw` | OpenClaw CLI command or absolute path used to start the ACP bridge |
+| `OPENCLAW_GATEWAY_URL` | _(SDK default)_ | Optional OpenClaw Gateway WebSocket URL forwarded to `openclaw acp` |
+| `OPENCLAW_GATEWAY_TOKEN` / `OPENCLAW_GATEWAY_PASSWORD` | _(unset)_ | Optional OpenClaw Gateway credentials passed through environment variables |
 | `COPILOT_DENIED_TOOLS` | _(unset)_ | Comma-separated tool names to deny in Copilot sessions |
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Allowed repo root paths (comma-separated) |
 | `ALLOWED_ORIGINS` | `http://localhost:8081,http://localhost:4175,http://localhost:4176` | CORS origins |
@@ -217,7 +221,7 @@ The local pre-push hook in `.githooks/pre-push` runs `npm run gate:required`. Ru
 | Frontend | React 19, Vite, Tailwind CSS 4, Framer Motion |
 | Drag & Drop | @dnd-kit |
 | Backend | Express, better-sqlite3 / PostgreSQL, ws (WebSocket) |
-| AI Agents | [@codewithdan/agent-sdk-core](https://github.com/DanWahlin/agent-sdk-core) (wraps @github/copilot-sdk, @anthropic-ai/claude-agent-sdk, @openai/codex-sdk, @opencode-ai/sdk) |
+| AI Agents | [@codewithdan/agent-sdk-core](https://github.com/DanWahlin/agent-sdk-core) (wraps Copilot, Claude Code, Codex, OpenCode, Hermes, and OpenClaw providers) |
 | Terminal UI | @xterm/xterm |
 | Monorepo | npm workspaces |
 | Dev Environment | Direct install (Linux, macOS, Windows) |

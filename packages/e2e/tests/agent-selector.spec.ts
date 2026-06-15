@@ -7,7 +7,10 @@ const AGENT_LABELS: Record<string, string> = {
   codex: 'Codex',
   opencode: 'OpenCode',
   hermes: 'Hermes',
+  openclaw: 'OpenClaw',
 };
+
+const AGENT_LABEL_ORDER = Object.values(AGENT_LABELS);
 
 async function getPreferredAgent(request: any): Promise<{ name: string; label: string; hasAvailableAgent: boolean }> {
   const res = await request.get(`${API}/api/agents`);
@@ -96,19 +99,17 @@ test.describe('Agent Selector in TaskDialog', () => {
     createdTaskIds = [];
   });
 
-  test('shows agent dropdown with 5 options (Copilot, Claude, Codex, OpenCode, Hermes)', async ({ page }) => {
+  test('shows agent dropdown with all supported agent options', async ({ page }) => {
     await openCreateDialog(page);
     const dialog = await openAgentDropdown(page);
 
-    // The dropdown menu should show all 5 agent options as buttons
+    // The dropdown menu should show all supported agent options as buttons
     // Use role=button filter to avoid matching the trigger button text
     const dropdownOptions = dialog.locator('[class*="popover"] button');
-    await expect(dropdownOptions).toHaveCount(5);
-    await expect(dropdownOptions.nth(0)).toContainText('Copilot');
-    await expect(dropdownOptions.nth(1)).toContainText('Claude');
-    await expect(dropdownOptions.nth(2)).toContainText('Codex');
-    await expect(dropdownOptions.nth(3)).toContainText('OpenCode');
-    await expect(dropdownOptions.nth(4)).toContainText('Hermes');
+    await expect(dropdownOptions).toHaveCount(AGENT_LABEL_ORDER.length);
+    for (const [index, label] of AGENT_LABEL_ORDER.entries()) {
+      await expect(dropdownOptions.nth(index)).toContainText(label);
+    }
   });
 
   test('clicking an available agent option selects it', async ({ page, request }) => {
@@ -118,12 +119,12 @@ test.describe('Agent Selector in TaskDialog', () => {
     const dropdownOptions = dialog.locator('[class*="popover"] button');
 
     if (!selected.hasAvailableAgent) {
-      await expect(dropdownOptions).toHaveCount(5);
+      await expect(dropdownOptions).toHaveCount(AGENT_LABEL_ORDER.length);
       // When no provider is available every option is disabled. The trailing
       // status text is the provider's reason (e.g. "... not found" or a
       // test-environment reason) and falls back to "Unavailable" only when the
       // reason is empty, so assert the disabled state rather than the label.
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < AGENT_LABEL_ORDER.length; i++) {
         await expect(dropdownOptions.nth(i)).toBeDisabled();
       }
       return;

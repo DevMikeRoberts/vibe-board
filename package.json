@@ -2,7 +2,7 @@
   "name": "ai-agent-board",
   "private": true,
   "version": "0.1.0",
-  "description": "A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, or Hermes.",
+  "description": "A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, Hermes, or OpenClaw.",
   "license": "MIT",
   "author": "Dan Wahlin",
   "repository": {
@@ -26,5 +26,10 @@
     "test:e2e:required": "npm run test:required -w @ai-agent-board/e2e",
     "gate:required": "node scripts/run-required-gate.cjs",
     "hooks:install": "node scripts/install-hooks.cjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.177",
+    "@codewithdan/agent-sdk-core": "^0.6.2",
+    "@openai/codex-sdk": "^0.139.0"
   }
 }

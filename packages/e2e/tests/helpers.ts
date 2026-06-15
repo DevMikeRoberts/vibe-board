@@ -33,7 +33,7 @@ export function git(args: string[], cwd: string): string {
 export function getTestRepoPath(name = DEFAULT_TEST_REPO_NAME): string {
   const root = process.env.E2E_TEST_REPO_ROOT
     ? path.resolve(process.env.E2E_TEST_REPO_ROOT)
-    : path.join(os.tmpdir(), 'ai-agent-board-e2e');
+    : path.resolve(process.cwd(), 'test-results', 'repos');
   return path.join(root, sanitizeRepoName(name));
 }
 
