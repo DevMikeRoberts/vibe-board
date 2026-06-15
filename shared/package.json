@@ -3,8 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "scripts": {
+    "build": "tsc -b tsconfig.json"
+  },
   "exports": {
     "./types.js": "./dist/types.js",
     "./constants.js": "./dist/constants.js"
+  },
+  "devDependencies": {
+    "typescript": "~5.7.0"
   }
 }
