@@ -26,10 +26,5 @@
     "test:e2e:required": "npm run test:required -w @ai-agent-board/e2e",
     "gate:required": "node scripts/run-required-gate.cjs",
     "hooks:install": "node scripts/install-hooks.cjs"
-  },
-  "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.3.177",
-    "@codewithdan/agent-sdk-core": "^0.6.2",
-    "@openai/codex-sdk": "^0.139.0"
   }
 }
