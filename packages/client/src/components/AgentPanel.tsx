@@ -175,6 +175,43 @@ function looksLikeCode(text: string): boolean {
   return lines.some((line) => codePatterns.test(line.trimStart()));
 }
 
+/** Pretty-print a JSON string, or return null if it isn't JSON. */
+function tryPrettyJson(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null;
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derive a readable detail string for tool_call / file_* events. ACP agents
+ * (Hermes, OpenClaw) emit these types with content shaped as raw JSON or
+ * "Title: {json}"; pretty-print the args/output so clicking shows real detail.
+ */
+function deriveToolDetail(content: string | undefined): string | null {
+  const raw = content?.trim();
+  if (!raw) return null;
+  const wholePretty = tryPrettyJson(raw);
+  if (wholePretty) return wholePretty;
+  const colonIdx = raw.indexOf(': ');
+  if (colonIdx > 0) {
+    const afterPretty = tryPrettyJson(raw.slice(colonIdx + 2));
+    if (afterPretty) return afterPretty;
+  }
+  return raw;
+}
+
+/** Collapse content to a single-line, truncated summary for the event header. */
+function compactToolSummary(content: string | undefined): string | null {
+  const raw = content?.trim();
+  if (!raw) return null;
+  const oneLine = raw.replace(/\s+/g, ' ').trim();
+  return oneLine.length > 80 ? oneLine.slice(0, 80) + '...' : oneLine;
+}
+
 
 interface AgentPanelProps {
   task: Task | null;
@@ -223,6 +260,15 @@ function EventItem({ event }: { event: CoalescedEvent }) {
   const hasDiff = event.metadata?.diff;
   const hasFile = event.metadata?.file;
 
+  // tool_call / file_* events (common for ACP agents like Hermes/OpenClaw) have
+  // no command-style parsing, so derive a readable detail + header summary.
+  const isToolDetailType =
+    event.type === 'tool_call' ||
+    event.type === 'file_read' ||
+    event.type === 'file_write' ||
+    event.type === 'file_edit';
+  const toolDetail = isToolDetailType && !hasDiff ? deriveToolDetail(event.content) : null;
+
   // For parsed commands, show the command string in the header
   // For file events, show just the filename (basename) from metadata
   const fileLabel = (event.type === 'file_read' || event.type === 'file_write' || event.type === 'file_edit')
@@ -230,7 +276,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
     : null;
   const headerSummary = event.toolArgs
     ? event.toolArgs.length > 80 ? event.toolArgs.slice(0, 80) + '...' : event.toolArgs
-    : fileLabel ?? null;
+    : fileLabel ?? (isToolDetailType ? compactToolSummary(event.content) : null);
 
   return (
     <motion.div
@@ -333,6 +379,25 @@ function EventItem({ event }: { event: CoalescedEvent }) {
                     ))}
                   </div>
                 )
+              )}
+
+              {/* Tool call / file operation — show the file path and tool args/output.
+                  Covers ACP agents (Hermes/OpenClaw) whose activity arrives as
+                  tool_call/file_* events rather than command/output. */}
+              {isToolDetailType && (
+                <div className="space-y-1">
+                  {hasFile && (
+                    <div className="font-mono text-[11px] text-muted-foreground break-all">
+                      {event.metadata!.file}
+                    </div>
+                  )}
+                  {toolDetail && (
+                    <div className="flex items-start gap-1 rounded-md px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
+                      <span className="flex-1 overflow-x-auto">{toolDetail}</span>
+                      <CopyButton text={toolDetail} />
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Diff */}
