@@ -17,6 +17,11 @@ import type { Task, AgentStatus } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
 import { getPriorityDisplay } from '@/lib/priority-config';
 import { cn, formatDuration } from '@/lib/utils';
+import { FcStateBadge } from '@/components/fc/FcStateBadge';
+import { taskToFcState } from '@/components/fc/taskToFcState';
+import { FC_STATE_META } from '@/components/fc/fcState';
+import { useNeedsInput } from '@/components/fc/useNeedsInput';
+import { FcCelebration } from '@/components/fc/FcCelebration';
 
 
 const agentStatusConfig: Record<
@@ -78,6 +83,22 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
   const StatusIcon = agentStatus.icon;
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
   const priorityDisplay = getPriorityDisplay(task.priority);
+  const needsInput = useNeedsInput(task.id);
+  const fcState = taskToFcState(task, needsInput);
+
+  // Fire a one-off celebration when the task crosses into a finished state.
+  const finished = task.agentStatus === 'complete' || task.columnId === 'done';
+  const prevFinishedRef = useRef(finished);
+  const [celebrate, setCelebrate] = useState(false);
+  useEffect(() => {
+    if (finished && !prevFinishedRef.current) {
+      setCelebrate(true);
+      const id = setTimeout(() => setCelebrate(false), 2600);
+      prevFinishedRef.current = finished;
+      return () => clearTimeout(id);
+    }
+    prevFinishedRef.current = finished;
+  }, [finished]);
 
   const [elapsed, setElapsed] = useState('');
   useEffect(() => {
@@ -97,7 +118,9 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       style={style}
       {...attributes}
       {...listeners}
+      data-fc-state={fcState}
       className={cn(
+        'fc-card',
         'group relative cursor-grab active:cursor-grabbing rounded-lg border border-border bg-card p-3 shadow-sm transition-all',
         'hover:border-primary/30 hover:shadow-md',
         priorityDisplay?.borderClass,
@@ -188,6 +211,11 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
           {task.description}
         </p>
 
+        {/* Agent card state badge (card-states feature) */}
+        <div className="mt-2">
+          <FcStateBadge state={fcState} />
+        </div>
+
         {/* Footer */}
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -230,12 +258,15 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         </div>
       </div>
 
-      {/* Active indicator bar */}
-      {isActive && (
-        <div
-          className="absolute inset-x-0 bottom-0 h-0.5 rounded-b-lg bg-primary"
-        />
+      {/* Agent working progress bar — large, pinned to the card bottom (card-states) */}
+      {FC_STATE_META[fcState].working && (
+        <div className="fc-card-bar" aria-hidden="true">
+          <i />
+        </div>
       )}
+
+      {/* One-off green glow + confetti when the task finishes (card-states) */}
+      {celebrate && <FcCelebration />}
     </div>
   );
 }

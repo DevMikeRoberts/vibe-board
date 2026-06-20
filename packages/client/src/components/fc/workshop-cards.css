@@ -1,0 +1,230 @@
+/* workshop-cards.css — agent state visuals for Vibe Kanban cards.
+ *
+ * Low-coupling: everything keys off [data-fc-state] + the fc-* classes, with its
+ * own CSS variables, so it layers over VK's Tailwind/shadcn theme without fighting
+ * it. Card-level cues attach to `.fc-card[data-fc-state]` (add that class+attr to
+ * the card root). The badge/dot/bar/corner are self-contained in `.fc-chrome`.
+ *
+ * Workshop look: charcoal + high-contrast, burnt-orange accent, frosted glass,
+ * sharp corners. All motion respects prefers-reduced-motion. */
+
+.fc-chrome,
+.fc-card {
+  --fc-orange: #ff7a1a;
+  --fc-orange2: #ffa64d;
+  --fc-oranged: #b8560c;
+  --fc-idle: #8b94a7;
+  --fc-groom: #ffab5e;
+  --fc-needs: #ffc24b;
+  --fc-ready: #2dd4a7;
+  --fc-build: #ff7a1a;
+  --fc-review: #6aa0ff;
+  --fc-fail: #ff5b5b;
+  --fc-done: #5fd06a;
+}
+
+/* ---- the chrome row (badge + optional bar) ---- */
+.fc-chrome {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+.fc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 3px 8px;
+  border-radius: 2px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.fc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--fc-idle);
+}
+/* ---- card-level working bar: full width, pinned to the card bottom ---- */
+.fc-card-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.42);
+  border-bottom-left-radius: inherit;
+  border-bottom-right-radius: inherit;
+  pointer-events: none;
+}
+.fc-card-bar > i {
+  display: block;
+  height: 100%;
+  width: 42%;
+  background: linear-gradient(90deg, var(--fc-oranged), var(--fc-orange) 45%, var(--fc-orange2));
+  box-shadow: 0 0 20px 3px rgba(255, 122, 26, 0.85);
+  animation: fc-slide 1.05s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+}
+.fc-corner {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #1a1206;
+  line-height: 1;
+}
+
+/* ---- per-state badge palettes (chrome) ---- */
+.fc-chrome[data-fc-state='idle']   .fc-dot { background: var(--fc-idle); }
+.fc-chrome[data-fc-state='idle']   .fc-badge { background: rgba(139,148,167,.16); color: #c7cdd8; border-color: rgba(139,148,167,.30); }
+.fc-chrome[data-fc-state='groom']  .fc-dot { background: var(--fc-groom); }
+.fc-chrome[data-fc-state='groom']  .fc-badge { background: rgba(255,171,94,.15); color: var(--fc-groom); border-color: rgba(255,171,94,.35); }
+.fc-chrome[data-fc-state='needs']  .fc-dot { background: var(--fc-needs); }
+.fc-chrome[data-fc-state='needs']  .fc-badge { background: rgba(255,194,75,.16); color: var(--fc-needs); border-color: rgba(255,194,75,.40); }
+.fc-chrome[data-fc-state='needs']  .fc-corner { background: var(--fc-needs); }
+.fc-chrome[data-fc-state='ready']  .fc-dot { background: var(--fc-ready); }
+.fc-chrome[data-fc-state='ready']  .fc-badge { background: rgba(45,212,167,.15); color: var(--fc-ready); border-color: rgba(45,212,167,.35); }
+.fc-chrome[data-fc-state='build']  .fc-dot { background: var(--fc-build); }
+.fc-chrome[data-fc-state='build']  .fc-badge { background: rgba(255,122,26,.16); color: var(--fc-orange2); border-color: rgba(255,122,26,.40); }
+.fc-chrome[data-fc-state='review'] .fc-dot { background: var(--fc-review); }
+.fc-chrome[data-fc-state='review'] .fc-badge { background: rgba(106,160,255,.15); color: var(--fc-review); border-color: rgba(106,160,255,.35); }
+.fc-chrome[data-fc-state='fail']   .fc-dot { background: var(--fc-fail); }
+.fc-chrome[data-fc-state='fail']   .fc-badge { background: rgba(255,91,91,.15); color: var(--fc-fail); border-color: rgba(255,91,91,.38); }
+.fc-chrome[data-fc-state='fail']   .fc-corner { background: var(--fc-fail); color: #fff; }
+.fc-chrome[data-fc-state='done']   .fc-dot { background: var(--fc-done); }
+.fc-chrome[data-fc-state='done']   .fc-badge { background: rgba(95,208,106,.15); color: var(--fc-done); border-color: rgba(95,208,106,.35); }
+.fc-chrome[data-fc-state='done']   .fc-corner { background: transparent; }
+
+/* ---- card-level glass: the whole card tints to its state via --fc-c (state RGB) ---- */
+.fc-card {
+  position: relative;
+  --fc-c: 139, 148, 167; /* default = idle grey */
+  transition: border-color .25s ease, box-shadow .25s ease, background-color .25s ease;
+  /* pronounced frosted glass */
+  background-color: rgba(12, 12, 16, 0.45) !important;
+  background-image: linear-gradient(
+    150deg,
+    rgba(var(--fc-c), 0.28),
+    rgba(var(--fc-c), 0.05) 70%
+  );
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid rgba(var(--fc-c), 0.55) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -14px 22px rgba(0, 0, 0, 0.28),
+    0 10px 28px rgba(0, 0, 0, 0.5),
+    0 0 24px rgba(var(--fc-c), 0.22) !important;
+}
+.fc-card[data-fc-state='idle']   { --fc-c: 139, 148, 167; }
+.fc-card[data-fc-state='groom']  { --fc-c: 255, 171, 94; }
+.fc-card[data-fc-state='needs']  { --fc-c: 255, 194, 75; }
+.fc-card[data-fc-state='ready']  { --fc-c: 45, 212, 167; }
+.fc-card[data-fc-state='build']  { --fc-c: 255, 122, 26; }
+.fc-card[data-fc-state='review'] { --fc-c: 106, 160, 255; }
+.fc-card[data-fc-state='fail']   { --fc-c: 255, 91, 91; }
+.fc-card[data-fc-state='done']   { --fc-c: 95, 208, 106; }
+
+/* state-specific motion keeps its personality on top of the glass */
+.fc-card[data-fc-state='needs'] { animation: fc-nudge 1.8s ease-in-out infinite; }
+.fc-card[data-fc-state='needs']::after {
+  content: '';
+  position: absolute; inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: fc-ring 1.6s ease-out infinite;
+}
+.fc-card[data-fc-state='fail'] { animation: fc-shake 0.5s ease-in-out 1; }
+
+/* ---- motion (the factory personality) ---- */
+@keyframes fc-breathe { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .3; transform: scale(.65); } }
+@keyframes fc-slide   { 0% { transform: translateX(-110%); } 100% { transform: translateX(280%); } }
+@keyframes fc-nudge   { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes fc-ring    { 0% { box-shadow: 0 0 0 0 rgba(255,194,75,.5); } 100% { box-shadow: 0 0 0 9px rgba(255,194,75,0); } }
+@keyframes fc-shake   { 10%,90% { transform: translateX(-1px); } 30%,70% { transform: translateX(2px); } 50% { transform: translateX(-2px); } }
+@keyframes fc-pop     { 0% { transform: scale(.3); opacity: 0; } 60% { transform: scale(1.25); } 100% { transform: scale(1); opacity: 1; } }
+
+.fc-chrome[data-fc-state='groom'] .fc-dot,
+.fc-chrome[data-fc-state='build'] .fc-dot { animation: fc-breathe 1.3s ease-in-out infinite; }
+.fc-chrome[data-fc-state='review'] .fc-dot { animation: fc-breathe 2s ease-in-out infinite; }
+.fc-chrome[data-fc-state='done'] .fc-corner { animation: fc-pop .5s ease-out 1; }
+
+/* ---- completion celebration: green glow box + confetti burst ---- */
+.fc-celebrate {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.fc-celebrate-box {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #06240f;
+  background: linear-gradient(180deg, #7ef08a, #4fc564);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 3px;
+  padding: 5px 12px;
+  white-space: nowrap;
+  box-shadow:
+    0 0 18px rgba(95, 208, 106, 0.85),
+    0 0 42px rgba(95, 208, 106, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  animation:
+    fc-celebrate-pop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) 1,
+    fc-celebrate-float 2.1s ease-in 0.5s 1 forwards;
+}
+.fc-confetti {
+  position: absolute;
+  inset: 0;
+}
+.fc-confetti > i {
+  position: absolute;
+  top: -10px;
+  left: calc(2% + var(--i) * 6.2%);
+  width: 6px;
+  height: 10px;
+  border-radius: 1px;
+  background: hsl(calc(var(--i) * 47) 82% 58%);
+  opacity: 0;
+  animation: fc-confetti-fall 1.5s ease-in calc(var(--i) * 35ms) 1;
+}
+@keyframes fc-celebrate-pop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.15); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes fc-celebrate-float {
+  0% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-7px); opacity: 0; }
+}
+@keyframes fc-confetti-fall {
+  0% { transform: translateY(0) rotate(0); opacity: 1; }
+  100% { transform: translateY(150px) rotate(560deg); opacity: 0; }
+}
+
+/* ---- accessibility: kill all motion when requested ---- */
+@media (prefers-reduced-motion: reduce) {
+  .fc-card, .fc-card::after, .fc-chrome *, .fc-card-bar > i,
+  .fc-celebrate-box { animation: none !important; }
+  .fc-card-bar > i { width: 100%; }
+  .fc-confetti { display: none; }
+}
