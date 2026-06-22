@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.github
+.claude
+.squad
+.copilot
+packages/e2e/test-results
+packages/e2e/playwright-report
+**/*.log
+**/.DS_Store
+images
+*.md

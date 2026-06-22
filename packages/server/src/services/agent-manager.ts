@@ -13,6 +13,7 @@ import { UPLOADS_DIR } from '../routes/attachments.js';
 import type { AttachmentStore } from '../repositories/attachment-types.js';
 import { errorMessage } from '../utils.js';
 import { detectAvailableAgents } from './agent-detection.js';
+import { ContainerRunner } from './container-runner.js';
 
 const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
 
@@ -148,6 +149,9 @@ export class AgentManager {
    *  tasks that finish successfully; group children are excluded. */
   private onTaskComplete: ((taskId: string) => void | Promise<void>) | null = null;
 
+  /** Containerized execution backend; null unless container mode is configured. */
+  private containerRunner: ContainerRunner | null = null;
+
   /** Call once at startup to enable event persistence. */
   initEventPersistence(repo: TaskRepository): void {
     this.eventRepo = repo;
@@ -228,10 +232,62 @@ export class AgentManager {
         }
       }
     }
+
+    this.initContainerRunner();
   }
 
   getAvailableAgents(): AgentInfo[] {
     return [...this.availableAgents];
+  }
+
+  /** Enable containerized task execution when AGENTBOARD_CONTAINER_MODE is set
+   *  and its prerequisites (ANTHROPIC_API_KEY, data host path, Docker) are present. */
+  private initContainerRunner(): void {
+    const enabled = ['1', 'true', 'yes'].includes((process.env.AGENTBOARD_CONTAINER_MODE || '').toLowerCase());
+    if (!enabled) return;
+
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    const dataHostPath = process.env.AGENTBOARD_DATA_HOST;
+    const missing: string[] = [];
+    if (!anthropicApiKey) missing.push('ANTHROPIC_API_KEY');
+    // Must be ABSOLUTE: it becomes the `docker run -v <src>:/repo` source on the
+    // host daemon, which rejects a relative path (or mounts the wrong dir).
+    if (!dataHostPath) missing.push('AGENTBOARD_DATA_HOST');
+    else if (!path.isAbsolute(dataHostPath)) missing.push(`an ABSOLUTE AGENTBOARD_DATA_HOST (got "${dataHostPath}")`);
+    if (!this.isDockerAvailable()) missing.push('a working Docker daemon');
+    if (missing.length > 0) {
+      console.warn(`[agent-manager] AGENTBOARD_CONTAINER_MODE is set but missing ${missing.join(', ')} — falling back to local execution`);
+      return;
+    }
+
+    const image = process.env.AGENT_RUNNER_IMAGE || 'agentboard-agent-runner:latest';
+    this.containerRunner = new ContainerRunner({
+      image,
+      dataDir: process.env.AGENTBOARD_DATA_DIR || '/data',
+      dataHostPath: dataHostPath!,
+      anthropicApiKey: anthropicApiKey!,
+      model: process.env.CLAUDE_MODEL,
+      timeoutMs: AGENT_TIMEOUT_MS,
+    });
+    console.log(`[agent-manager] containerized execution ENABLED (image: ${image})`);
+  }
+
+  private isDockerAvailable(): boolean {
+    try {
+      execFileSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether a task should run in a container instead of via a local provider. */
+  private shouldUseContainer(task: Task): boolean {
+    if (!this.containerRunner) return false;
+    if (task.groupId) return false;                       // group children stay on the local path for now
+    if (!task.repoPath || !task.branchName) return false; // need a branch/workspace to operate on
+    if (!this.hasRemote(task)) return false;              // need a pushable origin to open the PR
+    return true;
   }
 
   // ─── Event Management (moved from copilot.ts) ─────────────────────
@@ -407,6 +463,17 @@ export class AgentManager {
       });
       console.log(`[worktree] removed ${task.worktreePath}`);
     } catch (err: unknown) {
+      // Container-mode workspaces are standalone clones, not linked worktrees, so
+      // `git worktree remove` won't apply — fall back to a plain directory delete.
+      try {
+        if (fs.existsSync(task.worktreePath)) {
+          fs.rmSync(task.worktreePath, { recursive: true, force: true });
+          console.log(`[worktree] removed directory ${task.worktreePath}`);
+          return;
+        }
+      } catch (rmErr: unknown) {
+        console.error(`[worktree] directory remove failed:`, errorMessage(rmErr));
+      }
       console.error(`[worktree] remove failed:`, errorMessage(err));
       throw new Error(`Failed to remove worktree: ${errorMessage(err)}`);
     }
@@ -705,6 +772,9 @@ Use DECISION: REQUEST_CHANGES instead when the change is not ready. When request
       terminated = true;
       const entry = this.sessions.get(task.id);
       if (entry?.timeoutId) clearTimeout(entry.timeoutId);
+      // Always release the session here so every completion path (including the
+      // container branch's failure paths) clears `isRunning` and allows re-runs.
+      this.sessions.delete(task.id);
       const duration = Date.now() - sessionStartTime;
 
       // Item 5: Emit structured summary event
@@ -748,6 +818,83 @@ Use DECISION: REQUEST_CHANGES instead when the change is not ready. When request
         );
       }
     };
+
+    // ── Containerized execution path ──────────────────────────────────
+    // When container mode is configured, run the Claude agent inside an
+    // ephemeral Docker container against an isolated per-task workspace, then
+    // hand off to the auto-PR + review pipeline. Bypasses the local provider,
+    // availability check, and /tmp worktree setup below.
+    if (this.shouldUseContainer(task)) {
+      const runner = this.containerRunner!;
+      this.sessions.set(task.id, { startTime: sessionStartTime, agentType });
+      void (async () => {
+        let workspace: { containerPath: string; hostPath: string };
+        try {
+          workspace = runner.prepareWorkspace(task);
+          task.worktreePath = workspace.containerPath;
+          if (onWorktreeCreated) onWorktreeCreated(workspace.containerPath);
+          // The container always runs Claude — reflect that as the task's agent
+          // so the review pipeline picks a DIFFERENT agent as the reviewer.
+          if (task.agentType !== 'claude') {
+            task.agentType = 'claude';
+            try { await this.eventRepo?.update(task.id, { agentType: 'claude' }); } catch { /* non-fatal */ }
+          }
+          this.emitEvent(task.id, {
+            id: uuid(), taskId: task.id, type: 'output',
+            content: `Launching containerized Claude agent.\nWorkspace: ${workspace.containerPath}\nBranch: ${task.branchName} from ${task.baseBranch || 'main'}`,
+            timestamp: Date.now(), metadata: { phase: 'container' },
+          });
+        } catch (err: unknown) {
+          this.emitEvent(task.id, {
+            id: uuid(), taskId: task.id, type: 'error',
+            content: `Container workspace setup failed: ${errorMessage(err)}`,
+            timestamp: Date.now(),
+          });
+          terminateOnce('failed', `Container workspace setup failed: ${errorMessage(err)}`);
+          return;
+        }
+
+        onStatusChange('executing');
+        const safeTitle = task.title.replace(/[<>]/g, '');
+        const safeDescription = (task.description || '').replace(/[<>]/g, '');
+        const prompt = `${safeTitle}\n\n${safeDescription}`;
+        const systemPrompt =
+          'You are a coding agent working in the repository mounted at /repo. Complete the task in the user prompt: read relevant files, make precise edits, and verify your changes when applicable. When finished, end your last message with a <task-summary>…</task-summary> block describing what you accomplished.';
+
+        let summaryBuffer = '';
+        const result = await runner.run(task, {
+          prompt,
+          systemPrompt,
+          hostWorkspacePath: workspace.hostPath,
+          onEvent: (type, content) => {
+            if (type === 'output') {
+              summaryBuffer += content + '\n';
+              if (summaryBuffer.length > MAX_SUMMARY_BUFFER) summaryBuffer = summaryBuffer.slice(-MAX_SUMMARY_BUFFER);
+            }
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type, content,
+              timestamp: Date.now(), metadata: { phase: 'container', agentType: 'claude' },
+            });
+          },
+        });
+
+        if (this.sessions.has(task.id)) {
+          this.sessions.delete(task.id);
+          if (result.status === 'complete') {
+            try {
+              const summary = extractTaskSummary(summaryBuffer);
+              await this.eventRepo?.update(task.id, { summary });
+            } catch (err) {
+              console.error(`[agent-manager] failed to persist summary for task ${task.id}:`, errorMessage(err));
+            }
+            // The container commits its own work; this catches anything left over.
+            this.commitAgentWork(task, workspace.containerPath);
+          }
+          terminateOnce(result.status, result.error);
+        }
+      })().catch((err: unknown) => terminateOnce('failed', errorMessage(err)));
+      return;
+    }
 
     const provider = this.providers.get(agentType);
     if (!provider) {
@@ -1064,6 +1211,8 @@ Optional list of any work you did not complete or that should be followed up. Om
       try { await entry.session?.abort(); } catch { /* ignore */ }
       try { await entry.session?.destroy(); } catch { /* ignore */ }
     })();
+    // Stop a running per-task container, if this task was executing in one.
+    this.containerRunner?.kill(taskId);
 
     this.emitEvent(taskId, {
       id: uuid(), taskId, type: 'error',

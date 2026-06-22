@@ -26,7 +26,8 @@ import type { ProjectRepository } from './repositories/project-types.js';
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:8081,http://localhost:4175,http://localhost:4176').split(',');
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:8081,http://localhost:4175,http://localhost:4176')
+  .split(',').map((o) => o.trim()).filter(Boolean);
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '100kb' }));
 

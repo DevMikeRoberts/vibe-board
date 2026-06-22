@@ -129,6 +129,84 @@ npm run build:server
 npm run build:client
 ```
 
+### Deploying online (Vercel frontend + self-hosted backend)
+
+The backend is a long-running, stateful server (WebSockets, agent subprocesses,
+git worktrees, local filesystem), so it **cannot run on Vercel's serverless
+platform**. The recommended topology is:
+
+- **Frontend → Vercel** (static Vite build)
+- **Backend → a Docker container on an always-on host** you control (e.g. a Mac Mini)
+
+**1. Self-host the backend (Docker):**
+
+```bash
+# On the always-on host, from the repo root:
+export ALLOWED_ORIGINS="https://your-board.vercel.app"   # your Vercel URL
+export API_KEY="$(openssl rand -hex 24)"                 # protect the public endpoint
+export ANTHROPIC_API_KEY="sk-ant-..."                    # for the Claude agent + reviewer
+export GH_TOKEN="ghp_..."                                # for pushing branches / opening PRs
+export AGENTBOARD_DATA="$(pwd)/agentboard-data"          # persistent DB + repos (MUST be an absolute host path)
+
+docker compose up -d --build server
+```
+
+The backend listens on `:8080`. Expose it over HTTPS (a reverse proxy or a
+tunnel such as `cloudflared`) and point your Vercel frontend at that URL. The
+mounted Docker socket lets the backend launch per-task agent containers.
+
+**2. Deploy the frontend (Vercel):**
+
+Import the repo into Vercel. Build settings come from [`vercel.json`](vercel.json)
+(`framework: vite`, builds the `shared` + `client` workspaces, SPA rewrite). Set
+these **Environment Variables** in the Vercel project, then deploy:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_API_BASE` | `https://your-backend-host` (no trailing `/api`) |
+| `VITE_API_KEY` | the same value as the backend `API_KEY` |
+
+In local dev `VITE_API_BASE` is unset and the client talks to the backend
+through the Vite proxy as before.
+
+### Per-task agent containers (autonomous execution)
+
+When enabled, the backend runs **each task in its own ephemeral Docker
+container** (Claude agent) against an isolated per-task workspace, commits the
+work, and the auto-PR pipeline pushes + reviews it. Because the always-on host
+orchestrates everything, tasks run to completion even when your laptop is off.
+
+**1. Build the agent-runner image** (on the backend host, context = repo root):
+
+```bash
+docker build -f packages/server/agent-runner/Dockerfile -t agentboard-agent-runner .
+```
+
+**2. Enable it on the backend** (in addition to the variables above):
+
+```bash
+export AGENTBOARD_CONTAINER_MODE=1
+export ANTHROPIC_API_KEY="sk-ant-..."   # used by the Claude agent in each container
+export GH_TOKEN="ghp_..."               # used by the backend to push + open PRs
+docker compose up -d --build server
+```
+
+How it composes: task starts → backend creates an isolated workspace (a
+self-contained clone of the project repo on a new branch, under the `/data`
+bind mount) → launches `agentboard-agent-runner` against it via the mounted
+Docker socket → the agent edits + commits → the backend pushes the branch and
+the **auto-PR + adversarial-review pipeline** opens the PR, reviews it, and
+merges or loops. Falls back to local execution if Docker / `ANTHROPIC_API_KEY`
+are unavailable, for group child tasks, or when the repo has no GitHub remote.
+
+> Notes / current limitations: the project repo must have a GitHub `origin`
+> (so the PR can be pushed); the agent runs with `--dangerously-skip-permissions`
+> inside the container sandbox; agent output streams as plain log lines (not yet
+> structured tool/file events); and the mounted Docker socket grants the backend
+> control of the host daemon — keep the backend behind `API_KEY` and don't expose
+> it publicly without one. This path needs runtime validation on your host
+> (Docker + an Anthropic key + a GitHub repo).
+
 ### Required Gate
 
 Use the deterministic gate before pushing changes. It runs the client build, server build, and required Playwright E2E suite; if E2E cannot run, the command fails.
@@ -146,6 +224,7 @@ npm run hooks:install
 |----------|---------|-------------|
 | `API_KEY` | _(unset)_ | Bearer token for API + WebSocket auth; unset = open access |
 | `VITE_API_KEY` | _(unset)_ | Client-side API key (must match `API_KEY`) |
+| `VITE_API_BASE` | _(unset)_ | Absolute backend origin for hosted frontends (e.g. `https://board-api.example.com`); unset = same-origin/Vite proxy |
 | `PORT` | `8080` | Server port |
 | `DATABASE_URL` | _(unset)_ | PostgreSQL connection string; when unset, uses SQLite |
 | `DB_PATH` | `./data/agentboard.db` | SQLite database file path |
@@ -161,9 +240,15 @@ npm run hooks:install
 | `COPILOT_DENIED_TOOLS` | _(unset)_ | Comma-separated tool names to deny in Copilot sessions |
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Allowed repo root paths (comma-separated) |
 | `ALLOWED_ORIGINS` | `http://localhost:8081,http://localhost:4175,http://localhost:4176` | CORS origins |
-| `AGENT_TIMEOUT_MS` | `600000` | Max agent execution time (ms) |
+| `AGENT_TIMEOUT_MS` | `600000` | Max agent execution time (ms); also the per-task container timeout |
 | `API_URL` | `http://localhost:8080` | Vite proxy target |
 | `PROJECTS_DIR` | `~/projects` | Host projects path |
+| `AGENTBOARD_CONTAINER_MODE` | _(unset)_ | Set to `1` to run each task in an ephemeral Docker container |
+| `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key for the Claude agent in per-task containers + the reviewer |
+| `GH_TOKEN` | _(unset)_ | GitHub token the backend uses to push branches and open PRs |
+| `AGENT_RUNNER_IMAGE` | `agentboard-agent-runner:latest` | Image used for per-task agent containers |
+| `AGENTBOARD_DATA_HOST` | _(unset)_ | **Absolute** host path backing the `/data` bind mount (required for sibling-container mounts; container mode won't enable if relative) |
+| `AGENTBOARD_DATA_DIR` | `/data` | In-container mount point of the shared data dir |
 
 ## Project Structure
 

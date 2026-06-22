@@ -28,6 +28,10 @@ export function createWSS(server: Server): WebSocketServer {
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req);
       });
+    } else {
+      // Not a /ws upgrade — close the socket so it doesn't hang (noServer mode
+      // has no other handler to clean it up).
+      socket.destroy();
     }
   });
 

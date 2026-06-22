@@ -35,7 +35,11 @@ function withQuery(path: string, params: Record<string, string | boolean | undef
   return qs ? `${path}?${qs}` : path;
 }
 
-const BASE = '/api';
+// Absolute backend origin for hosted deploys (e.g. the Vercel frontend talking
+// to a self-hosted backend). Empty in local dev → relative '/api' via the Vite
+// proxy. Set VITE_API_BASE=https://your-backend at build time for production.
+const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || '').replace(/\/+$/, '');
+const BASE = `${API_BASE}/api`;
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
 
 function authHeaders(): Record<string, string> {
@@ -236,8 +240,12 @@ export function subscribeConnectionStatus(listener: (status: ConnectionStatus) =
 function ensureConnection() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  let url = `${proto}//${location.host}/ws`;
+  // Derive the WS origin from the configured backend base (prod) or the current
+  // page origin (local dev, where Vite proxies /ws to the backend).
+  const wsOrigin = API_BASE
+    ? API_BASE.replace(/^http/, 'ws')
+    : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+  let url = `${wsOrigin}/ws`;
   if (API_KEY) {
     url += `?token=${encodeURIComponent(API_KEY)}`;
   }

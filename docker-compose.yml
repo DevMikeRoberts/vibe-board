@@ -1,4 +1,54 @@
 services:
+  # AI Agent Board backend (Express + WebSocket + agent orchestration).
+  # Run this on an always-on host (e.g. a Mac Mini). The Vercel-hosted frontend
+  # points at it via VITE_API_BASE. See README "Self-hosting the backend".
+  server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    container_name: ai-agent-board-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      # SQLite by default; set DATABASE_URL to use the postgres service below.
+      DB_PATH: /data/agentboard.db
+      # DATABASE_URL: postgresql://agentboard:your_password@db:5432/agentboard
+      AGENTBOARD_HOME: /data/agentboard
+      # Repos the board may operate on live under /data (the bind mount below).
+      ALLOWED_REPO_ROOTS: /data
+      # Comma-separated list — include your Vercel frontend URL here.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:8081}
+      # STRONGLY recommended for any non-localhost deploy: requires a bearer
+      # token on every API/WS request (set the same value as VITE_API_KEY).
+      API_KEY: ${API_KEY:-}
+      # Credentials for the Claude agent + GitHub push/PR (used by per-task
+      # containers and the adversarial reviewer).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GH_TOKEN: ${GH_TOKEN:-}
+      # Host path of the data dir, passed through so per-task sibling containers
+      # (launched via the mounted Docker socket) can bind-mount the SAME repos.
+      AGENTBOARD_DATA_HOST: ${AGENTBOARD_DATA:-./agentboard-data}
+      # Per-task containerized execution: when enabled, each task runs the Claude
+      # agent in an ephemeral container (build it with the agent-runner image).
+      # Requires ANTHROPIC_API_KEY + the mounted Docker socket above.
+      AGENTBOARD_CONTAINER_MODE: ${AGENTBOARD_CONTAINER_MODE:-}
+      AGENT_RUNNER_IMAGE: ${AGENT_RUNNER_IMAGE:-agentboard-agent-runner:latest}
+      AGENTBOARD_DATA_DIR: /data
+      # Optional Claude model override for per-task containers + reviewer.
+      CLAUDE_MODEL: ${CLAUDE_MODEL:-}
+    volumes:
+      # Persistent DB + cloned repos. Bind mount (not a named volume) so the
+      # host path is known to per-task sibling containers.
+      - ${AGENTBOARD_DATA:-./agentboard-data}:/data
+      # Lets the backend launch per-task agent containers on the host daemon.
+      # NOTE: this grants the backend control of the host Docker — fine for a
+      # trusted home host; do not expose this backend publicly without API_KEY.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # depends_on: [db]   # uncomment when using the postgres service
+
+  # Optional PostgreSQL backend (set DATABASE_URL on the server to use it).
   db:
     image: postgres:16-alpine
     container_name: ai-agent-board-db
