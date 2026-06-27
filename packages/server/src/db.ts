@@ -299,6 +299,9 @@ function ensureSqliteProjectForeignKeys(db: Database.Database): void {
         group_id      TEXT,
         group_order   INTEGER,
         summary       TEXT,
+        pr_url        TEXT,
+        review_round  INTEGER,
+        review_status TEXT,
         FOREIGN KEY (project_id) REFERENCES projects(id),
         FOREIGN KEY (group_id) REFERENCES task_groups(id) ON DELETE CASCADE
       );
@@ -306,12 +309,14 @@ function ensureSqliteProjectForeignKeys(db: Database.Database): void {
       INSERT INTO tasks_new (
         id, title, description, priority, column_id, agent_status, created_at,
         started_at, completed_at, repo_path, branch_name, base_branch, use_worktree,
-        worktree_path, agent_type, archived, project_id, group_id, group_order, summary
+        worktree_path, agent_type, archived, project_id, group_id, group_order, summary,
+        pr_url, review_round, review_status
       )
       SELECT
         id, title, description, priority, column_id, agent_status, created_at,
         started_at, completed_at, repo_path, branch_name, base_branch, use_worktree,
-        worktree_path, agent_type, archived, project_id, group_id, group_order, summary
+        worktree_path, agent_type, archived, project_id, group_id, group_order, summary,
+        pr_url, review_round, review_status
       FROM tasks;
 
       DROP TABLE tasks;
