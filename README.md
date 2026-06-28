@@ -263,7 +263,7 @@ npm run hooks:install
 | `AGENTBOARD_FALLBACK_AGENT` | _(unset)_ | Pin the agent used when a task's requested agent is unavailable (out of credits / not installed). Unset = prefer a free/local model by tier ranking |
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Allowed repo root paths (comma-separated) |
 | `ALLOWED_ORIGINS` | `http://localhost:8081,http://localhost:4175,http://localhost:4176` | CORS origins |
-| `AGENT_TIMEOUT_MS` | `600000` | Max agent execution time (ms); also the per-task container timeout |
+| `AGENT_TIMEOUT_MS` | _(unset)_ | Max agent execution time (ms); also the per-task container timeout. Unset or `0` = **no timeout** (agents run until they finish or are stopped). Set a positive value to enforce a hard cap |
 | `API_URL` | `http://localhost:8080` | Vite proxy target |
 | `PROJECTS_DIR` | `~/projects` | Host projects path |
 | `AGENTBOARD_CONTAINER_MODE` | _(unset)_ | Set to `1` to run each task in an ephemeral Docker container |

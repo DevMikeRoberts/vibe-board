@@ -141,6 +141,7 @@ export class ContainerRunner {
 
     return new Promise<ContainerRunResult>((resolve) => {
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const finish = (result: ContainerRunResult) => {
         if (settled) return;
         settled = true;
@@ -161,11 +162,14 @@ export class ContainerRunner {
       child.stdout.on('data', emitLines);
       child.stderr.on('data', emitLines);
 
-      const timer = setTimeout(() => {
-        opts.onEvent('error', `Agent container timed out after ${Math.round(this.cfg.timeoutMs / 1000)}s — terminating.`);
-        this.kill(task.id);
-        finish({ status: 'failed', error: 'container timed out' });
-      }, this.cfg.timeoutMs);
+      // Armed only when a positive timeout is configured (0 = no timeout).
+      if (this.cfg.timeoutMs > 0) {
+        timer = setTimeout(() => {
+          opts.onEvent('error', `Agent container timed out after ${Math.round(this.cfg.timeoutMs / 1000)}s — terminating.`);
+          this.kill(task.id);
+          finish({ status: 'failed', error: 'container timed out' });
+        }, this.cfg.timeoutMs);
+      }
 
       child.on('error', (err) => finish({ status: 'failed', error: errorMessage(err) }));
       child.on('close', (code) =>

@@ -16,7 +16,13 @@ import { detectAvailableAgents } from './agent-detection.js';
 import { resolveAgentSelection, getConfiguredFallbackAgent } from './agent-fallback.js';
 import { ContainerRunner } from './container-runner.js';
 
-const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
+// Max agent execution time, in ms. Default 0 = no timeout: agents run until they
+// finish or are explicitly stopped. Set AGENT_TIMEOUT_MS to a positive value to
+// re-enable a hard cap (also used as the per-task container timeout).
+const AGENT_TIMEOUT_MS = (() => {
+  const parsed = parseInt(process.env.AGENT_TIMEOUT_MS ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+})();
 
 function loadAttachmentAsBase64(filePath: string, displayName: string, mimeType: string): AgentAttachment | null {
   try {
@@ -685,10 +691,14 @@ Use DECISION: REQUEST_CHANGES instead when the change is not ready. When request
     // Register so isRunning()/stopAgent() see the review, then ensure cleanup.
     this.sessions.set(task.id, { startTime: Date.now(), agentType: reviewerType, session });
     try {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('review timed out')), AGENT_TIMEOUT_MS),
-      );
-      await Promise.race([session.execute(prompt), timeout]);
+      if (AGENT_TIMEOUT_MS > 0) {
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('review timed out')), AGENT_TIMEOUT_MS),
+        );
+        await Promise.race([session.execute(prompt), timeout]);
+      } else {
+        await session.execute(prompt);
+      }
     } finally {
       this.sessions.delete(task.id);
       session.destroy().catch(() => {});
@@ -1091,27 +1101,32 @@ Optional list of any work you did not complete or that should be followed up. Om
         this.sessions.set(task.id, { session, startTime: sessionStartTime, agentType });
         onStatusChange('executing');
 
-        // Timeout guard
-        const timeoutId = setTimeout(() => {
-          if (!this.sessions.has(task.id)) return;
-          const timeoutMsg = `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`;
-          console.warn(`[agent-manager] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
-          this.emitEvent(task.id, {
-            id: uuid(), taskId: task.id, type: 'error',
-            content: timeoutMsg,
-            timestamp: Date.now(),
-          });
-          const entry = this.sessions.get(task.id);
-          if (entry) {
-            this.sessions.delete(task.id);
-            entry.session?.abort().catch(() => {});
-            entry.session?.destroy().catch(() => {});
-          }
-          terminateOnce('failed', timeoutMsg);
-        }, AGENT_TIMEOUT_MS);
+        // Optional timeout guard — armed only when a positive AGENT_TIMEOUT_MS
+        // is configured. Default (0) lets the agent run until it finishes or is
+        // stopped.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        if (AGENT_TIMEOUT_MS > 0) {
+          timeoutId = setTimeout(() => {
+            if (!this.sessions.has(task.id)) return;
+            const timeoutMsg = `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`;
+            console.warn(`[agent-manager] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type: 'error',
+              content: timeoutMsg,
+              timestamp: Date.now(),
+            });
+            const entry = this.sessions.get(task.id);
+            if (entry) {
+              this.sessions.delete(task.id);
+              entry.session?.abort().catch(() => {});
+              entry.session?.destroy().catch(() => {});
+            }
+            terminateOnce('failed', timeoutMsg);
+          }, AGENT_TIMEOUT_MS);
 
-        const entry = this.sessions.get(task.id);
-        if (entry) entry.timeoutId = timeoutId;
+          const entry = this.sessions.get(task.id);
+          if (entry) entry.timeoutId = timeoutId;
+        }
 
         // Build prompt and execute — each provider returns a typed AgentResult
         const safeDescription = (task.description || '').replace(/[<>]/g, '');
