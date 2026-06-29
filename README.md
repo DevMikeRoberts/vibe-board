@@ -23,7 +23,7 @@ A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub
 
 1. **Create a task** in the Backlog column
 2. **Drag it to In Progress** — the agent panel opens automatically
-3. **Configure the run** — set the repo path, branch name, agent type, and whether to use a git worktree
+3. **Configure the run** — set the repo path, branch name, and agent type (every task always runs in its own git worktree)
 4. **Click Start Agent** — the selected agent begins working, streaming progress in real-time
 5. **Review the results** — commands executed, files modified, output produced
 6. **Merge or create a PR** — merge the branch to main locally, or create a PR if the repo has a GitHub remote
@@ -66,7 +66,7 @@ For projects needing multiple parallel changes, **Task Groups** let you define a
 
 1. Click **New Group** (or press `G`) to open the group creation dialog
 2. Set group-level config: title, repo path, base branch, priority
-3. Add child tasks (2–20), each with its own title, description, agent type, and worktree toggle
+3. Add child tasks (2–20), each with its own title, description, and agent type (each runs in its own git worktree)
 4. Set **parallelism** with a slider (1 to N) — controls how many agents run concurrently
 5. Click **Create & Run** to launch immediately, or **Create Group** to add to backlog
 
@@ -81,7 +81,7 @@ Groups appear as a single card on the board showing aggregate progress. Click to
 - Real-time agent activity streaming via WebSocket
 - Terminal-style event viewer (xterm.js) with ANSI color support
 - Agent panel with event coalescing (thinking, commands, output)
-- Git worktree isolation per task (optional)
+- Git worktree isolation on every task (always on — each run gets its own branch + worktree; re-runs auto-pick a fresh non-colliding branch)
 - **Local merge or PR** — merge worktree branch to main locally, or create a PR if a GitHub remote exists (auto-detected)
 - Worktree auto-cleanup after merge, PR creation, or archival
 - **Dual database backends** — SQLite (zero-config default) or PostgreSQL
@@ -166,7 +166,7 @@ platform**. The recommended topology is:
 # On the always-on host, from the repo root:
 export ALLOWED_ORIGINS="https://your-board.vercel.app"   # your Vercel URL
 export API_KEY="$(openssl rand -hex 24)"                 # protect the public endpoint
-export ANTHROPIC_API_KEY="sk-ant-..."                    # for the Claude agent + reviewer
+export ANTHROPIC_API_KEY="sk-ant-..."                    # for the Claude agent
 export GH_TOKEN="ghp_..."                                # for pushing branches / opening PRs
 export AGENTBOARD_DATA="$(pwd)/agentboard-data"          # persistent DB + repos (MUST be an absolute host path)
 
@@ -194,9 +194,9 @@ through the Vite proxy as before.
 ### Per-task agent containers (autonomous execution)
 
 When enabled, the backend runs **each task in its own ephemeral Docker
-container** (Claude agent) against an isolated per-task workspace, commits the
-work, and the auto-PR pipeline pushes + reviews it. Because the always-on host
-orchestrates everything, tasks run to completion even when your laptop is off.
+container** (Claude agent) against an isolated per-task workspace and commits the
+work. Because the always-on host orchestrates everything, tasks run to completion
+even when your laptop is off.
 
 **1. Build the agent-runner image** (on the backend host, context = repo root):
 
@@ -217,9 +217,9 @@ How it composes: task starts → backend creates an isolated workspace (a
 self-contained clone of the project repo on a new branch, under the `/data`
 bind mount) → launches `agentboard-agent-runner` against it via the mounted
 Docker socket → the agent edits + commits → the backend pushes the branch and
-the **auto-PR + adversarial-review pipeline** opens the PR, reviews it, and
-merges or loops. Falls back to local execution if Docker / `ANTHROPIC_API_KEY`
-are unavailable, for group child tasks, or when the repo has no GitHub remote.
+the task lands in **review** for you to open a PR and merge from the board. Falls
+back to local execution if Docker / `ANTHROPIC_API_KEY` are unavailable, for group
+child tasks, or when the repo has no GitHub remote.
 
 > Notes / current limitations: the project repo must have a GitHub `origin`
 > (so the PR can be pushed); the agent runs with `--dangerously-skip-permissions`
@@ -267,7 +267,7 @@ npm run hooks:install
 | `API_URL` | `http://localhost:8080` | Vite proxy target |
 | `PROJECTS_DIR` | `~/projects` | Host projects path |
 | `AGENTBOARD_CONTAINER_MODE` | _(unset)_ | Set to `1` to run each task in an ephemeral Docker container |
-| `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key for the Claude agent in per-task containers + the reviewer |
+| `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key for the Claude agent in per-task containers |
 | `GH_TOKEN` | _(unset)_ | GitHub token the backend uses to push branches and open PRs |
 | `AGENT_RUNNER_IMAGE` | `agentboard-agent-runner:latest` | Image used for per-task agent containers |
 | `AGENTBOARD_DATA_HOST` | _(unset)_ | **Absolute** host path backing the `/data` bind mount (required for sibling-container mounts; container mode won't enable if relative) |

@@ -82,39 +82,6 @@ function extractTaskSummary(buffer: string): string | null {
   return null;
 }
 
-/**
- * Parse an adversarial reviewer's `<review-verdict>` block. Defaults to
- * 'request_changes' when the decision can't be read — we never auto-merge code
- * a reviewer didn't explicitly approve.
- */
-function parseReviewVerdict(buffer: string): { decision: 'approve' | 'request_changes'; comments: string } {
-  let body = '';
-  const closed = [...buffer.matchAll(/<review-verdict>([\s\S]*?)<\/review-verdict>/g)];
-  if (closed.length > 0) {
-    body = closed[closed.length - 1][1];
-  } else {
-    const openIdx = buffer.lastIndexOf('<review-verdict>');
-    if (openIdx >= 0) body = buffer.slice(openIdx + '<review-verdict>'.length);
-  }
-  body = body.replace(/<\/?review-verdict>/g, '').trim();
-
-  const decMatch = body.match(/DECISION:\s*(APPROVE|REQUEST_CHANGES)/i);
-  const decision = decMatch && decMatch[1].toUpperCase() === 'APPROVE' ? 'approve' : 'request_changes';
-
-  // Comments = everything except the DECISION line and a leading "## Comments" header.
-  const comments = body
-    .replace(/DECISION:\s*(APPROVE|REQUEST_CHANGES)/i, '')
-    .replace(/^\s*##\s*Comments\s*/im, '')
-    .trim();
-
-  // No parseable verdict at all → fall back to the raw tail so the human/agent
-  // still gets the reviewer's reasoning.
-  if (!decMatch && !comments) {
-    return { decision: 'request_changes', comments: buffer.slice(-2000).trim() || 'Reviewer produced no parseable verdict.' };
-  }
-  return { decision, comments: comments || (decision === 'approve' ? 'Approved.' : 'Changes requested (no details provided).') };
-}
-
 function getErrorStderr(err: unknown): string {
   if (err instanceof Error && 'stderr' in err) {
     const stderr = (err as Error & { stderr?: Buffer | string }).stderr;
@@ -152,29 +119,12 @@ export class AgentManager {
   /** Per-repo mutex to serialize git operations (merge, checkout) */
   private repoLocks = new Map<string, Promise<void>>();
 
-  /** Post-completion hook (auto-PR + adversarial review). Fired for standalone
-   *  tasks that finish successfully; group children are excluded. */
-  private onTaskComplete: ((taskId: string) => void | Promise<void>) | null = null;
-
   /** Containerized execution backend; null unless container mode is configured. */
   private containerRunner: ContainerRunner | null = null;
 
   /** Call once at startup to enable event persistence. */
   initEventPersistence(repo: TaskRepository): void {
     this.eventRepo = repo;
-  }
-
-  /** Register the post-completion pipeline (see services/review-pipeline.ts). */
-  registerCompletionHook(fn: (taskId: string) => void | Promise<void>): void {
-    this.onTaskComplete = fn;
-  }
-
-  /** Emit a pipeline-authored event into a task's event stream (persisted + broadcast). */
-  emitPipelineEvent(taskId: string, type: AgentEvent['type'], content: string, metadata?: Record<string, unknown>): void {
-    this.emitEvent(taskId, {
-      id: uuid(), taskId, type, content, timestamp: Date.now(),
-      metadata: { phase: 'pipeline', ...metadata },
-    });
   }
 
   initAttachmentStore(store: AttachmentStore): void {
@@ -412,7 +362,10 @@ export class AgentManager {
   }
 
   setupWorktree(task: Task): string | undefined {
-    if (!task.useWorktree || !task.repoPath || !task.branchName) return undefined;
+    // Worktrees are mandatory for repo-backed tasks (no longer optional). Without
+    // a repo there's nothing to branch from; without a branch name we mint one.
+    if (!task.repoPath) return undefined;
+    if (!task.branchName) task.branchName = this.generateBranchName(task);
 
     // Reuse a valid worktree left over from a prior run (e.g. after a failed
     // attempt). Without this, a restart would mint a new temp dir and fail with
@@ -436,29 +389,59 @@ export class AgentManager {
       /* best effort */
     }
 
+    // A re-run can collide with a branch/worktree left by a previous attempt
+    // (e.g. a merge or cleanup removed the worktree but kept the branch). Pick a
+    // fresh, non-colliding branch name so the new worktree never clashes; the
+    // rename is persisted by the caller so PR/merge/UI use the branch that ran.
+    const branchName = this.uniqueBranchName(task.repoPath, task.branchName);
+    task.branchName = branchName;
+
     const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), `agentboard-${task.id}-`));
     const baseBranch = task.baseBranch || 'main';
 
     try {
       execFileSync(
-        'git', ['worktree', 'add', '-b', task.branchName, worktreePath, baseBranch],
+        'git', ['worktree', 'add', '-b', branchName, worktreePath, baseBranch],
         { cwd: task.repoPath, stdio: 'pipe' },
       );
-      console.log(`[worktree] created at ${worktreePath} from ${baseBranch}`);
+      console.log(`[worktree] created ${branchName} at ${worktreePath} from ${baseBranch}`);
       return worktreePath;
-    } catch {
-      try {
-        execFileSync(
-          'git', ['worktree', 'add', worktreePath, task.branchName],
-          { cwd: task.repoPath, stdio: 'pipe' },
-        );
-        console.log(`[worktree] attached existing branch ${task.branchName} at ${worktreePath}`);
-        return worktreePath;
-      } catch (err2: unknown) {
-        console.error(`[worktree] failed:`, errorMessage(err2));
-        throw new Error(`Failed to create worktree: ${errorMessage(err2)}`);
-      }
+    } catch (err: unknown) {
+      console.error(`[worktree] failed:`, errorMessage(err));
+      throw new Error(`Failed to create worktree: ${errorMessage(err)}`);
     }
+  }
+
+  /** Generate a readable branch name for a task that lacks one. */
+  private generateBranchName(task: Task): string {
+    const slug = (task.title || 'task')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'task';
+    return `task/${slug}-${task.id.slice(0, 8)}`;
+  }
+
+  /** True when `branch` already exists as a local branch in `repoPath`. */
+  private branchExists(repoPath: string, branch: string): boolean {
+    try {
+      execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd: repoPath, stdio: 'pipe',
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Return `desired`, or the first `desired-N` (N≥2) that isn't already a branch. */
+  private uniqueBranchName(repoPath: string, desired: string): string {
+    if (!this.branchExists(repoPath, desired)) return desired;
+    for (let n = 2; n < 1000; n++) {
+      const candidate = `${desired}-${n}`;
+      if (!this.branchExists(repoPath, candidate)) return candidate;
+    }
+    return `${desired}-${Date.now()}`;
   }
 
   removeWorktree(task: Task): void {
@@ -592,134 +575,6 @@ export class AgentManager {
     }
   }
 
-  /**
-   * Return the diff to review: the PR diff via `gh pr diff` when a remote PR
-   * exists, otherwise the local `base...branch` diff. Capped so a huge diff
-   * doesn't blow the reviewer's context window.
-   */
-  getReviewDiff(task: Task, useRemotePR: boolean): string {
-    const cwd = this.gitCwd(task);
-    const base = task.baseBranch || 'main';
-    const branch = task.branchName!;
-    const opts = { cwd, stdio: 'pipe' as const, maxBuffer: 16 * 1024 * 1024 };
-    let diff = '';
-    if (useRemotePR) {
-      try { diff = execFileSync('gh', ['pr', 'diff', branch], opts).toString(); } catch { /* fall back */ }
-    }
-    if (!diff.trim()) {
-      try { diff = execFileSync('git', ['diff', `${base}...${branch}`], opts).toString(); } catch { /* leave empty */ }
-    }
-    const MAX = 60_000;
-    if (diff.length > MAX) {
-      diff = diff.slice(0, MAX) + `\n\n…[diff truncated at ${MAX} chars for review]…\n`;
-    }
-    return diff;
-  }
-
-  /** Pick an available agent to review — preferring one different from the implementer. */
-  pickReviewerAgent(implementerType: AgentType | undefined): AgentType | undefined {
-    const available = this.availableAgents.filter((a) => a.available).map((a) => a.name);
-    if (available.length === 0) return undefined;
-    // Preference order for a capable, independent reviewer.
-    const preference: AgentType[] = ['claude', 'copilot', 'codex', 'opencode', 'openclaw', 'hermes'];
-    const different = preference.find((t) => t !== implementerType && available.includes(t));
-    if (different) return different;
-    // Only one agent available — fall back to it (still better than no review).
-    return implementerType && available.includes(implementerType) ? implementerType : available[0];
-  }
-
-  /**
-   * Run an adversarial code review of `diff` with `reviewerType`. Streams the
-   * reviewer's work into the task's event log and returns a parsed verdict.
-   */
-  async runAdversarialReview(
-    task: Task,
-    reviewerType: AgentType,
-    diff: string,
-  ): Promise<{ decision: 'approve' | 'request_changes'; comments: string }> {
-    const provider = this.providers.get(reviewerType);
-    if (!provider) throw new Error(`No provider registered for reviewer agent: ${reviewerType}`);
-    const reviewerInfo = this.availableAgents.find((a) => a.name === reviewerType);
-    if (!reviewerInfo?.available) throw new Error(`Reviewer agent ${reviewerType} is not available`);
-
-    const workingDirectory = this.gitCwd(task);
-    const baseBranch = task.baseBranch || 'main';
-    const systemPrompt = `
-<context>
-You are a STRICT, ADVERSARIAL senior code reviewer. You are reviewing a pull request that an AI agent produced for the task below. Your job is to find real problems: correctness bugs, security issues, missing edge cases, broken/incomplete work, regressions, and changes that do not actually satisfy the task. Do NOT rubber-stamp. Only approve when the change is correct, complete, and safe to merge into "${baseBranch}".
-
-Task title: ${task.title.replace(/[<>]/g, '')}
-You may read files under ${workingDirectory} for context, but DO NOT modify any files.
-
-End your VERY LAST message with a verdict in EXACTLY this format (tags on their own lines):
-<review-verdict>
-DECISION: APPROVE
-## Comments
-Brief justification. If APPROVE, note what you verified.
-</review-verdict>
-
-Use DECISION: REQUEST_CHANGES instead when the change is not ready. When requesting changes, list each required change as a concrete, actionable bullet under "## Comments" so the implementing agent can address it.
-</context>
-`;
-    const prompt = `Review the following diff for the task "${task.title.replace(/[<>]/g, '')}" against base branch "${baseBranch}".\n\nTASK DESCRIPTION:\n${(task.description || '(no description)').slice(0, 8000)}\n\nDIFF:\n\`\`\`diff\n${diff}\n\`\`\``;
-
-    let buffer = '';
-    const session = await provider.createSession({
-      contextId: `${task.id}:review`,
-      workingDirectory,
-      repoPath: task.repoPath,
-      systemPrompt,
-      onEvent: (coreEvent: CoreAgentEvent) => {
-        if (coreEvent.type === 'output') {
-          buffer += coreEvent.content;
-          if (buffer.length > MAX_SUMMARY_BUFFER) buffer = buffer.slice(-MAX_SUMMARY_BUFFER);
-        }
-        const content = coreEvent.type === 'output'
-          ? coreEvent.content.replace(/<\/?review-verdict>/g, '')
-          : coreEvent.content;
-        this.emitEvent(task.id, {
-          id: coreEvent.id || uuid(),
-          taskId: task.id,
-          type: (coreEvent.type as AgentEvent['type']) || 'output',
-          content,
-          timestamp: Date.now(),
-          metadata: { ...coreEvent.metadata, phase: 'review', reviewer: reviewerType },
-        });
-      },
-    });
-
-    // Register so isRunning()/stopAgent() see the review, then ensure cleanup.
-    this.sessions.set(task.id, { startTime: Date.now(), agentType: reviewerType, session });
-    try {
-      if (AGENT_TIMEOUT_MS > 0) {
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('review timed out')), AGENT_TIMEOUT_MS),
-        );
-        await Promise.race([session.execute(prompt), timeout]);
-      } else {
-        await session.execute(prompt);
-      }
-    } finally {
-      this.sessions.delete(task.id);
-      session.destroy().catch(() => {});
-    }
-
-    return parseReviewVerdict(buffer);
-  }
-
-  /** Merge an approved PR via the GitHub CLI (squash). */
-  mergePR(task: Task): void {
-    if (!task.branchName) throw new Error('Task has no branch to merge');
-    const cwd = this.gitCwd(task);
-    try {
-      execFileSync('gh', ['pr', 'merge', task.branchName, '--squash'], { cwd, stdio: 'pipe' });
-      console.log(`[pr] merged ${task.branchName}`);
-    } catch (err: unknown) {
-      const msg = getErrorStderr(err) || errorMessage(err);
-      throw new Error(`PR merge failed: ${msg.trim()}`);
-    }
-  }
-
   private async withRepoLock<T>(repoPath: string, fn: () => T | Promise<T>): Promise<T> {
     const prev = this.repoLocks.get(repoPath) ?? Promise.resolve();
     let resolve: () => void;
@@ -818,16 +673,6 @@ Use DECISION: REQUEST_CHANGES instead when the change is not ready. When request
       });
 
       onStatusChange(status);
-
-      // Fire the post-completion pipeline (auto-PR + adversarial review) for
-      // standalone tasks that finished successfully. Group children are
-      // orchestrated by their group queue and excluded here.
-      if (status === 'complete' && !task.groupId && this.onTaskComplete) {
-        const hook = this.onTaskComplete;
-        Promise.resolve(hook(task.id)).catch((err: unknown) =>
-          console.error(`[pipeline] completion hook failed for ${task.id}:`, err),
-        );
-      }
     };
 
     // ── Containerized execution path ──────────────────────────────────
@@ -946,15 +791,23 @@ Use DECISION: REQUEST_CHANGES instead when the change is not ready. When request
     // Synchronous placeholder to prevent duplicate starts during async session creation
     this.sessions.set(task.id, { startTime: sessionStartTime, agentType });
 
-    // Set up worktree if configured
+    // Always run inside a dedicated git worktree for any repo-backed task — this
+    // is mandatory (no longer optional) so every run is isolated on its own branch.
     let worktreePath: string | undefined;
-    if (task.useWorktree) {
+    if (task.repoPath) {
       const priorWorktree = task.worktreePath;
+      const priorBranch = task.branchName;
       try {
         worktreePath = this.setupWorktree(task);
         if (worktreePath) {
           task.worktreePath = worktreePath;
           if (onWorktreeCreated) onWorktreeCreated(worktreePath);
+          // setupWorktree may have generated or de-collided the branch name on a
+          // re-run — persist + broadcast it so PR/merge/UI use the branch that ran.
+          if (task.branchName && task.branchName !== priorBranch) {
+            void this.eventRepo?.update(task.id, { branchName: task.branchName }).catch(() => {});
+            broadcast({ type: 'task_updated', payload: task });
+          }
           const reused = priorWorktree != null && path.resolve(priorWorktree) === path.resolve(worktreePath);
           let dirtyHint = '';
           if (reused) {

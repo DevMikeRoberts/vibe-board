@@ -68,7 +68,7 @@ test.describe('Copilot SDK Agent', () => {
     await waitForBoard(page);
   });
 
-  test('run agent without worktree — full flow', async ({ page, request }) => {
+  test('run agent (worktree always on) — full flow', async ({ page, request }) => {
     test.setTimeout(AGENT_TIMEOUT);
     const ts = Date.now();
     const title = `E2E Agent ${ts}`;
@@ -83,7 +83,7 @@ test.describe('Copilot SDK Agent', () => {
 
     // 3. Configure + move + run via API
     await request.post(`${API}/api/tasks/${task.id}/configure`, {
-      data: { repoPath: testRepo, useWorktree: false },
+      data: { repoPath: testRepo },
     });
     await request.patch(`${API}/api/tasks/${task.id}`, {
       data: { columnId: 'in-progress' },
@@ -103,7 +103,9 @@ test.describe('Copilot SDK Agent', () => {
     const finalTask = getTaskByTitle(finalTasks, title);
     expect(finalTask.columnId).toBe('review');
 
-    // 7. Clean up repo changes
+    // 7. Clean up worktree + repo changes (every task now runs in a worktree)
+    await request.post(`${API}/api/tasks/${task.id}/cleanup-worktree`);
+    git(['worktree', 'prune'], testRepo);
     git(['checkout', '--', '.'], testRepo);
   });
 

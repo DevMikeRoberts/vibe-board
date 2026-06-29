@@ -299,16 +299,14 @@ function BoardPage({
     if (!task) return;
 
     if (task.repoPath) {
-      // Task already configured — run directly
-      const wantWorktree = task.useWorktree ?? true;
+      // Task already configured — run directly. Worktrees are always used, so a
+      // branch is always sent (auto-generated from the title when unset).
       setSelectedTaskId(taskId);
       configureAndRunTask(taskId, {
         repoPath: task.repoPath,
-        branchName: wantWorktree
-          ? (task.branchName || `task/${slugify(task.title)}`)
-          : '',
+        branchName: task.branchName || `task/${slugify(task.title)}`,
         baseBranch: task.baseBranch || 'main',
-        useWorktree: wantWorktree,
+        useWorktree: true,
         agentType: task.agentType,
       });
     } else {
@@ -490,12 +488,6 @@ function parseCreateQuery(search: string): ProjectDialogInitialValues {
       : repoUrl
         ? 'repo'
         : 'local';
-  const useWorktreeParam = params.get('defaultUseWorktree');
-  const defaultUseWorktree =
-    useWorktreeParam === 'true' || useWorktreeParam === 'false' || useWorktreeParam === 'inherit'
-      ? (useWorktreeParam as 'true' | 'false' | 'inherit')
-      : undefined;
-
   return {
     source,
     name: params.get('name') ?? undefined,
@@ -504,7 +496,6 @@ function parseCreateQuery(search: string): ProjectDialogInitialValues {
     defaultAgentType: params.get('defaultAgentType') ?? undefined,
     defaultPriority: params.get('defaultPriority') ?? undefined,
     defaultBaseBranch: params.get('defaultBaseBranch') ?? undefined,
-    defaultUseWorktree,
     autoSubmit: params.get('autostart') === '1',
   };
 }

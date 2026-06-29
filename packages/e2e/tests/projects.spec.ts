@@ -885,7 +885,6 @@ test.describe('Projects page', () => {
     await page.getByLabel('Default Agent').selectOption('codex');
     await page.getByLabel('Default Priority').selectOption('high');
     await page.getByLabel('Default Base Branch').fill('develop');
-    await page.getByLabel('Default Worktree').selectOption('true');
     await page.getByRole('button', { name: 'Create Project' }).click();
     await expect(page.getByRole('article', { name: projectName })).toBeVisible();
 
@@ -901,7 +900,6 @@ test.describe('Projects page', () => {
       defaultAgentType: 'codex',
       defaultPriority: 'high',
       defaultBaseBranch: 'develop',
-      defaultUseWorktree: true,
     });
   });
 });
