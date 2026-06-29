@@ -14,7 +14,6 @@ export interface ProjectDialogInitialValues {
   defaultAgentType?: string;
   defaultPriority?: string;
   defaultBaseBranch?: string;
-  defaultUseWorktree?: 'inherit' | 'true' | 'false';
   /** When true, submit the prefilled form automatically once the dialog opens. */
   autoSubmit?: boolean;
 }
@@ -64,7 +63,6 @@ export function ProjectDialog({
   const [defaultAgentType, setDefaultAgentType] = useState('');
   const [defaultPriority, setDefaultPriority] = useState('');
   const [defaultBaseBranch, setDefaultBaseBranch] = useState('');
-  const [defaultUseWorktree, setDefaultUseWorktree] = useState<'inherit' | 'true' | 'false'>('inherit');
   const [nameTouched, setNameTouched] = useState(false);
   const [error, setError] = useState('');
   const [pathStatus, setPathStatus] = useState<PathStatus>({ kind: 'idle' });
@@ -81,11 +79,6 @@ export function ProjectDialog({
     setDefaultAgentType(project?.defaultAgentType ?? initialValues?.defaultAgentType ?? '');
     setDefaultPriority(project?.defaultPriority ?? initialValues?.defaultPriority ?? '');
     setDefaultBaseBranch(project?.defaultBaseBranch ?? initialValues?.defaultBaseBranch ?? '');
-    setDefaultUseWorktree(
-      project?.defaultUseWorktree === undefined
-        ? initialValues?.defaultUseWorktree ?? 'inherit'
-        : project.defaultUseWorktree ? 'true' : 'false',
-    );
     setNameTouched(Boolean(project) || Boolean(initialValues?.name));
     setError('');
     setPathStatus({ kind: 'idle' });
@@ -158,19 +151,16 @@ export function ProjectDialog({
     setError('');
     try {
       const trimmedBaseBranch = defaultBaseBranch.trim();
-      const worktreeValue = defaultUseWorktree === 'inherit' ? undefined : defaultUseWorktree === 'true';
       const defaults = mode === 'edit'
         ? {
             defaultAgentType: (defaultAgentType || null) as AgentType | null,
             defaultPriority: (defaultPriority || null) as Priority | null,
             defaultBaseBranch: trimmedBaseBranch || null,
-            defaultUseWorktree: worktreeValue === undefined ? null : worktreeValue,
           }
         : {
             defaultAgentType: (defaultAgentType || undefined) as AgentType | undefined,
             defaultPriority: (defaultPriority || undefined) as Priority | undefined,
             defaultBaseBranch: trimmedBaseBranch || undefined,
-            defaultUseWorktree: worktreeValue,
           };
 
       let payload: CreateProjectRequest | UpdateProjectRequest;
@@ -454,21 +444,6 @@ export function ProjectDialog({
                     />
                   </div>
 
-                  <div>
-                    <label htmlFor="project-default-worktree" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                      Default Worktree
-                    </label>
-                    <select
-                      id="project-default-worktree"
-                      value={defaultUseWorktree}
-                      onChange={(e) => setDefaultUseWorktree(e.target.value as 'inherit' | 'true' | 'false')}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="inherit">No default</option>
-                      <option value="true">Enabled</option>
-                      <option value="false">Disabled</option>
-                    </select>
-                  </div>
                 </div>
               </div>
 

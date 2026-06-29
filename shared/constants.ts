@@ -34,13 +34,6 @@ export const MAX_DESCRIPTION_LENGTH = 5000;
 export const MAX_GROUP_CHILDREN = 20;
 export const MIN_GROUP_CHILDREN = 2;
 
-/**
- * Max number of adversarial-review cycles the auto-review pipeline will run
- * before giving up and handing the task back to a human (leaving it in-progress
- * with the latest review feedback appended to its description).
- */
-export const MAX_REVIEW_ROUNDS = 2;
-
 export function isValidMaxConcurrency(value: unknown, childCount: number): boolean {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= childCount;
 }

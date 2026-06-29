@@ -47,7 +47,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const [repoPath, setRepoPath] = useState('');
   const [branchName, setBranchName] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
-  const [useWorktree, setUseWorktree] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [pathError, setPathError] = useState('');
   const [pendingImages, setPendingImages] = useState<File[]>([]);
@@ -60,9 +59,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const defaultAgent = projectDefaults?.defaultAgentType ?? 'copilot';
   const defaultPriority = projectDefaults?.defaultPriority ?? 'medium';
   const defaultBaseBranch = projectDefaults?.defaultBaseBranch ?? 'main';
-  // Default ON: a worktree gives each task its own branch, so completed work can
-  // be opened as a PR or merged. Without it there's no branch and no PR/merge.
-  const defaultUseWorktree = projectDefaults?.defaultUseWorktree ?? true;
 
   // Pre-populate fields when editing
   useEffect(() => {
@@ -74,7 +70,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setRepoPath(lockedRepoPath || editTask.repoPath || '');
       setBranchName(editTask.branchName || `task/${slugify(editTask.title)}`);
       setBaseBranch(editTask.baseBranch || 'main');
-      setUseWorktree(editTask.useWorktree ?? true);
       // Load attachments from server
       api.getAttachments(editTask.id).then(setExistingAttachments).catch(() => setExistingAttachments([]));
       // Highlight missing path if opened via Play button
@@ -86,7 +81,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setPriority(defaultPriority);
       setAgentType(defaultAgent);
       setBaseBranch(defaultBaseBranch);
-      setUseWorktree(defaultUseWorktree);
     } else if (!open) {
       // Reset when dialog closes
       setTitle('');
@@ -99,13 +93,12 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setRepoPath('');
       setBranchName('');
       setBaseBranch('main');
-      setUseWorktree(false);
       setSubmitting(false);
       setPathError('');
       setPendingImages([]);
       setExistingAttachments([]);
     }
-  }, [editTask, open, highlightRequired, lockedRepoPath, defaultAgent, defaultPriority, defaultBaseBranch, defaultUseWorktree]);
+  }, [editTask, open, highlightRequired, lockedRepoPath, defaultAgent, defaultPriority, defaultBaseBranch]);
 
   useEffect(() => {
     if (open && lockedRepoPath) {
@@ -155,16 +148,15 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
     }
     setPathError('');
 
-    // Auto-generate branch name from title if using worktree and no custom name set
-    const effectiveBranch = useWorktree
-      ? (branchName.trim() || `task/${slugify(title.trim())}`)
-      : undefined;
+    // Every task runs in its own git worktree, so it always has a branch —
+    // auto-generate one from the title when no custom name was entered.
+    const effectiveBranch = branchName.trim() || `task/${slugify(title.trim())}`;
 
     const repoFields = {
       repoPath: trimmedPath,
       branchName: effectiveBranch,
       baseBranch: baseBranch.trim() || 'main',
-      useWorktree,
+      useWorktree: true,
     };
 
     setSubmitting(true);
@@ -211,7 +203,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setRepoPath('');
       setBranchName('');
       setBaseBranch(defaultBaseBranch);
-      setUseWorktree(defaultUseWorktree);
       setPendingImages([]);
       setExistingAttachments([]);
       onClose();
@@ -498,19 +489,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                         className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                       />
                     </div>
-                    <div className="flex items-end pb-1">
-                      <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
-                        <input
-                          type="checkbox"
-                          checked={useWorktree}
-                          onChange={(e) => setUseWorktree(e.target.checked)}
-                          className="rounded border-border"
-                        />
-                        Use Git Worktree
-                      </label>
-                    </div>
-                  </div>
-                  {useWorktree && (
                     <div>
                       <label className="mb-1 block text-xs font-medium text-muted-foreground">Branch Name</label>
                       <input
@@ -520,9 +498,11 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                         placeholder={title.trim() ? `task/${slugify(title.trim())}` : 'task/my-feature'}
                         className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-mono placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                       />
-                      <p className="mt-0.5 text-[10px] text-muted-foreground/60">Leave blank to auto-generate from title</p>
                     </div>
-                  )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60">
+                    Each task runs in its own git worktree on this branch (created from the base branch). Leave the branch blank to auto-generate it from the title.
+                  </p>
                 </div>
 
               </div>

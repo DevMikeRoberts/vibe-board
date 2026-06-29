@@ -16,7 +16,6 @@ import { createAttachmentsRouter } from './routes/attachments.js';
 import { createProjectsRouter } from './routes/projects.js';
 import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
-import { createReviewPipeline } from './services/review-pipeline.js';
 import { authMiddleware } from './middleware/auth.js';
 import type { TaskRepository } from './repositories/types.js';
 import type { TemplateRepository } from './repositories/template-types.js';
@@ -86,9 +85,6 @@ const agentManager = new AgentManager();
 
   agentManager.initEventPersistence(taskRepo);
   agentManager.initAttachmentStore(attachmentStore);
-  // Auto-PR + adversarial-review pipeline: runs after a standalone task's agent
-  // finishes (opens a PR, reviews the diff, merges on approval, or loops back).
-  agentManager.registerCompletionHook(createReviewPipeline(taskRepo, agentManager));
 
   app.use('/api/projects', createProjectsRouter(projectRepo, taskRepo, groupRepo, agentManager));
   app.use('/api/tasks', createTaskRouter(taskRepo, agentManager, projectRepo));

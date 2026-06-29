@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Trash2, ChevronDown, AlertTriangle } from 'lucide-react';
+import { X, Plus, Trash2, ChevronDown } from 'lucide-react';
 import type { AgentType, Priority } from '@/types';
 import { MAX_GROUP_CHILDREN, MIN_GROUP_CHILDREN } from '@/types';
 import { AGENT_OPTIONS } from '@/lib/agent-config';
@@ -122,7 +122,6 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
     if (maxConcurrency > children.length) setMaxConcurrency(children.length);
   }, [children.length, maxConcurrency]);
 
-  const hasWorktreeWarning = children.length >= 2 && children.some((c) => !c.useWorktree);
   const repoPathPlaceholder = getRepoPathPlaceholder();
   const repoPathHelpText = getRepoPathHelpText();
 
@@ -355,7 +354,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                             rows={2}
                             className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
                           />
-                          {/* Agent + Worktree row */}
+                          {/* Agent row */}
                           <div className="flex items-center gap-3">
                             {/* Agent selector */}
                             <select
@@ -367,16 +366,6 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                                 <option key={a.value} value={a.value}>{a.emoji} {a.label}</option>
                               ))}
                             </select>
-                            {/* Worktree toggle */}
-                            <label className="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
-                              <input
-                                type="checkbox"
-                                checked={child.useWorktree}
-                                onChange={(e) => updateChild(child.key, { useWorktree: e.target.checked })}
-                                className="rounded border-border"
-                              />
-                              Worktree
-                            </label>
                           </div>
                         </div>
                         {/* Delete button */}
@@ -413,16 +402,6 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                 />
                 <span className="text-sm text-muted-foreground">Auto-run — start agents immediately after creating</span>
               </label>
-
-              {/* Worktree warning */}
-              {hasWorktreeWarning && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                  <p className="text-sm text-amber-300">
-                    {children.filter((c) => !c.useWorktree).length} task(s) have worktree disabled — they may conflict with other tasks modifying the same repo.
-                  </p>
-                </div>
-              )}
             </div>
 
             {/* Footer */}

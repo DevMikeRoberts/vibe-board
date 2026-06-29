@@ -4,8 +4,10 @@ export type AgentStatus = 'idle' | 'planning' | 'executing' | 'complete' | 'fail
 export type AgentType = 'copilot' | 'claude' | 'codex' | 'opencode' | 'hermes' | 'openclaw';
 
 /**
- * State of the automatic PR + adversarial-review pipeline that runs after an
- * agent finishes a task. See services/review-pipeline.ts on the server.
+ * Legacy review-pipeline state. The automatic PR + adversarial-review pipeline
+ * has been removed — completed tasks now land in the "review" column for manual
+ * PR/merge. This type and the `reviewStatus`/`reviewRound` fields are retained
+ * only for backward compatibility with existing database rows.
  */
 export type ReviewStatus =
   | 'opening_pr'         // creating/locating the PR for the finished branch

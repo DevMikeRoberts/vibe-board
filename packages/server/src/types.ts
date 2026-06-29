@@ -26,5 +26,4 @@ export {
   isValidAgentType,
   MAX_GROUP_CHILDREN,
   MIN_GROUP_CHILDREN,
-  MAX_REVIEW_ROUNDS,
 } from '../../../shared/constants.js';
