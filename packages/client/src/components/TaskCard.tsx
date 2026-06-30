@@ -82,6 +82,11 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
   const agentStatus = agentStatusConfig[task.agentStatus];
   const StatusIcon = agentStatus.icon;
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
+  // A scheduled token-limit retry: show when one is pending and still in the future.
+  const retryPending = typeof task.retryAt === 'number' && task.retryAt > Date.now();
+  const retryLabel = retryPending
+    ? new Date(task.retryAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
   const priorityDisplay = getPriorityDisplay(task.priority);
   const needsInput = useNeedsInput(task.id);
   const fcState = taskToFcState(task, needsInput);
@@ -228,6 +233,17 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
           </div>
 
           <div className="flex items-center gap-1.5">
+            {/* Pending token-limit retry */}
+            {retryPending && (
+              <span
+                className="flex items-center gap-1 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400"
+                title={`Auto-retry after token limit at ${new Date(task.retryAt!).toLocaleString()}`}
+              >
+                <RotateCw className="h-3 w-3" />
+                Retry {retryLabel}
+              </span>
+            )}
+
             {/* Elapsed time (running) */}
             {isActive && elapsed && (
               <span className="flex items-center gap-1 text-[10px] text-muted-foreground">

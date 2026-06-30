@@ -47,6 +47,22 @@ interface ManagedSession {
   agentType: AgentType;
 }
 
+/**
+ * Fired once per natural agent completion (success or failure) so an external
+ * scheduler can react — e.g. retry a token-limited task at its reset time, or
+ * pick up the next backlog task. NOT fired for user-initiated stops.
+ */
+export interface TaskSettledInfo {
+  taskId: string;
+  status: 'complete' | 'failed';
+  error?: string;
+  agentType?: AgentType;
+  /** Group id when the task is a group child (schedulers should ignore those). */
+  groupId?: string;
+}
+
+export type TaskSettledHandler = (info: TaskSettledInfo) => void;
+
 // Event log per task (capped to prevent unbounded growth)
 const MAX_EVENTS_PER_TASK = 2000;
 const MAX_EVENT_LOG_TASKS = 200;
@@ -121,6 +137,14 @@ export class AgentManager {
 
   /** Containerized execution backend; null unless container mode is configured. */
   private containerRunner: ContainerRunner | null = null;
+
+  /** Optional listener notified when a (non-group, non-stopped) task settles. */
+  private taskSettledHandler: TaskSettledHandler | null = null;
+
+  /** Register a listener for natural task completions (see {@link TaskSettledInfo}). */
+  setTaskSettledHandler(handler: TaskSettledHandler | null): void {
+    this.taskSettledHandler = handler;
+  }
 
   /** Call once at startup to enable event persistence. */
   initEventPersistence(repo: TaskRepository): void {
@@ -673,6 +697,17 @@ export class AgentManager {
       });
 
       onStatusChange(status);
+
+      // Notify the scheduler (token-limit retry / backlog auto-pickup). Runs
+      // after onStatusChange so DB state is (best-effort) up to date; the
+      // handler re-reads from the DB and never throws into this path.
+      if (this.taskSettledHandler) {
+        try {
+          this.taskSettledHandler({ taskId: task.id, status, error: errorMessage, agentType, groupId: task.groupId });
+        } catch (err) {
+          console.error(`[agent-manager] task settled handler threw for task ${task.id}:`, err);
+        }
+      }
     };
 
     // ── Containerized execution path ──────────────────────────────────

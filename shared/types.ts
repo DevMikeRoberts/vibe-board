@@ -54,6 +54,12 @@ export interface Task {
   reviewRound?: number;
   /** Current state of the auto-PR + adversarial-review pipeline. */
   reviewStatus?: ReviewStatus;
+  /**
+   * Epoch ms at which this task is scheduled to automatically re-run after its
+   * agent hit a token/usage/rate limit. Set by the token-limit retry scheduler;
+   * cleared once the retry fires (or the task is run/edited/deleted manually).
+   */
+  retryAt?: number;
 }
 
 export interface TaskGroup {
@@ -122,6 +128,23 @@ export interface UpdateProjectRequest {
 export interface ProjectConfig {
   /** Absolute path under which repos cloned from a URL are placed. */
   cloneRoot: string;
+  /**
+   * Auto-pickup ("stagger"): when enabled, the board automatically starts the
+   * next idle backlog task — one at a time per project — as soon as the project
+   * has no task currently running. Disabled by default.
+   */
+  autoPickupEnabled?: boolean;
+  /**
+   * Token-limit retry: when enabled, a task whose agent fails because it hit a
+   * token/usage/rate limit is automatically re-run around the time the limit is
+   * reported to reset (best-effort parse of the error). Disabled by default.
+   */
+  tokenLimitRetryEnabled?: boolean;
+  /**
+   * Minutes to wait before retrying a token-limited task when no reset time can
+   * be parsed from the error. Defaults to 60.
+   */
+  tokenLimitFallbackMinutes?: number;
 }
 
 export interface ProjectPathValidation {

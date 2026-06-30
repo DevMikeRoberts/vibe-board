@@ -18,7 +18,7 @@ interface ProjectsPageProps {
   onCreateProject: (data: CreateProjectRequest) => Promise<unknown>;
   onUpdateProject: (id: string, data: UpdateProjectRequest) => Promise<unknown>;
   onDeleteProject: (id: string) => Promise<unknown>;
-  onUpdateConfig: (cloneRoot: string) => Promise<unknown>;
+  onUpdateConfig: (patch: Partial<ProjectConfig>) => Promise<unknown>;
   onValidateProjectPath: (repoPath: string) => Promise<ProjectPathValidation | undefined>;
   onSelectProjectDirectory: (initialPath?: string) => Promise<string | null | undefined>;
   onOpenProject: (project: Project) => void;

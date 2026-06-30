@@ -111,10 +111,10 @@ export function useProjects() {
     }
   }, []);
 
-  const updateConfig = useCallback(async (cloneRoot: string) => {
+  const updateConfig = useCallback(async (patch: Partial<ProjectConfig>) => {
     try {
       setError(null);
-      const result = await api.updateProjectConfig(cloneRoot);
+      const result = await api.updateProjectConfig(patch);
       setConfig(result);
       return result;
     } catch (err) {

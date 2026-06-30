@@ -94,8 +94,8 @@ export const api = {
   getProjectConfig: () =>
     request<ProjectConfig>('/projects/config'),
 
-  updateProjectConfig: (cloneRoot: string) =>
-    request<ProjectConfig>('/projects/config', { method: 'PATCH', body: JSON.stringify({ cloneRoot }) }),
+  updateProjectConfig: (patch: Partial<ProjectConfig>) =>
+    request<ProjectConfig>('/projects/config', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   // --- Task CRUD ---
   getTasks: (includeArchived = false, projectId?: string) =>

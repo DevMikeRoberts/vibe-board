@@ -31,8 +31,29 @@ function getConfigPath(): string {
   return path.join(getConfigHome(), CONFIG_FILE_NAME);
 }
 
+/** Default fallback delay before retrying a token-limited task, in minutes. */
+export const DEFAULT_TOKEN_LIMIT_FALLBACK_MINUTES = 60;
+
 function defaultConfig(): ProjectConfig {
-  return { cloneRoot: path.join(getConfigHome(), 'projects') };
+  return {
+    cloneRoot: path.join(getConfigHome(), 'projects'),
+    autoPickupEnabled: false,
+    tokenLimitRetryEnabled: false,
+    tokenLimitFallbackMinutes: DEFAULT_TOKEN_LIMIT_FALLBACK_MINUTES,
+  };
+}
+
+/** Pull the optional behavior settings out of a parsed config blob, with clamping. */
+function readSettings(raw: Partial<ProjectConfig>): Pick<ProjectConfig, 'autoPickupEnabled' | 'tokenLimitRetryEnabled' | 'tokenLimitFallbackMinutes'> {
+  const fallback = Number(raw.tokenLimitFallbackMinutes);
+  return {
+    autoPickupEnabled: raw.autoPickupEnabled === true,
+    tokenLimitRetryEnabled: raw.tokenLimitRetryEnabled === true,
+    tokenLimitFallbackMinutes:
+      Number.isFinite(fallback) && fallback > 0
+        ? Math.min(Math.round(fallback), 24 * 60)
+        : DEFAULT_TOKEN_LIMIT_FALLBACK_MINUTES,
+  };
 }
 
 let cached: ProjectConfig | null = null;
@@ -63,7 +84,10 @@ export function loadConfig(): ProjectConfig {
     try {
       const raw = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Partial<ProjectConfig>;
       if (raw && typeof raw.cloneRoot === 'string' && raw.cloneRoot.trim()) {
-        config = { cloneRoot: path.resolve(expandTilde(raw.cloneRoot.trim())) };
+        config = {
+          cloneRoot: path.resolve(expandTilde(raw.cloneRoot.trim())),
+          ...readSettings(raw),
+        };
       } else {
         writeConfig(config);
       }
@@ -98,7 +122,42 @@ export function setCloneRoot(cloneRoot: string): ProjectConfig {
   const resolved = path.resolve(expandTilde(trimmed));
   if (!path.isAbsolute(resolved)) throw new Error('cloneRoot must be an absolute path');
   fs.mkdirSync(resolved, { recursive: true });
-  const next: ProjectConfig = { cloneRoot: resolved };
+  const next: ProjectConfig = { ...getConfig(), cloneRoot: resolved };
+  writeConfig(next);
+  cached = next;
+  return next;
+}
+
+/**
+ * Merge and persist behavior settings (auto-pickup, token-limit retry). Each
+ * field is optional; only the provided ones change. `cloneRoot`, when provided,
+ * is expanded/validated/created just like {@link setCloneRoot}. Returns the
+ * updated config.
+ */
+export function updateSettings(patch: Partial<ProjectConfig>): ProjectConfig {
+  const current = getConfig();
+  const next: ProjectConfig = { ...current };
+
+  if (patch.cloneRoot !== undefined) {
+    const trimmed = String(patch.cloneRoot).trim();
+    if (!trimmed) throw new Error('cloneRoot must be a non-empty string');
+    const resolved = path.resolve(expandTilde(trimmed));
+    if (!path.isAbsolute(resolved)) throw new Error('cloneRoot must be an absolute path');
+    fs.mkdirSync(resolved, { recursive: true });
+    next.cloneRoot = resolved;
+  }
+  if (patch.autoPickupEnabled !== undefined) {
+    next.autoPickupEnabled = patch.autoPickupEnabled === true;
+  }
+  if (patch.tokenLimitRetryEnabled !== undefined) {
+    next.tokenLimitRetryEnabled = patch.tokenLimitRetryEnabled === true;
+  }
+  if (patch.tokenLimitFallbackMinutes !== undefined) {
+    const n = Number(patch.tokenLimitFallbackMinutes);
+    if (!Number.isFinite(n) || n <= 0) throw new Error('tokenLimitFallbackMinutes must be a positive number');
+    next.tokenLimitFallbackMinutes = Math.min(Math.round(n), 24 * 60);
+  }
+
   writeConfig(next);
   cached = next;
   return next;

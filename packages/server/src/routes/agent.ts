@@ -7,6 +7,7 @@ import type { TaskGroupRepository } from '../repositories/group-types.js';
 import type { ProjectRepository } from '../repositories/project-types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
+import type { TaskScheduler } from '../services/task-scheduler.js';
 import {
   asyncHandler, paramId, isAllowedRepoPath, expandTilde, isValidGitRef, normalizeRepoPathForCompare,
   broadcastTaskUpdate, broadcastGroupUpdate, makeStatusCallback, makeWorktreeCallback, isRateLimited,
@@ -17,6 +18,7 @@ export function createAgentRouter(
   agentManager: AgentManager,
   groupRepo?: TaskGroupRepository,
   projectRepo?: ProjectRepository,
+  scheduler?: TaskScheduler,
 ): Router {
   const router = Router();
 
@@ -121,10 +123,14 @@ export function createAgentRouter(
     // Clear old events from any previous run
     agentManager.resetEvents(task.id);
 
+    // A manual run supersedes any scheduled token-limit retry for this task.
+    scheduler?.cancelRetry(task.id);
+
     const updates: Partial<Task> = {
       agentStatus: 'planning',
       startedAt: Date.now(),
       completedAt: undefined,
+      retryAt: undefined,
     };
     if (task.columnId === 'backlog') {
       updates.columnId = 'in-progress';
@@ -170,7 +176,9 @@ export function createAgentRouter(
       res.status(409).json({ error: 'no running agent for this task' });
       return;
     }
-    const updated = await repo.update(task.id, { agentStatus: 'failed' });
+    // A manual stop also cancels any pending token-limit retry.
+    scheduler?.cancelRetry(task.id);
+    const updated = await repo.update(task.id, { agentStatus: 'failed', retryAt: undefined });
     if (!updated) {
       res.status(404).json({ error: 'task not found' });
       return;

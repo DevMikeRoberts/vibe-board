@@ -6,13 +6,14 @@ import type { TaskRepository } from '../repositories/types.js';
 import type { ProjectRepository } from '../repositories/project-types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
+import type { TaskScheduler } from '../services/task-scheduler.js';
 import {
   asyncHandler, paramId, isAllowedRepoPath, expandTilde,
   validateTaskFields, buildTask, broadcastTaskUpdate,
   failTaskWithEvent, startAgentForTask, normalizeRepoPathForCompare,
 } from './helpers.js';
 
-export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager, projectRepo: ProjectRepository): Router {
+export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager, projectRepo: ProjectRepository, scheduler?: TaskScheduler): Router {
   const router = Router();
 
   // GET /api/tasks
@@ -69,6 +70,8 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       return;
     }
 
+    // A new backlog task may be eligible for auto-pickup ("staggering").
+    scheduler?.notifyTaskChanged(task.projectId);
     res.status(201).json(task);
   }));
 
@@ -132,6 +135,11 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
           if (latest) created[i] = latest;
         }
       }
+    }
+
+    // Re-evaluate auto-pickup once per affected project after the batch lands.
+    for (const projectId of new Set(created.map((t) => t.projectId))) {
+      scheduler?.notifyTaskChanged(projectId);
     }
 
     res.status(201).json({ tasks: created });
@@ -258,12 +266,22 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       updates.completedAt = undefined;
     }
 
+    // Moving/re-statusing a task supersedes any scheduled token-limit retry.
+    const movedOrRestatused = (columnId !== undefined && columnId !== task.columnId)
+      || (agentStatus !== undefined && agentStatus !== task.agentStatus);
+    if (movedOrRestatused && task.retryAt != null) {
+      scheduler?.cancelRetry(task.id);
+      updates.retryAt = undefined;
+    }
+
     const updated = await repo.update(task.id, updates);
     if (!updated) {
       res.status(500).json({ error: 'failed to update task' });
       return;
     }
     broadcastTaskUpdate(updated);
+    // A task dropped back to an idle backlog state may now be auto-pickable.
+    if (movedOrRestatused) scheduler?.notifyTaskChanged(updated.projectId);
     res.json(updated);
   }));
 
@@ -274,6 +292,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       res.status(404).json({ error: 'task not found' });
       return;
     }
+    scheduler?.cancelRetry(id);
     agentManager.stopAgent(id);
     agentManager.clearEvents(id);
     await repo.deleteEventsByTaskId(id);

@@ -4,7 +4,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { createWSS } from './websocket.js';
 import { initDatabase, initPostgresDatabase, isPostgresUrl } from './db.js';
-import { loadConfig } from './config.js';
+import { loadConfig, getConfig } from './config.js';
 import { SqliteTaskRepository } from './repositories/sqlite.js';
 import { PostgresTaskRepository } from './repositories/postgres.js';
 import { createTaskRouter } from './routes/tasks.js';
@@ -16,6 +16,7 @@ import { createAttachmentsRouter } from './routes/attachments.js';
 import { createProjectsRouter } from './routes/projects.js';
 import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
+import { TaskScheduler } from './services/task-scheduler.js';
 import { authMiddleware } from './middleware/auth.js';
 import type { TaskRepository } from './repositories/types.js';
 import type { TemplateRepository } from './repositories/template-types.js';
@@ -45,6 +46,7 @@ let cleanupDb: () => void;
 
 // Initialize AgentManager
 const agentManager = new AgentManager();
+let scheduler: TaskScheduler;
 
 (async () => {
   // Load (and create on first run) the Agent Board config + clone root directory.
@@ -86,9 +88,13 @@ const agentManager = new AgentManager();
   agentManager.initEventPersistence(taskRepo);
   agentManager.initAttachmentStore(attachmentStore);
 
-  app.use('/api/projects', createProjectsRouter(projectRepo, taskRepo, groupRepo, agentManager));
-  app.use('/api/tasks', createTaskRouter(taskRepo, agentManager, projectRepo));
-  app.use('/api/tasks', createAgentRouter(taskRepo, agentManager, groupRepo, projectRepo));
+  // Owns token-limit retry scheduling + backlog auto-pickup ("staggering").
+  // Reads behavior settings live from the persisted config.
+  scheduler = new TaskScheduler(taskRepo, agentManager, projectRepo, getConfig);
+
+  app.use('/api/projects', createProjectsRouter(projectRepo, taskRepo, groupRepo, agentManager, scheduler));
+  app.use('/api/tasks', createTaskRouter(taskRepo, agentManager, projectRepo, scheduler));
+  app.use('/api/tasks', createAgentRouter(taskRepo, agentManager, groupRepo, projectRepo, scheduler));
   app.use('/api/tasks', createGitRouter(taskRepo, agentManager));
   app.use('/api/templates', createTemplateRouter(templateRepo));
   app.use('/api/groups', createGroupsRouter(groupRepo, taskRepo, agentManager, projectRepo));
@@ -166,6 +172,10 @@ const agentManager = new AgentManager();
     console.warn(`[server] recovered orphaned task ${task.id} "${task.title}" (was ${task.agentStatus})`);
   }
 
+  // Start automation (token-limit retries + backlog auto-pickup) only after
+  // orphan recovery above, so re-armed retries see settled task state.
+  await scheduler.start();
+
   server.listen(PORT, () => {
     console.log(`[server] listening on http://localhost:${PORT}`);
     console.log(`[server] WebSocket at ws://localhost:${PORT}/ws`);
@@ -180,6 +190,7 @@ const agentManager = new AgentManager();
   // Graceful shutdown
   function shutdown() {
     console.log('[server] shutting down...');
+    scheduler?.stop();
     agentManager.shutdownAll();
     try { cleanupDb(); } catch (err) { console.error('[server] db cleanup error:', err); }
     server.close(() => process.exit(0));

@@ -27,6 +27,7 @@ interface TaskRow {
   pr_url: string | null;
   review_round: number | null;
   review_status: string | null;
+  retry_at: number | null;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -54,6 +55,7 @@ function rowToTask(row: TaskRow): Task {
     prUrl: row.pr_url ?? undefined,
     reviewRound: row.review_round ?? undefined,
     reviewStatus: (row.review_status as ReviewStatus | null) ?? undefined,
+    retryAt: row.retry_at ?? undefined,
   };
 }
 
@@ -82,9 +84,9 @@ export class SqliteTaskRepository implements TaskRepository {
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
       insert: db.prepare(`
         INSERT INTO tasks (id, project_id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at,
-          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived, group_id, group_order, summary, pr_url, review_round, review_status)
+          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived, group_id, group_order, summary, pr_url, review_round, review_status, retry_at)
         VALUES (@id, @project_id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at,
-          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived, @group_id, @group_order, @summary, @pr_url, @review_round, @review_status)
+          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived, @group_id, @group_order, @summary, @pr_url, @review_round, @review_status, @retry_at)
       `),
       update: db.prepare(`
         UPDATE tasks SET
@@ -105,7 +107,8 @@ export class SqliteTaskRepository implements TaskRepository {
           summary = @summary,
           pr_url = @pr_url,
           review_round = @review_round,
-          review_status = @review_status
+          review_status = @review_status,
+          retry_at = @retry_at
         WHERE id = @id
       `),
       delete: db.prepare('DELETE FROM tasks WHERE id = ?'),
@@ -154,6 +157,7 @@ export class SqliteTaskRepository implements TaskRepository {
       pr_url: task.prUrl ?? null,
       review_round: task.reviewRound ?? null,
       review_status: task.reviewStatus ?? null,
+      retry_at: task.retryAt ?? null,
     });
     return task;
   }
@@ -184,6 +188,7 @@ export class SqliteTaskRepository implements TaskRepository {
         pr_url: merged.prUrl ?? null,
         review_round: merged.reviewRound ?? null,
         review_status: merged.reviewStatus ?? null,
+        retry_at: merged.retryAt ?? null,
       });
       return merged;
     })();

@@ -60,6 +60,36 @@ available and is chosen first whenever a paid agent is down. Set
 `AGENTBOARD_FALLBACK_AGENT` to pin a specific fallback agent instead of relying
 on tier ranking.
 
+### Token-limit retry
+
+Metered agents (Claude, Codex) and subscription plans can hit a token / usage /
+rate limit mid-task. When **Retry on token limit** is enabled (Settings ⚙️), a
+task that fails for that reason is **not** left failed — the scheduler
+([`services/task-scheduler.ts`](packages/server/src/services/task-scheduler.ts))
+parses the limit's reset time from the error
+([`services/token-limit.ts`](packages/server/src/services/token-limit.ts)) and
+automatically re-runs the task shortly after it resets.
+
+The reset time is detected (best-effort, provider-agnostic) from common forms:
+an explicit epoch (e.g. Claude Code's `usage limit reached|<epoch>`), an ISO
+timestamp, a relative delay (`retry-after: 30`, `try again in 20s`), or a
+wall-clock time (`resets at 3pm`). When no time can be parsed, a configurable
+**fallback delay** (default 60 min) is used. The task card shows a
+"Retry HH:MM" badge while a retry is pending, and the scheduled retry survives a
+server restart (it is persisted on the task and re-armed on boot). Manually
+running, moving, or deleting the task cancels the pending retry.
+
+### Auto-pickup (staggering the backlog)
+
+Enable **Auto-pickup backlog** (Settings ⚙️) to have the board work through the
+backlog on its own: it automatically starts the next idle backlog task — **one
+at a time per project** — as soon as the project has nothing running (and no
+pending token-limit retry). Tasks are picked highest-priority first, then
+oldest first. A task whose agent is waiting on a token-limit reset keeps the
+project's single slot reserved, so the board won't pile up parallel work against
+an exhausted account. Turning the setting on immediately evaluates the backlog;
+a periodic safety tick also keeps it moving if any completion signal is missed.
+
 ### Task Groups
 
 For projects needing multiple parallel changes, **Task Groups** let you define a batch of related tasks in a single form:
@@ -87,6 +117,8 @@ Groups appear as a single card on the board showing aggregate progress. Click to
 - **Dual database backends** — SQLite (zero-config default) or PostgreSQL
 - Task templates for reusable task configurations
 - **Task Groups** — define multiple related tasks in one form, launch with configurable parallelism (slider 1..N), monitor aggregate progress
+- **Token-limit retry** — auto re-run a task around the time its agent's token/usage limit resets (parsed from the error; configurable fallback delay)
+- **Auto-pickup (staggering)** — automatically start the next backlog task, one at a time per project, as slots free up
 - Auto-run option to start agent immediately on task creation
 - Priority levels (critical, high, medium, low) with emoji indicators and color-coded borders
 - Filter and sort tasks by agent type, status, and priority
