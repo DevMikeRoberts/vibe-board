@@ -37,6 +37,7 @@ ai-agent-board/
 - **Dual database backends** — SQLite via `better-sqlite3` (default, zero config) or PostgreSQL via `pg` (set `DATABASE_URL`). Both implement the `TaskRepository` and `TemplateRepository` interfaces.
 - **Route splitting** — REST API is split across `tasks.ts` (CRUD), `agent.ts` (start/stop/events/follow-up), `git.ts` (merge-local, create-pr, worktree cleanup, git-info), `templates.ts` (task template CRUD), and `groups.ts` (group CRUD + run/stop/archive).
 - **Auto-PR + merge watcher** — when a standalone task completes successfully on a repo with an `origin` remote, the board automatically opens a PR for its branch (`autoOpenPrOnComplete` in `routes/helpers.ts`) and records `prUrl`. The `PrWatcher` service (`services/pr-watcher.ts`) polls those PRs and, once one is merged, moves the task to **done** and cleans up the worktree + local branch. Gated by the `autoPrEnabled` setting (default on); group children are excluded and roll up to their group instead.
+- **Repo-scan pre-step** — non-Claude agents (Copilot, Codex, OpenCode, Hermes, OpenClaw) tend to edit before understanding the repo. `services/repo-scan.ts` injects a Claude-native repo-scan skill into their system prompt that forces a repository-understanding pass (read docs/manifests, map layout, learn conventions) and a `<repo-scan>` brief before any edit. Claude is exempt; toggle with `AGENTBOARD_REPO_SCAN`. Human-readable mirror at `.claude/skills/repo-scan/SKILL.md`.
 - **API key auth** — optional Bearer token via `API_KEY` env var. When set, all API and WebSocket requests require `Authorization: Bearer <key>`. Middleware in `middleware/auth.ts`.
 - **Task Groups** — parent entity with N child tasks, concurrency-controlled execution via `GroupQueue` in agent-manager. Groups move as a single card on the board; auto-advance to review when all children complete. Parallelism slider locked once running.
 - **Event streaming** — SDK events mapped to `AgentEvent`s, persisted to database, broadcast via WebSocket. In-memory LRU cache (200 tasks max, 100 events per task).
@@ -108,6 +109,7 @@ npm run build:server   # tsc -b tsconfig.build.json
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Comma-separated allowed repo root paths (security whitelist) |
 | `ALLOWED_ORIGINS` | `http://localhost:4175,http://localhost:4176` | CORS origins |
 | `AGENT_TIMEOUT_MS` | `600000` (10 min) | Max agent execution time |
+| `AGENTBOARD_REPO_SCAN` | `1` (on) | Inject the repo-scan skill into non-Claude agents so they build repository context before implementing; set to `0`/`false` to disable |
 | `API_URL` | `http://localhost:3001` | Vite proxy target |
 | `PROJECTS_DIR` | `~/projects` | Host projects path |
 

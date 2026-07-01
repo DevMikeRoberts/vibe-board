@@ -14,6 +14,7 @@ import type { AttachmentStore } from '../repositories/attachment-types.js';
 import { errorMessage } from '../utils.js';
 import { detectAvailableAgents } from './agent-detection.js';
 import { resolveAgentSelection, getConfiguredFallbackAgent } from './agent-fallback.js';
+import { buildRepoScanPromptSection } from './repo-scan.js';
 import { ContainerRunner } from './container-runner.js';
 
 // Max agent execution time, in ms. Default 0 = no timeout: agents run until they
@@ -929,6 +930,17 @@ export class AgentManager {
         const hasGit = fs.existsSync(path.join(workingDirectory, '.git'));
         // Sanitize task content to prevent prompt injection via </context> breakout
         const safeTitle = task.title.replace(/[<>]/g, '');
+        // Non-Claude agents skip repo understanding and produce off-convention
+        // changes; inject a Claude-native repo-scan skill so they build context
+        // first. No-ops (empty string) for Claude or when disabled via env.
+        const repoScanSection = buildRepoScanPromptSection(agentType, workingDirectory);
+        if (repoScanSection) {
+          this.emitEvent(task.id, {
+            id: uuid(), taskId: task.id, type: 'output',
+            content: `Repo-scan skill enabled for ${agentType}: the agent will scan the repository for context before implementing.`,
+            timestamp: Date.now(), metadata: { phase: 'repo-scan', agentType },
+          });
+        }
         const systemPrompt = `
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
@@ -937,6 +949,7 @@ ${worktreePath ? `\nIMPORTANT: All file paths MUST be under ${worktreePath}. Do 
 ${!hasGit ? `\nIMPORTANT: This directory is not a git repository. Run \`git init\` first before making any changes, so all work is tracked.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
 make precise edits, and verify your changes compile/pass tests when applicable.
+${repoScanSection}
 
 When you have finished, end your VERY LAST message with a task summary in EXACTLY this format (keep the tags on their own lines):
 <task-summary>
