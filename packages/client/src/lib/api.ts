@@ -198,6 +198,10 @@ export const api = {
   stopGroup: (id: string) =>
     request<{ stopped: boolean }>(`/groups/${id}/stop`, { method: 'POST' }),
 
+  // --- System ---
+  restartServer: () =>
+    request<{ success: boolean; message: string }>('/system/restart', { method: 'POST' }),
+
 };
 
 // --- WebSocket (shared singleton) ---

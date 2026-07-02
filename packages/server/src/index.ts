@@ -14,6 +14,7 @@ import { createTemplateRouter } from './routes/templates.js';
 import { createGroupsRouter } from './routes/groups.js';
 import { createAttachmentsRouter } from './routes/attachments.js';
 import { createProjectsRouter } from './routes/projects.js';
+import { createSystemRouter } from './routes/system.js';
 import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
 import { TaskScheduler } from './services/task-scheduler.js';
@@ -106,6 +107,7 @@ let prWatcher: PrWatcher;
   app.use('/api/templates', createTemplateRouter(templateRepo));
   app.use('/api/groups', createGroupsRouter(groupRepo, taskRepo, agentManager, projectRepo));
   app.use('/api', createAttachmentsRouter(taskRepo, attachmentStore));
+  app.use('/api/system', createSystemRouter());
 
   // GET /api/agents — list available agents
   app.get('/api/agents', (_req, res) => {
