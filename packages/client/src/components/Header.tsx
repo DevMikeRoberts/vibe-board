@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Search, Archive, ArrowUpDown, Filter, Plus, X, Menu, Zap } from 'lucide-react';
+import { ArrowLeft, Search, Archive, ArrowUpDown, Filter, Plus, X, Menu, Zap, RotateCw } from 'lucide-react';
 import { ThemeToggle } from './ThemeToggle';
 import { FilterChips, type StatusFilter } from './FilterChips';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
+import { api } from '@/lib/api';
 import type { AgentType } from '@/types';
 
 type SortBy = 'title' | 'priority' | 'created' | 'status';
@@ -46,9 +47,26 @@ export function Header({
 }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const mobileMenuSearchRef = useRef<HTMLInputElement>(null);
   const hasActiveFilters = activeAgentTypes.length > 0 || activeStatuses.length > 0;
   const { status: wsStatus, wasConnected } = useConnectionStatus();
+
+  const handleRestart = async () => {
+    if (!confirm('This will pull the latest code from GitHub and restart the server. Continue?')) {
+      return;
+    }
+    
+    setIsRestarting(true);
+    try {
+      await api.restartServer();
+      // Server is restarting, no response expected
+    } catch (err: unknown) {
+      console.error('Restart failed:', err);
+      alert(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsRestarting(false);
+    }
+  };
 
   useEffect(() => {
     if (mobileMenuOpen) mobileMenuSearchRef.current?.focus();
@@ -235,6 +253,21 @@ export function Header({
 
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
+          {/* Restart button */}
+          <button
+            onClick={handleRestart}
+            disabled={isRestarting}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all ${
+              isRestarting
+                ? 'border-orange-500/50 bg-orange-500/20 text-orange-400 cursor-not-allowed opacity-70'
+                : 'border-white/8 bg-white/5 text-zinc-400 hover:border-orange-500/30 hover:bg-orange-500/8 hover:text-orange-300'
+            }`}
+            aria-label="Restart server"
+            title="Restart server (pull latest code from GitHub)"
+          >
+            <RotateCw className={`h-3.5 w-3.5 shrink-0 ${isRestarting ? 'animate-spin' : ''}`} />
+          </button>
+
           {/* ── Mobile hamburger ── */}
           <button
             onClick={() => setMobileMenuOpen((v) => !v)}
@@ -333,6 +366,20 @@ export function Header({
             >
               <Archive className="h-3.5 w-3.5 shrink-0" />
               {showArchived ? 'Hide' : 'Show'} Archived
+            </button>
+            <button
+              onClick={handleRestart}
+              disabled={isRestarting}
+              className={`flex items-center justify-center gap-1.5 h-10 rounded-xl border transition-all text-xs font-semibold ${
+                isRestarting
+                  ? 'border-orange-500/50 bg-orange-500/20 text-orange-400 cursor-not-allowed opacity-70'
+                  : 'border-white/8 bg-white/5 text-zinc-400 hover:border-orange-500/30 hover:text-orange-300'
+              }`}
+              aria-label="Restart server"
+              title="Restart server (pull latest code from GitHub)"
+            >
+              <RotateCw className={`h-3.5 w-3.5 shrink-0 ${isRestarting ? 'animate-spin' : ''}`} />
+              Restart
             </button>
           </div>
 
