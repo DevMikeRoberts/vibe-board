@@ -16,6 +16,7 @@ import { detectAvailableAgents } from './agent-detection.js';
 import { resolveAgentSelection, getConfiguredFallbackAgent } from './agent-fallback.js';
 import { buildRepoScanPromptSection } from './repo-scan.js';
 import { ContainerRunner } from './container-runner.js';
+import { ensureOpenCodeServer, stopOpenCodeServer } from './opencode-server-manager.js';
 
 // Max agent execution time, in ms. Default 0 = no timeout: agents run until they
 // finish or are explicitly stopped. Set AGENT_TIMEOUT_MS to a positive value to
@@ -971,6 +972,38 @@ Optional list of any work you did not complete or that should be followed up. Om
         // end-of-task <task-summary> marker block after completion.
         let summaryBuffer = '';
 
+        // If using OpenCode agent, ensure the server is running
+        if (agentType === 'opencode') {
+          try {
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type: 'output',
+              content: 'Ensuring OpenCode server is running on port 4096...',
+              timestamp: Date.now(),
+            });
+            await ensureOpenCodeServer((error) => {
+              this.emitEvent(task.id, {
+                id: uuid(), taskId: task.id, type: 'error',
+                content: `OpenCode server issue: ${error}`,
+                timestamp: Date.now(),
+              });
+            });
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type: 'output',
+              content: 'OpenCode server is ready.',
+              timestamp: Date.now(),
+            });
+          } catch (err: unknown) {
+            const errorContent = `Failed to start OpenCode server: ${errorMessage(err)}`;
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type: 'error',
+              content: errorContent,
+              timestamp: Date.now(),
+            });
+            terminateOnce('failed', errorContent);
+            return;
+          }
+        }
+
         const session = await provider.createSession({
           contextId: task.id,
           workingDirectory,
@@ -1261,6 +1294,9 @@ Optional list of any work you did not complete or that should be followed up. Om
     for (const provider of this.providers.values()) {
       provider.stop().catch(() => {});
     }
+
+    // Stop OpenCode server if it was started
+    stopOpenCodeServer().catch(() => {});
   }
 
   // ─── Group Queue ──────────────────────────────────────────────────
