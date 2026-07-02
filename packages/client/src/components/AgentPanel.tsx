@@ -23,6 +23,7 @@ import {
   RotateCw,
   Download,
   Paperclip,
+  Maximize2,
 } from 'lucide-react';
 import type { Task, AgentEvent, AgentEventType } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
@@ -216,6 +217,7 @@ function compactToolSummary(content: string | undefined): string | null {
 interface AgentPanelProps {
   task: Task | null;
   onClose: () => void;
+  onExpand?: (task: Task) => void;
   onRun?: (id: string) => void;
   onStop?: (id: string) => void;
   onCreatePR?: (id: string) => Promise<string | undefined>;
@@ -427,7 +429,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
   );
 }
 
-export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLocal, onCleanupWorktree, onReconfigureRetry, theme }: AgentPanelProps) {
+export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR, onMergeLocal, onCleanupWorktree, onReconfigureRetry, theme }: AgentPanelProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
@@ -726,6 +728,15 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                   title="Stop agent"
                 >
                   <Square className="h-4 w-4" />
+                </button>
+              )}
+              {onExpand && task && (
+                <button
+                  onClick={() => onExpand(task)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  title="Expand to full page view"
+                >
+                  <Maximize2 className="h-4 w-4" />
                 </button>
               )}
               <button

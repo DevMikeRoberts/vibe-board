@@ -27,6 +27,7 @@ import { TaskDialog } from '@/components/TaskDialog';
 import { TaskGroupDialog } from '@/components/TaskGroupDialog';
 import { GroupPanel } from '@/components/GroupPanel';
 import { AgentPanel } from '@/components/AgentPanel';
+import { TaskFullView } from '@/components/TaskFullView';
 import type { TaskGroupWithChildren } from '@/lib/api';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
 import { ProjectDialog } from '@/components/ProjectDialog';
@@ -77,6 +78,7 @@ function BoardPage({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [fullViewTaskId, setFullViewTaskId] = useState<string | null>(null);
   const [highlightRequiredFields, setHighlightRequiredFields] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
@@ -124,6 +126,17 @@ function BoardPage({
     },
     [selectedTaskId, tasks, groups]
   );
+
+  const fullViewTask = useMemo(() => {
+    if (!fullViewTaskId) return null;
+    const standalone = tasks.find((t) => t.id === fullViewTaskId);
+    if (standalone) return standalone;
+    for (const g of groups) {
+      const child = g.children.find((c) => c.id === fullViewTaskId);
+      if (child) return child;
+    }
+    return null;
+  }, [fullViewTaskId, tasks, groups]);
 
   const selectedGroup = useMemo(
     () => (selectedGroupId ? groups.find((g) => g.id === selectedGroupId) ?? null : null),
@@ -331,6 +344,24 @@ function BoardPage({
     runTask(task.id);
   }, [runTask]);
 
+  const handleExpandTask = useCallback((task: Task) => {
+    setFullViewTaskId(task.id);
+    // Close the slide-in panel when expanding to full view
+    setSelectedTaskId(null);
+  }, []);
+
+  const handleCloseFullView = useCallback(() => {
+    setFullViewTaskId(null);
+  }, []);
+
+  const handleMinimizeFullView = useCallback(() => {
+    // Collapse full view back to slide-in panel
+    if (fullViewTaskId) {
+      setSelectedTaskId(fullViewTaskId);
+    }
+    setFullViewTaskId(null);
+  }, [fullViewTaskId]);
+
   const handleReconfigureRetry = useCallback((taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -341,7 +372,9 @@ function BoardPage({
 
   // Keyboard shortcuts
   const handleCloseAll = useCallback(() => {
-    if (deletingTask || deletingGroupId) {
+    if (fullViewTaskId) {
+      setFullViewTaskId(null);
+    } else if (deletingTask || deletingGroupId) {
       setDeletingTask(null);
       setDeletingGroupId(null);
     } else if (groupDialogOpen) {
@@ -355,11 +388,11 @@ function BoardPage({
     } else if (selectedTaskId) {
       setSelectedTaskId(null);
     }
-  }, [deletingTask, deletingGroupId, groupDialogOpen, dialogOpen, selectedGroupId, selectedTaskId]);
+  }, [fullViewTaskId, deletingTask, deletingGroupId, groupDialogOpen, dialogOpen, selectedGroupId, selectedTaskId]);
 
   const isAnyOpen = useCallback(
-    () => dialogOpen || groupDialogOpen || selectedTaskId !== null || selectedGroupId !== null || deletingTask !== null || deletingGroupId !== null,
-    [dialogOpen, groupDialogOpen, selectedTaskId, selectedGroupId, deletingTask, deletingGroupId]
+    () => fullViewTaskId !== null || dialogOpen || groupDialogOpen || selectedTaskId !== null || selectedGroupId !== null || deletingTask !== null || deletingGroupId !== null,
+    [fullViewTaskId, dialogOpen, groupDialogOpen, selectedTaskId, selectedGroupId, deletingTask, deletingGroupId]
   );
 
   useKeyboardShortcuts({
@@ -411,6 +444,7 @@ function BoardPage({
           onArchiveTask={handleArchiveTask}
           onUnarchiveTask={handleUnarchiveTask}
           onRetryTask={handleRetryTask}
+          onExpandTask={handleExpandTask}
           onAddTask={handleOpenDialog}
           showArchived={showArchived}
           onDropInProgress={(task) => setSelectedTaskId(task.id)}
@@ -443,7 +477,24 @@ function BoardPage({
         projectDefaults={projectDefaults}
       />
 
-      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onMergeLocal={mergeLocal} onCleanupWorktree={cleanupWorktree} onReconfigureRetry={handleReconfigureRetry} theme={theme} />
+      <AgentPanel task={selectedTask} onClose={handleClosePanel} onExpand={handleExpandTask} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onMergeLocal={mergeLocal} onCleanupWorktree={cleanupWorktree} onReconfigureRetry={handleReconfigureRetry} theme={theme} />
+
+      <TaskFullView
+        task={fullViewTask}
+        onClose={handleCloseFullView}
+        onMinimize={handleMinimizeFullView}
+        onRun={handleRunWithConfig}
+        onStop={stopTask}
+        onEdit={handleEditTask}
+        onDelete={handleDeleteTask}
+        onArchive={handleArchiveTask}
+        onUnarchive={handleUnarchiveTask}
+        onCreatePR={createPR}
+        onMergeLocal={mergeLocal}
+        onCleanupWorktree={cleanupWorktree}
+        onReconfigureRetry={handleReconfigureRetry}
+        theme={theme}
+      />
 
       <GroupPanel
         group={selectedGroup}

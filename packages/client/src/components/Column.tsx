@@ -30,6 +30,7 @@ interface ColumnProps {
   onArchiveTask?: (task: Task) => void;
   onUnarchiveTask?: (task: Task) => void;
   onRetryTask?: (task: Task) => void;
+  onExpandTask?: (task: Task) => void;
   onAddTask?: () => void;
   extraContent?: React.ReactNode;
 }
@@ -42,7 +43,7 @@ const COLUMN_META: Record<string, { glow: string; dotColor: string; badgeColor: 
   'bg-emerald-500': { glow: 'rgba(16,185,129,0.50)',   dotColor: '#34d399', badgeColor: 'rgba(16,185,129,0.14)', label: '#6ee7b7' },
 };
 
-export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onArchiveTask, onUnarchiveTask, onRetryTask, onAddTask, extraContent }: ColumnProps) {
+export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onArchiveTask, onUnarchiveTask, onRetryTask, onExpandTask, onAddTask, extraContent }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const Icon = iconMap[column.icon] || Inbox;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -150,6 +151,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
               onArchive={onArchiveTask}
               onUnarchive={onUnarchiveTask}
               onRetry={onRetryTask}
+              onExpand={onExpandTask}
             />
           ))}
 

@@ -32,6 +32,7 @@ interface BoardProps {
   onArchiveTask?: (task: Task) => void;
   onUnarchiveTask?: (task: Task) => void;
   onRetryTask?: (task: Task) => void;
+  onExpandTask?: (task: Task) => void;
   onAddTask: () => void;
   onDropInProgress?: (task: Task) => void;
   showArchived?: boolean;
@@ -59,6 +60,7 @@ export function Board({
   onArchiveTask,
   onUnarchiveTask,
   onRetryTask,
+  onExpandTask,
   onAddTask,
   onDropInProgress,
   showArchived = false,
@@ -167,6 +169,7 @@ export function Board({
               onArchiveTask={onArchiveTask}
               onUnarchiveTask={onUnarchiveTask}
               onRetryTask={onRetryTask}
+              onExpandTask={onExpandTask}
               onAddTask={column.id === 'backlog' ? onAddTask : undefined}
               extraContent={
                 getGroupsForColumn(column.id).map((g) => (
