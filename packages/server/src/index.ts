@@ -18,6 +18,7 @@ import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
 import { TaskScheduler } from './services/task-scheduler.js';
 import { PrWatcher } from './services/pr-watcher.js';
+import { autoLoadPersonalRepos } from './services/repo-loader.js';
 import { authMiddleware } from './middleware/auth.js';
 import type { TaskRepository } from './repositories/types.js';
 import type { TemplateRepository } from './repositories/template-types.js';
@@ -176,6 +177,13 @@ let prWatcher: PrWatcher;
       completedAt: Date.now(),
     });
     console.warn(`[server] recovered orphaned task ${task.id} "${task.title}" (was ${task.agentStatus})`);
+  }
+
+  // Auto-load personal GitHub repositories as projects (if GITHUB_TOKEN is set)
+  try {
+    await autoLoadPersonalRepos(projectRepo);
+  } catch (err) {
+    console.error('[server] failed to auto-load repos:', err);
   }
 
   // Start automation (token-limit retries + backlog auto-pickup) only after
