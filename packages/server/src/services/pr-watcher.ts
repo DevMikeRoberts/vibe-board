@@ -15,13 +15,27 @@ const PR_WATCH_TICK_MS = 60_000;
  * once merged.
  *
  * Every tick it scans tasks sitting in the **review** column with a recorded
- * `prUrl`, asks the GitHub CLI (via {@link AgentManager.getPullRequestState})
- * whether each PR has merged, and when it has:
+ * `prUrl`, asks the GitHub CLI (via {@link AgentManager.getPRDetails}) whether
+ * each PR has merged, and when it has:
  *
  *  1. removes the task's worktree (if it somehow survived PR creation),
  *  2. deletes the local branch,
  *  3. moves the task to the **done** column, and
  *  4. emits an informational event on the task timeline.
+ *
+ * In addition to the happy-path merge detection, each tick also checks for:
+ *
+ * - **Conflicts** (`mergeable === 'CONFLICTING'`): emits a warning and attempts
+ *   an automatic rebase to resolve them. Conflict-fix progress is tracked per
+ *   task so the rebase is only attempted once until the PR's mergeable state
+ *   changes again.
+ *
+ * - **CI failures**: emits a warning event when checks fail, and a recovery
+ *   notice when they later pass. Both are debounced so only a single event is
+ *   emitted per state transition.
+ *
+ * - **Closed-without-merge PRs**: emits an error event (once) so the developer
+ *   knows to reopen or create a new PR.
  *
  * Polling (rather than a GitHub webhook) keeps this self-contained for a board
  * that already shells out to `gh`, and makes it restart-safe: state lives in the
@@ -31,6 +45,31 @@ export class PrWatcher {
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private inTick = false;
+
+  /**
+   * Tasks for which a conflict warning has already been emitted in the current
+   * conflict window. Cleared when the conflict resolves so we'll warn again if
+   * conflicts reappear after a rebase.
+   */
+  private readonly conflictWarned = new Set<string>();
+
+  /**
+   * Tasks for which a conflict-resolution rebase is currently in progress.
+   * Guards against launching concurrent rebase attempts on the same task.
+   */
+  private readonly conflictFixInProgress = new Set<string>();
+
+  /**
+   * Tasks for which a CI-failure warning has been emitted. Cleared when CI
+   * later passes so a recovery notice can be emitted.
+   */
+  private readonly ciFailureWarned = new Set<string>();
+
+  /**
+   * Tasks for which a closed-without-merge warning has been emitted. We only
+   * warn once to avoid repeating the event on every subsequent tick.
+   */
+  private readonly closedWarned = new Set<string>();
 
   constructor(
     private readonly repo: TaskRepository,
@@ -82,10 +121,146 @@ export class PrWatcher {
     }
   }
 
+  /**
+   * Check a single in-review task. Uses `getPRDetails` (which fetches state,
+   * mergeable, and CI checks in one `gh pr view` call) and handles all
+   * meaningful PR state transitions. Falls back to the lighter
+   * `getPullRequestState` when `gh` returns data that `getPRDetails` can't
+   * parse (e.g. very old `gh` versions without `statusCheckRollup`).
+   */
   private async checkTask(task: Task): Promise<void> {
-    const state = this.agentManager.getPullRequestState(task);
-    if (!state || !state.merged) return;
-    await this.completeMergedTask(task);
+    const details = this.agentManager.getPRDetails(task);
+
+    if (!details) {
+      // Lightweight fallback when the richer call fails (no gh, auth error, etc.)
+      const state = this.agentManager.getPullRequestState(task);
+      if (state?.merged) await this.completeMergedTask(task);
+      return;
+    }
+
+    // ── Merged ──────────────────────────────────────────────────────────
+    if (details.merged) {
+      // Clear all per-task tracking state on a successful merge
+      this.conflictWarned.delete(task.id);
+      this.conflictFixInProgress.delete(task.id);
+      this.ciFailureWarned.delete(task.id);
+      this.closedWarned.delete(task.id);
+      await this.completeMergedTask(task);
+      return;
+    }
+
+    // ── Closed without merging ────────────────────────────────────────
+    if (details.state === 'CLOSED') {
+      if (!this.closedWarned.has(task.id)) {
+        this.closedWarned.add(task.id);
+        this.emitNotice(
+          task.id,
+          `Pull request was closed without merging.\n` +
+          `Branch "${task.branchName}" has not been merged into the base branch. ` +
+          'Use the Create PR button to open a new pull request, or use Merge to main to merge locally.',
+          task.agentType,
+          'error',
+        );
+        console.log(`[pr-watcher] task ${task.id} PR closed without merge`);
+      }
+      return;
+    }
+
+    // ── PR is still OPEN — check for conflicts and CI issues ─────────
+    this.checkConflicts(task, details.mergeable);
+    this.checkCi(task, details.ciPassed, details.checkConclusions);
+  }
+
+  /** Emit a conflict warning and kick off an auto-rebase when appropriate. */
+  private checkConflicts(task: Task, mergeable: string): void {
+    if (mergeable === 'CONFLICTING') {
+      if (!this.conflictWarned.has(task.id)) {
+        this.conflictWarned.add(task.id);
+        if (!this.conflictFixInProgress.has(task.id)) {
+          this.conflictFixInProgress.add(task.id);
+          this.emitNotice(
+            task.id,
+            `⚠️  Pull request has merge conflicts with the base branch. ` +
+            `Attempting to rebase ${task.branchName} on ${task.baseBranch || 'main'} automatically…`,
+            task.agentType,
+          );
+          void this.attemptConflictFix(task);
+        }
+      }
+    } else if (mergeable !== 'UNKNOWN') {
+      // Conflicts resolved (or were never present) — reset state so we'll warn
+      // again if new conflicts appear after the next push.
+      if (this.conflictWarned.has(task.id)) {
+        this.conflictWarned.delete(task.id);
+        this.conflictFixInProgress.delete(task.id);
+        this.emitNotice(
+          task.id,
+          `Merge conflicts resolved — pull request is now mergeable.`,
+          task.agentType,
+        );
+      }
+    }
+    // 'UNKNOWN' means GitHub hasn't finished computing the merge state yet — skip.
+  }
+
+  /** Emit CI failure / recovery notices with debouncing per state transition. */
+  private checkCi(task: Task, ciPassed: boolean | null, checkConclusions: string[]): void {
+    if (ciPassed === false) {
+      if (!this.ciFailureWarned.has(task.id)) {
+        this.ciFailureWarned.add(task.id);
+        const FAIL_STATES = ['FAILURE', 'ERROR', 'CANCELLED', 'ACTION_REQUIRED', 'TIMED_OUT'];
+        const failCount = checkConclusions.filter((s) => FAIL_STATES.includes(s)).length;
+        this.emitNotice(
+          task.id,
+          `⚠️  ${failCount > 0 ? `${failCount} CI check(s) are` : 'CI checks are'} failing on this pull request.\n` +
+          `Fix the issues and push to ${task.branchName} to re-trigger CI before merging.`,
+          task.agentType,
+          'error',
+        );
+        console.log(`[pr-watcher] task ${task.id} CI failing (${failCount} check(s))`);
+      }
+    } else if (ciPassed === true && this.ciFailureWarned.has(task.id)) {
+      // CI recovered — let the developer know
+      this.ciFailureWarned.delete(task.id);
+      this.emitNotice(
+        task.id,
+        `CI checks are now passing. Pull request is ready to review and merge.`,
+        task.agentType,
+      );
+      console.log(`[pr-watcher] task ${task.id} CI recovered`);
+    }
+  }
+
+  /**
+   * Rebase the task's branch on its base branch to auto-fix merge conflicts,
+   * then force-push so the PR is updated. Emits success or error events.
+   */
+  private async attemptConflictFix(task: Task): Promise<void> {
+    try {
+      await this.agentManager.rebaseOnBase(task);
+      // Conflict fix in progress flag will be cleared on the next tick once we
+      // confirm the mergeable state has changed, but we remove it here too so
+      // a second tick doesn't try to rebase again while GitHub re-computes state.
+      this.conflictFixInProgress.delete(task.id);
+      this.emitNotice(
+        task.id,
+        `Automatically rebased ${task.branchName} on ${task.baseBranch || 'main'} to resolve merge conflicts. ` +
+        'The pull request has been updated — GitHub will re-compute the merge state shortly.',
+        task.agentType,
+      );
+      console.log(`[pr-watcher] task ${task.id} auto-rebase succeeded`);
+    } catch (err: unknown) {
+      this.conflictFixInProgress.delete(task.id);
+      this.emitNotice(
+        task.id,
+        `Could not automatically resolve merge conflicts: ${errorMessage(err)}\n` +
+        'Manual conflict resolution is required. Resolve the conflicts, push to ' +
+        `${task.branchName}, and the PR will be updated.`,
+        task.agentType,
+        'error',
+      );
+      console.log(`[pr-watcher] task ${task.id} auto-rebase failed: ${errorMessage(err)}`);
+    }
   }
 
   /** Move a merged-PR task to done and clean up its worktree + local branch. */
@@ -111,12 +286,17 @@ export class PrWatcher {
     console.log(`[pr-watcher] task ${task.id} PR merged → done`);
   }
 
-  /** Persist + broadcast an informational event on a task's timeline. */
-  private emitNotice(taskId: string, content: string, agentType?: Task['agentType']): void {
+  /** Persist + broadcast a notice event on a task's timeline. */
+  private emitNotice(
+    taskId: string,
+    content: string,
+    agentType?: Task['agentType'],
+    type: 'output' | 'error' = 'output',
+  ): void {
     const event = {
       id: uuid(),
       taskId,
-      type: 'output' as const,
+      type,
       content,
       timestamp: Date.now(),
       metadata: { phase: 'pr-watcher', ...(agentType ? { agentType } : {}) },

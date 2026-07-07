@@ -667,6 +667,99 @@ export class AgentManager {
   }
 
   /**
+   * Get detailed PR state including mergeable status and CI check results. Used
+   * by the auto-PR pipeline and {@link PrWatcher} to detect conflicts, failing
+   * CI, or a closed-without-merge PR as early as possible. Best-effort — never
+   * throws. Returns null when the state can't be determined.
+   */
+  getPRDetails(task: Task): {
+    url: string;
+    state: string;
+    mergeable: string;
+    merged: boolean;
+    ciPassed: boolean | null;
+    ciPending: boolean;
+    checkConclusions: string[];
+  } | null {
+    if (!task.repoPath) return null;
+    const ref = task.prUrl || task.branchName;
+    if (!ref) return null;
+    const cwd = this.gitCwd(task);
+    try {
+      const out = execFileSync(
+        'gh', ['pr', 'view', ref, '--json', 'state,mergeable,mergedAt,url,statusCheckRollup'],
+        { cwd, stdio: 'pipe' },
+      ).toString().trim();
+      if (!out) return null;
+      const parsed = JSON.parse(out) as {
+        state?: string;
+        mergeable?: string;
+        mergedAt?: string | null;
+        url?: string;
+        statusCheckRollup?: Array<{ conclusion?: string | null; status?: string }>;
+      };
+
+      const state = parsed.state ?? 'UNKNOWN';
+      const mergeable = parsed.mergeable ?? 'UNKNOWN';
+      const url = parsed.url ?? String(ref);
+      const merged = state === 'MERGED' || !!parsed.mergedAt;
+
+      const checkConclusions: string[] = [];
+      let ciPassed: boolean | null = null;
+      let ciPending = false;
+
+      if (parsed.statusCheckRollup && parsed.statusCheckRollup.length > 0) {
+        for (const check of parsed.statusCheckRollup) {
+          const c = ((check.conclusion ?? check.status) ?? '').toUpperCase();
+          if (c) checkConclusions.push(c);
+        }
+        const FAIL_STATES = ['FAILURE', 'ERROR', 'CANCELLED', 'ACTION_REQUIRED', 'TIMED_OUT'];
+        const PENDING_STATES = ['PENDING', 'IN_PROGRESS', 'QUEUED', 'WAITING', 'EXPECTED'];
+        const hasFailure = checkConclusions.some((s) => FAIL_STATES.includes(s));
+        const hasPending = checkConclusions.some((s) => PENDING_STATES.includes(s));
+        ciPending = hasPending && !hasFailure;
+        if (hasFailure) ciPassed = false;
+        else if (!hasPending) ciPassed = true; // all completed successfully
+      }
+
+      return { url, state, mergeable, merged, ciPassed, ciPending, checkConclusions };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Attempt to rebase the task's branch on the latest upstream base branch to
+   * resolve merge conflicts, then force-push the result to update the PR. Uses
+   * the per-repo mutex so it never races concurrent git operations. Throws on
+   * failure (caller is responsible for emitting a user-facing error event).
+   */
+  async rebaseOnBase(task: Task): Promise<void> {
+    if (!task.repoPath || !task.branchName) {
+      throw new Error('Task has no repo path or branch name configured');
+    }
+    const cwd = this.gitCwd(task);
+    const baseBranch = task.baseBranch || 'main';
+
+    return this.withRepoLock(task.repoPath, async () => {
+      try {
+        execFileSync('git', ['fetch', 'origin', baseBranch], { cwd, stdio: 'pipe', timeout: 30_000 });
+        execFileSync('git', ['rebase', `origin/${baseBranch}`], { cwd, stdio: 'pipe' });
+        execFileSync('git', ['push', '--force-with-lease', 'origin', task.branchName!], {
+          cwd, stdio: 'pipe', timeout: 60_000,
+        });
+        console.log(`[rebase] rebased ${task.branchName} on origin/${baseBranch} and pushed`);
+      } catch (err: unknown) {
+        try { execFileSync('git', ['rebase', '--abort'], { cwd, stdio: 'pipe' }); } catch { /* already clean */ }
+        const stderr = getErrorStderr(err);
+        const msg = stderr || errorMessage(err);
+        console.error(`[rebase] failed for task ${task.id}:`, msg);
+        throw new Error(`Rebase failed: ${msg.trim()}`);
+      }
+    });
+  }
+
+  /**
    * Best-effort delete of the task's local branch once its PR has merged. Runs
    * from the repo (never a worktree, which would still have the branch checked
    * out) and is serialized per-repo to avoid racing concurrent git operations.

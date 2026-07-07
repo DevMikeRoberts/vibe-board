@@ -587,12 +587,51 @@ function emitTaskEvent(
   broadcast({ type: 'agent_event', payload: event });
 }
 
+/** Maximum number of PR creation attempts before giving up and surfacing the error. */
+const PR_CREATE_MAX_ATTEMPTS = 3;
+/** Delays in ms between consecutive PR creation attempts (one per retry gap). */
+const PR_CREATE_RETRY_DELAYS_MS = [2_000, 5_000] as const;
+
+/**
+ * Attempt to resolve merge conflicts by rebasing the task's branch on the base
+ * and force-pushing. Emits a success or error event on the task timeline. This
+ * is fire-and-forget — the PrWatcher will confirm whether the conflict cleared
+ * on its next polling tick.
+ */
+async function attemptAutoConflictFix(
+  repo: TaskRepository,
+  agentManager: AgentManager,
+  task: Task,
+): Promise<void> {
+  try {
+    await agentManager.rebaseOnBase(task);
+    emitTaskEvent(
+      repo, task.id, 'output',
+      `Automatically rebased ${task.branchName} on ${task.baseBranch || 'main'} to resolve merge conflicts. ` +
+      'The pull request has been updated.',
+      task.agentType,
+    );
+  } catch (err: unknown) {
+    emitTaskEvent(
+      repo, task.id, 'error',
+      `Could not automatically resolve merge conflicts in ${task.branchName}: ${errorMessage(err)}\n` +
+      'Manual conflict resolution is required before this PR can be merged.',
+      task.agentType,
+    );
+  }
+}
+
 /**
  * Open a pull request for a freshly completed task and clean up its worktree,
  * mirroring POST /create-pr. Persists `prUrl` so {@link PrWatcher} can follow the
  * PR to its merge. No-ops (leaving the manual buttons in charge) when auto-PR is
  * disabled, the task is a group child, it already has a PR, or the repo has no
- * `origin` remote. Never throws.
+ * `origin` remote.
+ *
+ * Retries up to {@link PR_CREATE_MAX_ATTEMPTS} times with short delays to handle
+ * transient network or push failures. After a successful creation the PR state is
+ * immediately checked: conflicts trigger an automatic rebase, and CI failures emit
+ * a visible warning so the developer knows to act before merging. Never throws.
  */
 export async function autoOpenPrOnComplete(
   repo: TaskRepository,
@@ -605,29 +644,73 @@ export async function autoOpenPrOnComplete(
   if (!task.branchName || !task.repoPath) return;
   if (!agentManager.hasRemote(task)) return;   // local-only repo → keep manual flow
 
-  try {
-    const { url } = agentManager.createPR(task);
-    const updates: Partial<Task> = { prUrl: url };
-    // The branch is pushed; the worktree directory is no longer needed.
-    if (task.worktreePath) {
-      try { agentManager.removeWorktree(task); } catch { /* best effort */ }
-      updates.worktreePath = undefined;
+  let lastError: string | null = null;
+
+  for (let attempt = 0; attempt < PR_CREATE_MAX_ATTEMPTS; attempt++) {
+    // Wait before retry (not on the first attempt)
+    if (attempt > 0) {
+      const delay = PR_CREATE_RETRY_DELAYS_MS[attempt - 1] ?? 5_000;
+      emitTaskEvent(
+        repo, task.id, 'output',
+        `Retrying PR creation (attempt ${attempt + 1}/${PR_CREATE_MAX_ATTEMPTS})…`,
+        task.agentType,
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, delay));
     }
-    const updated = await repo.update(task.id, updates);
-    if (updated) broadcastTaskUpdate(updated);
-    emitTaskEvent(
-      repo, task.id, 'output',
-      `Opened pull request for ${task.branchName}: ${url}\n` +
-      'Watching for merge — the task will move to Done and its branch/worktree will be cleaned up automatically once the PR is merged.',
-      task.agentType,
-    );
-  } catch (err: unknown) {
-    emitTaskEvent(
-      repo, task.id, 'error',
-      `Automatic PR creation failed: ${errorMessage(err)}\nUse the Create PR button to open it manually.`,
-      task.agentType,
-    );
+
+    try {
+      const { url } = agentManager.createPR(task);
+      const updates: Partial<Task> = { prUrl: url };
+      // The branch is pushed; the worktree directory is no longer needed.
+      if (task.worktreePath) {
+        try { agentManager.removeWorktree(task); } catch { /* best effort */ }
+        updates.worktreePath = undefined;
+      }
+      const updated = await repo.update(task.id, updates);
+      if (updated) broadcastTaskUpdate(updated);
+
+      // Inspect the newly-created PR's initial state so we can warn early.
+      const liveTask = { ...(updated ?? task), prUrl: url };
+      const details = agentManager.getPRDetails(liveTask);
+      let notice = '';
+      if (details !== null && details.mergeable === 'CONFLICTING') {
+        notice = '\n⚠️  This PR has merge conflicts. Attempting to rebase and fix automatically…';
+        void attemptAutoConflictFix(repo, agentManager, liveTask);
+      } else if (details !== null && details.ciPassed === false) {
+        const failCount = details.checkConclusions.filter(
+          (s) => ['FAILURE', 'ERROR', 'CANCELLED', 'ACTION_REQUIRED', 'TIMED_OUT'].includes(s),
+        ).length;
+        notice = `\n⚠️  ${failCount > 0 ? `${failCount} CI check(s) are` : 'CI checks are'} failing. ` +
+          'Review and fix the failures before merging.';
+      }
+
+      emitTaskEvent(
+        repo, task.id, 'output',
+        `Opened pull request for ${task.branchName}: ${url}\n` +
+        'Watching for merge — the task will move to Done and its branch/worktree will be cleaned up automatically once the PR is merged.' +
+        notice,
+        task.agentType,
+      );
+      return; // success — stop retrying
+    } catch (err: unknown) {
+      lastError = errorMessage(err);
+      if (attempt < PR_CREATE_MAX_ATTEMPTS - 1) {
+        emitTaskEvent(
+          repo, task.id, 'output',
+          `PR creation attempt ${attempt + 1} failed: ${lastError}`,
+          task.agentType,
+        );
+      }
+    }
   }
+
+  // All attempts exhausted — surface the final error
+  emitTaskEvent(
+    repo, task.id, 'error',
+    `Automatic PR creation failed after ${PR_CREATE_MAX_ATTEMPTS} attempts: ${lastError}\n` +
+    'Use the Create PR button to open it manually.',
+    task.agentType,
+  );
 }
 
 export function makeWorktreeCallback(repo: TaskRepository, taskId: string): (worktreePath: string) => void {
