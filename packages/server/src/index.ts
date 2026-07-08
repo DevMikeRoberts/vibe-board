@@ -4,7 +4,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { createWSS } from './websocket.js';
 import { initDatabase, initPostgresDatabase, isPostgresUrl } from './db.js';
-import { loadConfig, getConfig } from './config.js';
+import { loadConfig, getConfig, getGithubToken } from './config.js';
 import { SqliteTaskRepository } from './repositories/sqlite.js';
 import { PostgresTaskRepository } from './repositories/postgres.js';
 import { createTaskRouter } from './routes/tasks.js';
@@ -107,7 +107,7 @@ let prWatcher: PrWatcher;
   app.use('/api/templates', createTemplateRouter(templateRepo));
   app.use('/api/groups', createGroupsRouter(groupRepo, taskRepo, agentManager, projectRepo));
   app.use('/api', createAttachmentsRouter(taskRepo, attachmentStore));
-  app.use('/api/system', createSystemRouter());
+  app.use('/api/system', createSystemRouter(projectRepo));
 
   // GET /api/agents — list available agents
   app.get('/api/agents', (_req, res) => {
@@ -181,9 +181,15 @@ let prWatcher: PrWatcher;
     console.warn(`[server] recovered orphaned task ${task.id} "${task.title}" (was ${task.agentStatus})`);
   }
 
-  // Auto-load personal GitHub repositories as projects (if GITHUB_TOKEN is set)
+  // Auto-load personal GitHub repositories as projects (if a GitHub token is available
+  // via GITHUB_TOKEN env var or stored in the config file).
   try {
-    await autoLoadPersonalRepos(projectRepo);
+    const githubToken = getGithubToken();
+    if (githubToken) {
+      await autoLoadPersonalRepos(projectRepo, githubToken);
+    } else {
+      console.log('[server] no GitHub token configured — skipping auto-load (configure via Settings)');
+    }
   } catch (err) {
     console.error('[server] failed to auto-load repos:', err);
   }

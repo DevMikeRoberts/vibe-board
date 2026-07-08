@@ -34,6 +34,7 @@ import { ProjectDialog } from '@/components/ProjectDialog';
 import type { ProjectDialogInitialValues } from '@/components/ProjectDialog';
 import { ConfigDialog } from '@/components/ConfigDialog';
 import { ProjectsSidebar } from '@/components/ProjectsSidebar';
+import { GitHubSetupModal } from '@/components/GitHubSetupModal';
 
 const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
 
@@ -586,6 +587,7 @@ export function App() {
     loading,
     error,
     clearError,
+    refreshProjects,
     createProject,
     updateProject,
     deleteProject,
@@ -749,6 +751,7 @@ export function App() {
         config={config}
         onClose={() => setConfigOpen(false)}
         onSubmit={updateConfig}
+        onProjectsImported={refreshProjects}
       />
 
       <DeleteConfirmDialog
@@ -764,6 +767,9 @@ export function App() {
         onCancel={() => setDeletingProject(null)}
         onConfirm={handleConfirmDeleteProject}
       />
+
+      {/* ── GitHub setup modal (shown on first load when no token is configured) ── */}
+      <GitHubSetupModal onImported={refreshProjects} />
 
       {/* Global error toast (project-level errors from useProjects) */}
       <AnimatePresence>

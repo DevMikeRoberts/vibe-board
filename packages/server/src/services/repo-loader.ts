@@ -12,15 +12,42 @@ interface GitHubRepository {
   fork: boolean;
 }
 
+export interface GitHubUser {
+  login: string;
+  name?: string;
+  avatar_url: string;
+}
+
+export interface RepoLoadResult {
+  imported: number;
+  skipped: number;
+  errors: number;
+}
+
+/**
+ * Fetch the authenticated GitHub user's profile.
+ */
+export async function fetchGithubUser(token: string): Promise<GitHubUser | null> {
+  try {
+    const response = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'agentboard-repo-loader',
+      },
+    });
+    if (!response.ok) return null;
+    return await response.json() as GitHubUser;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetch personal GitHub repositories using the GitHub API.
- * Requires a GITHUB_TOKEN environment variable to be set.
  * Returns only non-fork, accessible repositories.
  */
-async function fetchPersonalRepos(): Promise<GitHubRepository[]> {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (!token) return [];
-
+async function fetchPersonalRepos(token: string): Promise<GitHubRepository[]> {
   try {
     const repos: GitHubRepository[] = [];
     let page = 1;
@@ -84,42 +111,47 @@ async function isRepoAlreadyLoaded(
 
 /**
  * Auto-load personal GitHub repositories as projects.
- * This is called on server startup if a GITHUB_TOKEN is configured.
+ * Accepts an explicit token; falls back to the GITHUB_TOKEN env var.
  * Skips repos that are already loaded.
+ * Returns a result object with counts.
  */
-export async function autoLoadPersonalRepos(projectRepo: ProjectRepository): Promise<void> {
-  const token = process.env.GITHUB_TOKEN?.trim();
-  if (!token) {
-    console.log('[repo-loader] GITHUB_TOKEN not set, skipping auto-load');
-    return;
+export async function autoLoadPersonalRepos(
+  projectRepo: ProjectRepository,
+  token?: string,
+): Promise<RepoLoadResult> {
+  const activeToken = (token ?? process.env.GITHUB_TOKEN)?.trim();
+  if (!activeToken) {
+    console.log('[repo-loader] no GitHub token available, skipping auto-load');
+    return { imported: 0, skipped: 0, errors: 0 };
   }
 
   console.log('[repo-loader] fetching personal GitHub repositories...');
-  const repos = await fetchPersonalRepos();
+  const repos = await fetchPersonalRepos(activeToken);
 
   if (repos.length === 0) {
     console.log('[repo-loader] no personal repositories found');
-    return;
+    return { imported: 0, skipped: 0, errors: 0 };
   }
 
   console.log(`[repo-loader] found ${repos.length} personal repository(ies)`);
 
-  let loadedCount = 0;
-  let skippedCount = 0;
+  let imported = 0;
+  let skipped = 0;
+  let errors = 0;
 
   for (const repo of repos) {
     try {
       // Skip forks unless explicitly included
       if (repo.fork) {
         console.log(`[repo-loader] skipping fork: ${repo.full_name}`);
-        skippedCount++;
+        skipped++;
         continue;
       }
 
       const alreadyLoaded = await isRepoAlreadyLoaded(projectRepo, repo.clone_url);
       if (alreadyLoaded) {
         console.log(`[repo-loader] already loaded: ${repo.full_name}`);
-        skippedCount++;
+        skipped++;
         continue;
       }
 
@@ -133,12 +165,14 @@ export async function autoLoadPersonalRepos(projectRepo: ProjectRepository): Pro
       });
 
       console.log(`[repo-loader] loaded project: ${repo.full_name} (${project.id})`);
-      loadedCount++;
+      imported++;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`[repo-loader] failed to load ${repo.full_name}: ${message}`);
+      errors++;
     }
   }
 
-  console.log(`[repo-loader] completed: ${loadedCount} loaded, ${skippedCount} skipped`);
+  console.log(`[repo-loader] completed: ${imported} imported, ${skipped} skipped, ${errors} errors`);
+  return { imported, skipped, errors };
 }

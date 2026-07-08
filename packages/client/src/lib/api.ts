@@ -202,6 +202,27 @@ export const api = {
   restartServer: () =>
     request<{ success: boolean; message: string }>('/system/restart', { method: 'POST' }),
 
+  // --- GitHub integration ---
+  getGithubStatus: () =>
+    request<{
+      configured: boolean;
+      tokenSource: 'env' | 'config' | null;
+      username?: string | null;
+      name?: string | null;
+    }>('/system/github-status'),
+
+  saveGithubToken: (token: string) =>
+    request<{ success: boolean; username: string; name: string | null }>(
+      '/system/github-token',
+      { method: 'POST', body: JSON.stringify({ token }) },
+    ),
+
+  importGithubRepos: (token?: string) =>
+    request<{ imported: number; skipped: number; errors: number }>(
+      '/system/import-github-repos',
+      { method: 'POST', body: JSON.stringify({ token }) },
+    ),
+
 };
 
 // --- WebSocket (shared singleton) ---
