@@ -163,7 +163,7 @@ export class AgentManager {
     this.providers.set('copilot', new CopilotProvider());
     this.providers.set('claude', new ClaudeProvider());
     this.providers.set('codex', new CodexProvider());
-    this.providers.set('opencode', new OpenCodeProvider());
+    this.providers.set('opencode', new OpenCodeProvider({ baseUrl: 'http://127.0.0.1:4096' }));
     this.providers.set('hermes', new HermesProvider());
     this.providers.set('openclaw', new OpenClawProvider());
 
@@ -196,6 +196,20 @@ export class AgentManager {
         reason: 'Agent startup disabled (test environment)',
       }));
       return;
+    }
+
+    // Start the OpenCode server on port 4096 before initializing the provider,
+    // so the provider can connect to it via baseUrl instead of starting its own.
+    const opencodeInfo = this.availableAgents.find(a => a.name === 'opencode' && a.available);
+    if (opencodeInfo) {
+      try {
+        await ensureOpenCodeServer();
+        console.log('[agent-manager] OpenCode server started on port 4096');
+      } catch (err: unknown) {
+        console.error(`[agent-manager] failed to start OpenCode server: ${errorMessage(err)}`);
+        opencodeInfo.available = false;
+        opencodeInfo.reason = `Failed to start OpenCode server: ${errorMessage(err)}`;
+      }
     }
 
     // Start available providers
@@ -1117,38 +1131,6 @@ Optional list of any work you did not complete or that should be followed up. Om
         // Accumulate assistant prose ('output' events) to extract the agent's
         // end-of-task <task-summary> marker block after completion.
         let summaryBuffer = '';
-
-        // If using OpenCode agent, ensure the server is running
-        if (agentType === 'opencode') {
-          try {
-            this.emitEvent(task.id, {
-              id: uuid(), taskId: task.id, type: 'output',
-              content: 'Ensuring OpenCode server is running on port 4096...',
-              timestamp: Date.now(),
-            });
-            await ensureOpenCodeServer((error) => {
-              this.emitEvent(task.id, {
-                id: uuid(), taskId: task.id, type: 'error',
-                content: `OpenCode server issue: ${error}`,
-                timestamp: Date.now(),
-              });
-            });
-            this.emitEvent(task.id, {
-              id: uuid(), taskId: task.id, type: 'output',
-              content: 'OpenCode server is ready.',
-              timestamp: Date.now(),
-            });
-          } catch (err: unknown) {
-            const errorContent = `Failed to start OpenCode server: ${errorMessage(err)}`;
-            this.emitEvent(task.id, {
-              id: uuid(), taskId: task.id, type: 'error',
-              content: errorContent,
-              timestamp: Date.now(),
-            });
-            terminateOnce('failed', errorContent);
-            return;
-          }
-        }
 
         const session = await provider.createSession({
           contextId: task.id,

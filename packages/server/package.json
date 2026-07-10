@@ -16,7 +16,7 @@
     "@openai/codex-sdk": "^0.139.0",
     "@opencode-ai/sdk": "^1.17.7",
     "@types/multer": "^2.0.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^4.22.2",
