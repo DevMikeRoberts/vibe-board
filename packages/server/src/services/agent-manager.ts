@@ -864,7 +864,7 @@ export class AgentManager {
               console.error(`[agent-manager] failed to persist summary for task ${task.id}:`, errorMessage(err));
             }
             // The container commits its own work; this catches anything left over.
-            this.commitAgentWork(task, workspace.containerPath);
+            this.commitAgentWork(task);
           }
           terminateOnce(result.status, result.error);
         }

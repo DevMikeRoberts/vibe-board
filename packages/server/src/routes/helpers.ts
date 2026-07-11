@@ -463,7 +463,7 @@ export function isRateLimited(taskId: string): boolean {
 // ─── Task field validation ──────────────────────────────────────────
 
 export function validateTaskFields(body: Record<string, any>): string | null {
-  const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, autoRun } = body;
+  const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, autoRun, model } = body;
 
   if (!title || typeof title !== 'string' || !title.trim()) {
     return 'title is required and must be a non-empty string';
@@ -524,7 +524,7 @@ export function validateTaskFields(body: Record<string, any>): string | null {
 // ─── Task builder ───────────────────────────────────────────────────
 
 export function buildTask(body: Record<string, any>): Task {
-  const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, projectId } = body;
+  const { title, description, priority, columnId, agentType, repoPath, branchName, baseBranch, projectId, model } = body;
   return {
     id: uuid(),
     projectId: typeof projectId === 'string' && projectId ? projectId : 'default',
@@ -590,51 +590,12 @@ function emitTaskEvent(
   broadcast({ type: 'agent_event', payload: event });
 }
 
-/** Maximum number of PR creation attempts before giving up and surfacing the error. */
-const PR_CREATE_MAX_ATTEMPTS = 3;
-/** Delays in ms between consecutive PR creation attempts (one per retry gap). */
-const PR_CREATE_RETRY_DELAYS_MS = [2_000, 5_000] as const;
-
-/**
- * Attempt to resolve merge conflicts by rebasing the task's branch on the base
- * and force-pushing. Emits a success or error event on the task timeline. This
- * is fire-and-forget — the PrWatcher will confirm whether the conflict cleared
- * on its next polling tick.
- */
-async function attemptAutoConflictFix(
-  repo: TaskRepository,
-  agentManager: AgentManager,
-  task: Task,
-): Promise<void> {
-  try {
-    await agentManager.rebaseOnBase(task);
-    emitTaskEvent(
-      repo, task.id, 'output',
-      `Automatically rebased ${task.branchName} on ${task.baseBranch || 'main'} to resolve merge conflicts. ` +
-      'The pull request has been updated.',
-      task.agentType,
-    );
-  } catch (err: unknown) {
-    emitTaskEvent(
-      repo, task.id, 'error',
-      `Could not automatically resolve merge conflicts in ${task.branchName}: ${errorMessage(err)}\n` +
-      'Manual conflict resolution is required before this PR can be merged.',
-      task.agentType,
-    );
-  }
-}
-
 /**
  * Open a pull request for a freshly completed task and clean up its worktree,
  * mirroring POST /create-pr. Persists `prUrl` so {@link PrWatcher} can follow the
  * PR to its merge. No-ops (leaving the manual buttons in charge) when auto-PR is
  * disabled, the task is a group child, it already has a PR, or the repo has no
- * `origin` remote.
- *
- * Retries up to {@link PR_CREATE_MAX_ATTEMPTS} times with short delays to handle
- * transient network or push failures. After a successful creation the PR state is
- * immediately checked: conflicts trigger an automatic rebase, and CI failures emit
- * a visible warning so the developer knows to act before merging. Never throws.
+ * `origin` remote. Never throws.
  */
 export async function autoOpenPrOnComplete(
   repo: TaskRepository,
@@ -664,14 +625,6 @@ export async function autoOpenPrOnComplete(
       task.agentType,
     );
   }
-
-  // All attempts exhausted — surface the final error
-  emitTaskEvent(
-    repo, task.id, 'error',
-    `Automatic PR creation failed after ${PR_CREATE_MAX_ATTEMPTS} attempts: ${lastError}\n` +
-    'Use the Create PR button to open it manually.',
-    task.agentType,
-  );
 }
 
 export async function startAgentForTask(
