@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion, useMotionValue, useTransform, useSpring, useScroll } from 'framer-motion';
 import type { CreateProjectRequest, Project, ProjectConfig, ProjectPathValidation, UpdateProjectRequest } from '@/types';
 import { PixelIcon } from '@/components/PixelIcon';
 import { ThemeToggle } from './ThemeToggle';
@@ -42,6 +42,145 @@ const TILE_HUES = [
   'var(--color-neon-purple)',
   'var(--color-neon-pink)',
 ];
+
+function ProjectCard({
+  project,
+  hue,
+  index,
+  onOpen,
+  onEdit,
+  onDelete,
+}: {
+  project: Project;
+  hue: string;
+  index: number;
+  onOpen: () => void;
+  onEdit: () => void;
+  onDelete?: () => void;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  const rotateX = useSpring(useTransform(mouseY, [-0.5, 0.5], [8, -8]), { stiffness: 200, damping: 20 });
+  const rotateY = useSpring(useTransform(mouseX, [-0.5, 0.5], [-8, 8]), { stiffness: 200, damping: 20 });
+  const scale = useSpring(1, { stiffness: 200, damping: 20 });
+
+  const { scrollYProgress } = useScroll();
+  const parallaxY = useTransform(scrollYProgress, [0, 1], [0, -30 * ((index % 3) + 1) * 0.3]);
+
+  function handleMouseMove(e: React.MouseEvent) {
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const x = (e.clientX - rect.left) / rect.width - 0.5;
+    const y = (e.clientY - rect.top) / rect.height - 0.5;
+    mouseX.set(x);
+    mouseY.set(y);
+    scale.set(1.02);
+  }
+
+  function handleMouseLeave() {
+    mouseX.set(0);
+    mouseY.set(0);
+    scale.set(1);
+  }
+
+  return (
+    <motion.div
+      ref={cardRef}
+      initial={{ opacity: 0, y: 40, rotateX: 12 }}
+      animate={{ opacity: 1, y: 0, rotateX: 0 }}
+      transition={{ delay: index * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+      style={{ rotateX, rotateY, scale, y: parallaxY, perspective: 1000, transformStyle: 'preserve-3d' }}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      className="group cursor-pointer"
+    >
+      <article
+        aria-label={project.name}
+        className="panel-neon sticker-peel flex min-h-64 flex-col rounded-[1.75rem] p-5 transition-shadow duration-300 group-hover:shadow-[0_25px_60px_-12px_rgba(0,0,0,0.5)]"
+        style={{ '--panel': hue } as React.CSSProperties}
+      >
+        {/* Card header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-lg text-foreground [text-transform:lowercase]">{project.name}</h2>
+            {project.repoUrl && (
+              <p className="mt-1.5 flex items-center gap-1.5 break-all font-pixel text-[11px] text-muted-foreground">
+                <PixelIcon name="global-public" className="h-3.5 w-3.5 shrink-0" />
+                {project.repoUrl}
+              </p>
+            )}
+            {project.repoPath ? (
+              <p className="mt-1.5 break-all font-pixel text-[11px] text-muted-foreground">{project.repoPath}</p>
+            ) : (
+              <p className="mt-1.5 font-pixel text-[11px] text-muted-foreground [text-transform:lowercase]">manual local paths per task</p>
+            )}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            {project.isDefault && (
+              <span
+                className="sticker-sm inline-flex items-center gap-1 rounded-full px-2 py-1 font-pixel text-[10px] [text-transform:lowercase]"
+                style={{ backgroundColor: 'var(--color-neon-yellow)', color: 'var(--color-ink)' }}
+              >
+                <PixelIcon name="rating-star-1" className="h-3 w-3" />
+                default
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onEdit(); }}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
+              aria-label={`Edit ${project.name}`}
+              title="Edit project"
+            >
+              <PixelIcon name="quill-ink" className="h-4 w-4" />
+            </button>
+            {!project.isDefault && onDelete && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 transition-colors hover:border-destructive hover:text-destructive"
+                aria-label={`Delete ${project.name}`}
+                title="Delete project"
+              >
+                <PixelIcon name="bin" className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Task count chips */}
+        <div className="mt-5 grid grid-cols-2 gap-2">
+          {countLabels.map(([key, label, color]) => (
+            <div
+              key={key}
+              className="sticker-sm flex items-center justify-between gap-2 rounded-full bg-card px-3 py-2"
+            >
+              <span className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">{label}</span>
+              <span
+                className="sticker-sm inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 font-pixel text-[11px]"
+                style={{ backgroundColor: color, color: 'var(--color-ink)' }}
+              >
+                {project.taskCounts?.[key] ?? 0}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Open Project CTA */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onOpen(); }}
+          className="sticker-sm sticker-press mt-auto flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 font-display text-sm text-primary-foreground [text-transform:lowercase] pt-5 transition-transform duration-200 group-hover:scale-[1.02]"
+        >
+          <PixelIcon name="flash" className="h-4 w-4" />
+          open project
+        </button>
+      </article>
+    </motion.div>
+  );
+}
 
 export function ProjectsPage({
   projects,
@@ -188,101 +327,18 @@ export function ProjectsPage({
             </div>
           )}
 
-          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project, i) => {
-              const hue = TILE_HUES[i % TILE_HUES.length];
-              return (
-                <motion.div
-                  key={project.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.07, duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  <article
-                    aria-label={project.name}
-                    className="panel-neon sticker-peel flex min-h-64 flex-col rounded-[1.75rem] p-5"
-                    style={{ '--panel': hue } as React.CSSProperties}
-                  >
-                    {/* Card header */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h2 className="truncate font-display text-lg text-foreground [text-transform:lowercase]">{project.name}</h2>
-                        {project.repoUrl && (
-                          <p className="mt-1.5 flex items-center gap-1.5 break-all font-pixel text-[11px] text-muted-foreground">
-                            <PixelIcon name="global-public" className="h-3.5 w-3.5 shrink-0" />
-                            {project.repoUrl}
-                          </p>
-                        )}
-                        {project.repoPath ? (
-                          <p className="mt-1.5 break-all font-pixel text-[11px] text-muted-foreground">{project.repoPath}</p>
-                        ) : (
-                          <p className="mt-1.5 font-pixel text-[11px] text-muted-foreground [text-transform:lowercase]">manual local paths per task</p>
-                        )}
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-1">
-                        {project.isDefault && (
-                          <span
-                            className="sticker-sm inline-flex items-center gap-1 rounded-full px-2 py-1 font-pixel text-[10px] [text-transform:lowercase]"
-                            style={{ backgroundColor: 'var(--color-neon-yellow)', color: 'var(--color-ink)' }}
-                          >
-                            <PixelIcon name="rating-star-1" className="h-3 w-3" />
-                            default
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => openEditDialog(project)}
-                          className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground"
-                          aria-label={`Edit ${project.name}`}
-                          title="Edit project"
-                        >
-                          <PixelIcon name="quill-ink" className="h-4 w-4" />
-                        </button>
-                        {!project.isDefault && (
-                          <button
-                            type="button"
-                            onClick={() => setDeletingProject(project)}
-                            className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 transition-colors hover:border-destructive hover:text-destructive"
-                            aria-label={`Delete ${project.name}`}
-                            title="Delete project"
-                          >
-                            <PixelIcon name="bin" className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Task count chips */}
-                    <div className="mt-5 grid grid-cols-2 gap-2">
-                      {countLabels.map(([key, label, color]) => (
-                        <div
-                          key={key}
-                          className="sticker-sm flex items-center justify-between gap-2 rounded-full bg-card px-3 py-2"
-                        >
-                          <span className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">{label}</span>
-                          <span
-                            className="sticker-sm inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 font-pixel text-[11px]"
-                            style={{ backgroundColor: color, color: 'var(--color-ink)' }}
-                          >
-                            {project.taskCounts?.[key] ?? 0}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Open Project CTA */}
-                    <button
-                      onClick={() => onOpenProject(project)}
-                      className="sticker-sm sticker-press mt-auto flex w-full items-center justify-center gap-2 rounded-full bg-primary px-4 py-2.5 font-display text-sm text-primary-foreground [text-transform:lowercase] pt-5"
-                    >
-                      <PixelIcon name="flash" className="h-4 w-4" />
-                      open project
-                    </button>
-                  </article>
-                </motion.div>
-              );
-            })}
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3" style={{ perspective: '1200px' }}>
+            {projects.map((project, i) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                hue={TILE_HUES[i % TILE_HUES.length]}
+                index={i}
+                onOpen={() => onOpenProject(project)}
+                onEdit={() => openEditDialog(project)}
+                onDelete={!project.isDefault ? () => setDeletingProject(project) : undefined}
+              />
+            ))}
           </div>
         </div>
       </main>
