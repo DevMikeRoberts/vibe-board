@@ -81,8 +81,8 @@ export function Board({
       {
         id: 'archived' as ColumnId,
         title: 'Archived',
-        color: 'bg-zinc-500',
-        icon: 'archive'
+        color: 'slate',
+        icon: 'floppy-disk'
       } as ColumnType
     ];
   }, [showArchived]);
@@ -169,13 +169,14 @@ export function Board({
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
     >
-      <div className="flex h-full gap-4 overflow-x-auto p-4 pb-4 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto md:p-6">
+      <div className="flex h-full gap-5 overflow-x-auto p-5 pb-5 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto md:gap-6 md:p-7">
         {columns.map((column, index) => (
           <motion.div
             key={column.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.1, duration: 0.3 }}
+            className="flex h-full max-md:h-auto"
+            initial={{ opacity: 0, y: 42, rotate: index % 2 === 0 ? -1.6 : 1.6, scale: 0.94 }}
+            animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
+            transition={{ delay: index * 0.09, type: 'spring', stiffness: 260, damping: 19 }}
           >
             <Column
               column={column}
@@ -205,12 +206,17 @@ export function Board({
         ))}
       </div>
 
-      {/* Drag overlay */}
+      {/* Drag overlay — the card leans into the ride */}
       <DragOverlay>
         {activeTask && (
-          <div className="w-full max-w-80 rotate-3 opacity-90">
+          <motion.div
+            className="w-full max-w-88 opacity-95"
+            initial={{ rotate: 0, scale: 1 }}
+            animate={{ rotate: [3, 1.4, 3], scale: 1.05 }}
+            transition={{ duration: 0.7, repeat: Infinity, ease: 'easeInOut' }}
+          >
             <TaskCard task={activeTask} onClick={() => {}} />
-          </div>
+          </motion.div>
         )}
       </DragOverlay>
     </DndContext>

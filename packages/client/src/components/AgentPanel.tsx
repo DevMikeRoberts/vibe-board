@@ -1,61 +1,39 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';import Markdown from 'react-markdown';
-import {
-  X,
-  Brain,
-  Terminal,
-  FileCode2,
-  Cog,
-  CheckCircle2,
-  AlertCircle,
-  ChevronRight,
-  ChevronDown,
-  Copy,
-  Check,
-  Play,
-  Square,
-  GitBranch,
-  ExternalLink,
-  GitMerge,
-  Trash2,
-  Send,
-  FileText,
-  RotateCw,
-  Download,
-  Paperclip,
-} from 'lucide-react';
 import type { Task, AgentEvent, AgentEventType } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
 import { TerminalView } from './TerminalView';
+import { PixelIcon } from './PixelIcon';
 import { api, connectWS } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-const eventIconMap: Record<AgentEventType, React.ElementType> = {
-  thinking: Brain,
-  tool_call: Cog,
-  file_read: FileText,
-  file_write: FileCode2,
-  file_edit: FileCode2,
-  command: Terminal,
-  command_output: Terminal,
-  output: Terminal,
-  test_result: CheckCircle2,
-  error: AlertCircle,
-  complete: CheckCircle2,
+/** Pixel-icon name per event type (see PixelIcon / the streamline pack). */
+const eventIconMap: Record<AgentEventType, string> = {
+  thinking: 'light-bulb',
+  tool_call: 'cog-browser',
+  file_read: 'open-book-bookmark',
+  file_write: 'quill-ink',
+  file_edit: 'quill-ink',
+  command: 'old-electronics',
+  command_output: 'old-electronics',
+  output: 'message',
+  test_result: 'iris-scan-approved',
+  error: 'alert-triangle-1',
+  complete: 'rating-star-1',
 };
 
 const eventColorMap: Record<AgentEventType, string> = {
-  thinking: 'text-purple-500 dark:text-purple-400',
-  tool_call: 'text-blue-500 dark:text-blue-400',
-  file_read: 'text-sky-500 dark:text-sky-400',
-  file_write: 'text-amber-500 dark:text-amber-400',
-  file_edit: 'text-amber-500 dark:text-amber-400',
-  command: 'text-cyan-600 dark:text-cyan-400',
-  command_output: 'text-zinc-500 dark:text-zinc-400',
-  output: 'text-zinc-500 dark:text-zinc-400',
-  test_result: 'text-emerald-500 dark:text-emerald-400',
-  error: 'text-red-500 dark:text-red-400',
-  complete: 'text-emerald-500 dark:text-emerald-400',
+  thinking: 'text-neon-purple',
+  tool_call: 'text-neon-blue',
+  file_read: 'text-neon-blue',
+  file_write: 'text-neon-yellow',
+  file_edit: 'text-neon-yellow',
+  command: 'text-neon-green',
+  command_output: 'text-muted-foreground',
+  output: 'text-muted-foreground',
+  test_result: 'text-neon-green',
+  error: 'text-destructive',
+  complete: 'text-neon-green',
 };
 
 const eventLabelMap: Record<AgentEventType, string> = {
@@ -241,9 +219,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      className="flex h-6 w-6 items-center justify-center rounded-md font-pixel text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      aria-label={copied ? 'Copied' : 'Copy'}
     >
-      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? <span className="text-neon-green">✓</span> : <PixelIcon name="clip-1" className="h-3 w-3" />}
     </button>
   );
 }
@@ -251,7 +230,7 @@ function CopyButton({ text }: { text: string }) {
 function EventItem({ event }: { event: CoalescedEvent }) {
   // Thinking events default to collapsed; everything else expanded
   const [expanded, setExpanded] = useState(event.type !== 'thinking');
-  const Icon = eventIconMap[event.type];
+  const iconName = eventIconMap[event.type];
   const color = eventColorMap[event.type];
   const label = event.toolLabel
     ? event.toolLabel.charAt(0).toUpperCase() + event.toolLabel.slice(1)
@@ -285,19 +264,19 @@ function EventItem({ event }: { event: CoalescedEvent }) {
       transition={{ duration: 0.2 }}
       className={cn(
         'group',
-        event.type === 'error' && 'rounded-lg border border-red-500/20 bg-red-500/5'
+        event.type === 'error' && 'rounded-xl border-2 border-destructive/30 bg-destructive/5'
       )}
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+        className="flex w-full items-start gap-2 rounded-xl px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
       >
         <div className={cn('mt-0.5 shrink-0', color)}>
-          <Icon className="h-3.5 w-3.5" />
+          <PixelIcon name={iconName} className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-foreground">
+            <span className="font-pixel text-[11px] text-foreground [text-transform:lowercase]">
               {label}
             </span>
             {headerSummary && (
@@ -310,12 +289,15 @@ function EventItem({ event }: { event: CoalescedEvent }) {
                 {event.metadata!.file}
               </span>
             )}
-            <ChevronRight
+            <span
               className={cn(
-                'ml-auto h-3 w-3 shrink-0 text-muted-foreground/50 transition-transform',
+                'ml-auto shrink-0 font-pixel text-xs text-muted-foreground/60 transition-transform',
                 expanded && 'rotate-90'
               )}
-            />
+              aria-hidden="true"
+            >
+              ›
+            </span>
           </div>
         </div>
       </button>
@@ -333,14 +315,14 @@ function EventItem({ event }: { event: CoalescedEvent }) {
               {/* Thinking / text content — render as code block if it looks like code */}
               {(event.type === 'thinking' || event.type === 'complete' || event.type === 'error') && (
                 looksLikeCode(event.content) ? (
-                  <div className="rounded-md px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
+                  <div className="rounded-lg px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
                     {event.content}
                   </div>
                 ) : (
                   <p className={cn(
                     'text-xs leading-relaxed whitespace-pre-wrap',
                     event.type === 'error'
-                      ? 'font-mono text-red-700 dark:text-red-300'
+                      ? 'font-mono text-destructive'
                       : 'text-muted-foreground'
                   )}>
                     {event.content}
@@ -350,14 +332,14 @@ function EventItem({ event }: { event: CoalescedEvent }) {
 
               {/* Command — user follow-up messages have distinct styling */}
               {event.type === 'command' && event.content.startsWith('You: ') && (
-                <div className="rounded-md bg-sky-500/10 border border-sky-500/20 px-2.5 py-1.5 text-xs text-sky-700 dark:text-sky-300">
+                <div className="rounded-lg border-2 border-neon-blue/30 bg-neon-blue/10 px-2.5 py-1.5 text-xs text-neon-blue">
                   {event.content}
                 </div>
               )}
 
               {/* Command — show parsed command cleanly */}
               {event.type === 'command' && !event.content.startsWith('You: ') && (
-                <div className="flex items-center gap-1 rounded-md px-2.5 py-1.5 font-mono text-xs" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-command)' }}>
+                <div className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 font-mono text-xs" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-command)' }}>
                   <span className="text-muted-foreground select-none">$</span>
                   <span className="flex-1">{event.toolArgs || event.content}</span>
                   <CopyButton text={event.toolArgs || event.content} />
@@ -392,7 +374,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
                     </div>
                   )}
                   {toolDetail && (
-                    <div className="flex items-start gap-1 rounded-md px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
+                    <div className="flex items-start gap-1 rounded-lg px-2.5 py-1.5 font-mono text-xs whitespace-pre-wrap" style={{ backgroundColor: 'var(--code-bg)', color: 'var(--code-text)' }}>
                       <span className="flex-1 overflow-x-auto">{toolDetail}</span>
                       <CopyButton text={toolDetail} />
                     </div>
@@ -402,7 +384,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
 
               {/* Diff */}
               {hasDiff && (
-                <div className="mt-1 overflow-x-auto rounded-md p-2.5 font-mono text-[11px] leading-relaxed" style={{ backgroundColor: 'var(--code-bg)' }}>
+                <div className="mt-1 overflow-x-auto rounded-lg p-2.5 font-mono text-[11px] leading-relaxed" style={{ backgroundColor: 'var(--code-bg)' }}>
                   {event.metadata!.diff!.split('\n').map((line, i) => (
                     <div
                       key={i}
@@ -643,97 +625,100 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             initial={{ x: '100%', opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 z-[60] flex h-full w-full flex-col border-l border-border bg-card shadow-2xl md:max-w-md md:w-[420px]"
+            transition={{ type: 'spring', damping: 26, stiffness: 260 }}
+            className="panel-neon fixed right-0 top-0 z-[60] flex h-full w-full flex-col rounded-l-[1.75rem] shadow-2xl md:max-w-md md:w-[460px]"
+            style={{ '--panel': 'var(--color-neon-blue)' } as React.CSSProperties}
           >
           {/* Progress bar */}
           {(task.agentStatus === 'planning' || task.agentStatus === 'executing' || task.agentStatus === 'complete') && (
-            <div className="h-1 w-full bg-muted shrink-0">
+            <div className="h-2 w-full bg-ink shrink-0 rounded-tl-[1.75rem] overflow-hidden">
               <div
                 className={cn(
-                  'h-full rounded-r transition-all duration-700 ease-in-out',
+                  'h-full transition-all duration-700 ease-in-out',
                   task.agentStatus === 'complete'
-                    ? 'w-full bg-emerald-500'
+                    ? 'w-full bg-neon-green'
                     : task.agentStatus === 'executing'
-                      ? 'w-3/5 bg-primary animate-pulse'
-                      : 'w-1/4 bg-purple-500 animate-pulse'
+                      ? 'w-3/5 bg-primary animate-px-blink'
+                      : 'w-1/4 bg-neon-purple animate-px-blink'
                 )}
               />
             </div>
           )}
 
           {/* Header */}
-          <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
+          <div className="flex shrink-0 items-center justify-between border-b-2 border-border px-4 py-3.5">
             <div className="min-w-0 flex-1">
-              <h3 className="truncate text-sm font-semibold">{task.title}</h3>
-              <div className="mt-0.5 flex items-center gap-2">
+              <h3 className="truncate font-display text-lg leading-tight [text-transform:lowercase]">{task.title}</h3>
+              <div className="mt-1 flex items-center gap-2.5 font-pixel text-[10px]">
                 {task.agentType && agentDisplay && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {agentDisplay.emoji} {agentDisplay.label}
+                  <span className="flex items-center gap-1 text-muted-foreground [text-transform:lowercase]">
+                    <PixelIcon name="chipset" className="h-3 w-3" />
+                    {agentDisplay.label}
                   </span>
                 )}
                 {isActive && (
-                  <span className="flex items-center gap-1 text-[10px] text-primary">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+                  <span className="flex items-center gap-1 text-primary [text-transform:lowercase]">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping bg-primary opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 bg-primary" />
                     </span>
-                    Active
+                    active
                   </span>
                 )}
                 {task.agentStatus === 'complete' && (
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Complete
+                  <span className="flex items-center gap-1 text-neon-green [text-transform:lowercase]">
+                    <PixelIcon name="rating-star-1" className="h-3 w-3" />
+                    complete
                   </span>
                 )}
                 {task.agentStatus === 'failed' && (
-                  <span className="flex items-center gap-1 text-[10px] text-red-600 dark:text-red-400">
-                    <AlertCircle className="h-3 w-3" />
-                    Failed
+                  <span className="flex items-center gap-1 text-destructive [text-transform:lowercase]">
+                    <PixelIcon name="alert-triangle-1" className="h-3 w-3" />
+                    failed
                   </span>
                 )}
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-muted-foreground [text-transform:lowercase]">
                   {events.length} events
                 </span>
               </div>
             </div>
-            <div className="ml-3 flex items-center gap-1.5">
+            <div className="ml-3 flex items-center gap-2">
               {/* Run / Stop / Retry buttons */}
               {!isActive && task.agentStatus !== 'complete' && onRun && (
                 <button
                   onClick={() => onRun(task.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                  className="sticker-sm sticker-press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                  style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
                   title={task.agentStatus === 'failed' ? 'Retry agent' : 'Run agent'}
                 >
-                  {task.agentStatus === 'failed' ? <RotateCw className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  <PixelIcon name={task.agentStatus === 'failed' ? 'recycle' : 'flash'} className="h-5 w-5" />
                 </button>
               )}
               {!isActive && task.agentStatus === 'failed' && onReconfigureRetry && (
                 <button
                   onClick={() => onReconfigureRetry(task.id)}
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-muted px-3 text-xs font-medium text-amber-500 dark:text-amber-400 hover:bg-amber-500/20 transition-colors"
+                  className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border-2 border-border bg-card px-3 font-pixel text-[11px] text-neon-yellow hover:border-neon-yellow transition-colors [text-transform:lowercase]"
                   title="Reconfigure and retry"
                 >
-                  <Cog className="h-3.5 w-3.5" />
-                  Reconfigure
+                  <PixelIcon name="cog-browser" className="h-3.5 w-3.5" />
+                  reconfigure
                 </button>
               )}
               {isActive && onStop && (
                 <button
                   onClick={() => onStop(task.id)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-red-500 dark:text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="sticker-sm sticker-press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-destructive text-cream"
                   title="Stop agent"
                 >
-                  <Square className="h-4 w-4" />
+                  <span className="block h-3 w-3 bg-current" aria-hidden="true" />
                 </button>
               )}
               <button
                 onClick={onClose}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-foreground hover:bg-destructive hover:text-white hover:border-destructive transition-colors"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-foreground hover:border-destructive hover:bg-destructive hover:text-cream transition-colors"
                 title="Close panel (Esc)"
               >
-                <X className="h-5 w-5" strokeWidth={2.5} />
+                ✕
               </button>
             </div>
           </div>
@@ -741,20 +726,17 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
           {/* Task description as collapsible markdown */}
           {/* WARNING: Do NOT add rehype-raw — it would allow raw HTML injection (XSS). */}
           {task.description && (
-            <div className="shrink-0 border-b border-border">
+            <div className="shrink-0 border-b-2 border-border">
               <button
                 onClick={() => setDescExpanded(!descExpanded)}
-                className="flex w-full items-center gap-2 px-4 py-2 text-left hover:bg-accent/50 transition-colors"
+                className="flex w-full items-center gap-2 px-4 py-2.5 text-left hover:bg-accent/50 transition-colors"
               >
-                <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                <span className="text-xs font-medium text-foreground">Task Description</span>
-                <span className="text-[10px] text-muted-foreground ml-1">
+                <PixelIcon name="open-book-bookmark" className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <span className="font-pixel text-[11px] text-foreground [text-transform:lowercase]">task description</span>
+                <span className="font-pixel text-[10px] text-muted-foreground ml-1">
                   {task.description.length > 200 ? `${Math.round(task.description.length / 100) * 100}+ chars` : ''}
                 </span>
-                {descExpanded
-                  ? <ChevronDown className="ml-auto h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                  : <ChevronRight className="ml-auto h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                }
+                <span className={cn('ml-auto shrink-0 font-pixel text-sm text-muted-foreground transition-transform', descExpanded && 'rotate-90')} aria-hidden="true">›</span>
               </button>
               <AnimatePresence>
                 {descExpanded && (
@@ -785,9 +767,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
 
           {/* Worktree info bar */}
           {task.branchName && (
-            <div className="shrink-0 border-b border-border px-4 py-2 space-y-1.5">
+            <div className="shrink-0 border-b-2 border-border px-4 py-2.5 space-y-1.5">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <GitBranch className="h-3 w-3 text-primary" />
+                <PixelIcon name="hierarchy-2" className="h-3.5 w-3.5 text-neon-blue" />
                 <span className="font-mono text-foreground">{task.branchName}</span>
                 <span className="text-muted-foreground/50">from</span>
                 <span className="font-mono">{task.baseBranch || 'main'}</span>
@@ -815,10 +797,11 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                         setPrLoading(false);
                       }}
                       disabled={prLoading}
-                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                      className="sticker-sm sticker-press flex items-center gap-1.5 rounded-full px-3 py-1.5 font-pixel text-[10px] disabled:opacity-50 [text-transform:lowercase]"
+                      style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
                     >
-                      <ExternalLink className="h-3 w-3" />
-                      {prLoading ? 'Creating...' : 'Create PR'}
+                      <PixelIcon name="hyperlink" className="h-3.5 w-3.5" />
+                      {prLoading ? 'creating…' : 'create pr'}
                     </button>
                   )}
                   {prUrl && (
@@ -826,10 +809,10 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                       href={prUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 transition-colors"
+                      className="flex items-center gap-1.5 rounded-full border-2 border-neon-green/40 bg-neon-green/10 px-3 py-1.5 font-pixel text-[10px] text-neon-green hover:bg-neon-green/20 transition-colors [text-transform:lowercase]"
                     >
-                      <ExternalLink className="h-3 w-3" />
-                      View PR
+                      <PixelIcon name="hyperlink" className="h-3.5 w-3.5" />
+                      view pr
                     </a>
                   )}
                   {!mergeResult && task.branchName && onMergeLocal && (
@@ -846,25 +829,26 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                         setMergeLoading(false);
                       }}
                       disabled={mergeLoading}
-                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+                      className="sticker-sm sticker-press flex items-center gap-1.5 rounded-full px-3 py-1.5 font-pixel text-[10px] disabled:opacity-50 [text-transform:lowercase]"
+                      style={{ backgroundColor: 'var(--color-neon-purple)', color: 'var(--color-ink)' }}
                     >
-                      <GitMerge className="h-3 w-3" />
-                      {mergeLoading ? 'Merging...' : `Merge to ${task.baseBranch || 'main'}`}
+                      <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
+                      {mergeLoading ? 'merging…' : `merge to ${task.baseBranch || 'main'}`}
                     </button>
                   )}
                   {mergeResult && (
-                    <span className="flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
-                      <GitMerge className="h-3 w-3" />
-                      Merged to {mergeResult}
+                    <span className="flex items-center gap-1.5 rounded-full border-2 border-neon-green/40 bg-neon-green/10 px-3 py-1.5 font-pixel text-[10px] text-neon-green [text-transform:lowercase]">
+                      <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
+                      merged to {mergeResult}
                     </span>
                   )}
                   {task.worktreePath && onCleanupWorktree && (
                     <button
                       onClick={() => setShowWorktreeConfirm(true)}
-                      className="flex items-center gap-1.5 rounded-md border border-border bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/30 transition-colors"
+                      className="flex items-center gap-1.5 rounded-full border-2 border-border bg-card px-3 py-1.5 font-pixel text-[10px] text-muted-foreground hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive transition-colors [text-transform:lowercase]"
                     >
-                      <Trash2 className="h-3 w-3" />
-                      Clean up worktree
+                      <PixelIcon name="bin" className="h-3.5 w-3.5" />
+                      clean up worktree
                     </button>
                   )}
                 </div>
@@ -876,26 +860,30 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             </div>
           )}
           {showWorktreeConfirm && (
-            <div className="mx-4 my-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-              <p className="text-xs text-amber-200 font-medium mb-1">Delete worktree?</p>
-              <p className="text-xs text-amber-300/80 mb-3">
+            <div className="mx-4 my-2 rounded-2xl border-2 border-neon-yellow/40 bg-neon-yellow/10 p-3.5">
+              <p className="flex items-center gap-1.5 font-display text-sm text-neon-yellow mb-1.5 [text-transform:lowercase]">
+                <PixelIcon name="alert-triangle-1" className="h-4 w-4" />
+                delete worktree?
+              </p>
+              <p className="text-xs text-foreground/70 mb-3">
                 This removes the worktree directory and its files. If you haven't created a PR yet, you won't be able to push these changes afterward.
               </p>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 <button
                   onClick={() => setShowWorktreeConfirm(false)}
-                  className="rounded px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
+                  className="h-9 rounded-full border-2 border-border px-3.5 font-pixel text-[11px] text-foreground/80 hover:border-foreground/40 transition-colors [text-transform:lowercase]"
                 >
-                  Cancel
+                  cancel
                 </button>
                 <button
                   onClick={() => {
                     setShowWorktreeConfirm(false);
                     if (task && onCleanupWorktree) onCleanupWorktree(task.id);
                   }}
-                  className="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-500"
+                  className="sticker-sm sticker-press flex h-9 items-center gap-1.5 rounded-full bg-destructive px-3.5 font-pixel text-[11px] text-cream [text-transform:lowercase]"
                 >
-                  Delete worktree
+                  <PixelIcon name="bin" className="h-3.5 w-3.5" />
+                  delete worktree
                 </button>
               </div>
             </div>
@@ -907,55 +895,23 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             />
           )}
 
-          {/* Tab bar */}
-          <div className="shrink-0 flex items-center justify-between border-b border-border px-2 pt-1">
-            <div className="flex gap-1">
+          {/* Tab bar — chunky sticker tabs */}
+          <div className="shrink-0 flex items-center justify-between gap-2 border-b-2 border-border px-3 py-2.5">
+            <div className="flex flex-wrap gap-2">
             {showSummaryTab && (
-              <button
-                onClick={() => selectTab('summary')}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
-                  activeTab === 'summary'
-                    ? 'bg-card border border-border border-b-card text-foreground -mb-px'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                Summary
-              </button>
+              <TabButton active={activeTab === 'summary'} onClick={() => selectTab('summary')} icon="certified-diploma" hue="var(--color-neon-green)">
+                summary
+              </TabButton>
             )}
-            <button
-              onClick={() => selectTab('events')}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
-                activeTab === 'events'
-                  ? 'bg-card border border-border border-b-card text-foreground -mb-px'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Events
-            </button>
-            <button
-              onClick={() => selectTab('terminal')}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
-                activeTab === 'terminal'
-                  ? 'bg-card border border-border border-b-card text-foreground -mb-px'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Terminal
-            </button>
-            <button
-              onClick={() => selectTab('changes')}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-t transition-colors',
-                activeTab === 'changes'
-                  ? 'bg-card border border-border border-b-card text-foreground -mb-px'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              Actions{fileChanges.length > 0 ? ` (${fileChanges.length})` : ''}
-            </button>
+            <TabButton active={activeTab === 'events'} onClick={() => selectTab('events')} icon="message" hue="var(--color-neon-pink)">
+              events
+            </TabButton>
+            <TabButton active={activeTab === 'terminal'} onClick={() => selectTab('terminal')} icon="old-electronics" hue="var(--color-neon-blue)">
+              terminal
+            </TabButton>
+            <TabButton active={activeTab === 'changes'} onClick={() => selectTab('changes')} icon="quill-ink" hue="var(--color-neon-yellow)">
+              actions{fileChanges.length > 0 ? ` (${fileChanges.length})` : ''}
+            </TabButton>
             </div>
             {events.length > 0 && (
               <button
@@ -971,11 +927,11 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                   a.href = url; a.download = `agent-log-${task.id}.md`; a.click();
                   URL.revokeObjectURL(url);
                 }}
-                className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex shrink-0 items-center gap-1 rounded-full border-2 border-border px-2.5 py-1.5 font-pixel text-[10px] text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors [text-transform:lowercase]"
                 title="Download event log as markdown"
               >
-                <Download className="h-3 w-3" />
-                Export
+                <PixelIcon name="clound-download" className="h-3.5 w-3.5" />
+                export
               </button>
             )}
           </div>
@@ -986,9 +942,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
               {summaryText ? (
                 <>
                   {!completedSectionFilled && (
-                    <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      The required “Completed” section is empty or missing.
+                    <div className="mb-3 flex items-center gap-2 rounded-xl border-2 border-neon-yellow/40 bg-neon-yellow/10 px-3 py-2.5 font-pixel text-[11px] text-neon-yellow [text-transform:lowercase]">
+                      <PixelIcon name="alert-triangle-1" className="h-4 w-4 shrink-0" />
+                      the required “completed” section is empty or missing.
                     </div>
                   )}
                   <div className="prose prose-sm dark:prose-invert max-w-none text-foreground [&_h2]:mt-4 [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h2:first-child]:mt-0">
@@ -998,8 +954,8 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
               ) : (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <FileText className="mx-auto h-10 w-10 text-muted-foreground/20" />
-                    <p className="mt-3 text-sm text-muted-foreground/50">No summary was provided for this task.</p>
+                    <PixelIcon name="certified-diploma" className="animate-px-bob mx-auto h-11 w-11 text-muted-foreground/30" />
+                    <p className="mt-3 font-pixel text-[11px] text-muted-foreground/60 [text-transform:lowercase]">no summary was provided for this task.</p>
                   </div>
                 </div>
               )}
@@ -1008,30 +964,33 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
 
           {/* Terminal view */}
           {activeTab === 'terminal' && (
-            <div className={cn('flex-1 overflow-hidden rounded-none', theme === 'light' ? 'bg-[#f8f9fb]' : 'bg-[#0f172a]')}>
+            <div className={cn('flex-1 overflow-hidden', theme === 'light' ? 'bg-cream' : 'bg-ink')}>
               <TerminalView events={events} streaming={streaming} theme={theme} />
             </div>
           )}
 
           {/* Changes list */}
           {activeTab === 'changes' && (
-            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            <div className="flex-1 overflow-y-auto p-2.5 space-y-1.5">
               {fileChanges.length === 0 && (
                 <div className="flex h-full items-center justify-center">
                   <div className="text-center">
-                    <FileCode2 className="mx-auto h-10 w-10 text-muted-foreground/20" />
-                    <p className="mt-3 text-sm text-muted-foreground/50">No actions yet</p>
+                    <PixelIcon name="quill-ink" className="animate-px-bob mx-auto h-11 w-11 text-muted-foreground/30" />
+                    <p className="mt-3 font-pixel text-[11px] text-muted-foreground/60 [text-transform:lowercase]">no actions yet</p>
                   </div>
                 </div>
               )}
               {fileChanges.map((file) => (
-                <details key={file.path} className="group rounded-lg border border-border bg-card">
-                  <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-accent/50">
-                    <span>{file.type === 'created' ? '🟢' : file.type === 'modified' ? '🟡' : '📖'}</span>
+                <details key={file.path} className="group rounded-xl border-2 border-border bg-card">
+                  <summary className="flex cursor-pointer items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent/50 rounded-xl">
+                    <PixelIcon
+                      name={file.type === 'created' ? 'rating-star-1' : file.type === 'modified' ? 'quill-ink' : 'open-book-bookmark'}
+                      className={cn('h-4 w-4 shrink-0', file.type === 'created' ? 'text-neon-green' : file.type === 'modified' ? 'text-neon-yellow' : 'text-neon-blue')}
+                    />
                     <span className="flex-1 font-mono text-xs text-foreground truncate" title={file.path}>{file.path}</span>
-                    <span className="text-[10px] text-muted-foreground capitalize">{file.type}</span>
+                    <span className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">{file.type}</span>
                   </summary>
-                  <div className="border-t border-border px-3 py-2 overflow-x-auto">
+                  <div className="border-t-2 border-border px-3 py-2 overflow-x-auto">
                     <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap">{file.diff || file.content}</pre>
                   </div>
                 </details>
@@ -1047,12 +1006,12 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
           >
             {coalescedEvents.length === 0 && !streaming && failedWithoutDetails && (
               <div className="flex h-full items-center justify-center p-4">
-                <div className="w-full rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-center">
-                  <AlertCircle className="mx-auto h-10 w-10 text-red-500/80 dark:text-red-400/80" />
-                  <p className="mt-3 text-sm font-medium text-red-700 dark:text-red-300">
-                    Agent failed
+                <div className="w-full rounded-2xl border-2 border-destructive/40 bg-destructive/10 p-5 text-center">
+                  <PixelIcon name="alert-triangle-1" className="animate-px-bob mx-auto h-11 w-11 text-destructive" />
+                  <p className="mt-3 font-display text-base text-destructive [text-transform:lowercase]">
+                    agent failed
                   </p>
-                  <p className="mt-1 text-xs leading-relaxed text-red-700/70 dark:text-red-300/70">
+                  <p className="mt-1.5 text-xs leading-relaxed text-destructive/80">
                     This run did not record an error event. Use Reconfigure or Retry to run it again and capture details.
                   </p>
                 </div>
@@ -1062,12 +1021,12 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             {coalescedEvents.length === 0 && !streaming && !failedWithoutDetails && (
               <div className="flex h-full items-center justify-center">
                 <div className="text-center">
-                  <Brain className="mx-auto h-10 w-10 text-muted-foreground/20" />
-                  <p className="mt-3 text-sm text-muted-foreground/50">
-                    No agent activity yet
+                  <PixelIcon name="light-bulb" className="animate-px-bob mx-auto h-11 w-11 text-muted-foreground/30" />
+                  <p className="mt-3 font-pixel text-[11px] text-muted-foreground/60 [text-transform:lowercase]">
+                    no agent activity yet
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground/30">
-                    Assign this task to start the agent
+                  <p className="mt-1.5 font-pixel text-[10px] text-muted-foreground/40 [text-transform:lowercase]">
+                    assign this task to start the agent
                   </p>
                 </div>
               </div>
@@ -1088,21 +1047,21 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                   <motion.div
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ repeat: Infinity, duration: 1.2, delay: 0 }}
-                    className="h-1 w-1 rounded-full bg-primary"
+                    className="h-2 w-2 bg-neon-pink"
                   />
                   <motion.div
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ repeat: Infinity, duration: 1.2, delay: 0.2 }}
-                    className="h-1 w-1 rounded-full bg-primary"
+                    className="h-2 w-2 bg-neon-yellow"
                   />
                   <motion.div
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ repeat: Infinity, duration: 1.2, delay: 0.4 }}
-                    className="h-1 w-1 rounded-full bg-primary"
+                    className="h-2 w-2 bg-neon-green"
                   />
                 </div>
-                <span className="text-[10px] text-muted-foreground">
-                  Agent is working...
+                <span className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
+                  agent is working…
                 </span>
               </motion.div>
             )}
@@ -1110,7 +1069,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
           )}
 
           {/* Follow-up message input — fixed at bottom */}
-          <div className="shrink-0 border-t border-border bg-card px-3 py-2">
+          <div className="shrink-0 border-t-2 border-border bg-card/60 px-3 py-3 rounded-bl-[1.75rem]">
             {/* Image previews */}
             {followUpImages.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1120,9 +1079,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                     <button
                       type="button"
                       onClick={() => setFollowUpImages(prev => prev.filter((_, j) => j !== i))}
-                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="sticker-sm absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-cream font-pixel text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      ×
+                      ✕
                     </button>
                   </div>
                 ))}
@@ -1133,10 +1092,10 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                 type="button"
                 onClick={() => imageInputRef.current?.click()}
                 disabled={agentStatus !== 'executing' || sending}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground hover:text-foreground hover:bg-accent transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Attach images"
               >
-                <Paperclip className="h-3.5 w-3.5" />
+                <PixelIcon name="clip-1" className="h-4 w-4" />
               </button>
               <input
                 ref={imageInputRef}
@@ -1161,17 +1120,17 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                     handleSendFollowUp();
                   }
                 }}
-                placeholder="Send a message to the agent..."
+                placeholder="message the agent…"
                 disabled={agentStatus !== 'executing' || sending}
-                className="flex-1 rounded-md border border-border bg-muted px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-40 disabled:cursor-not-allowed"
+                className="h-10 flex-1 rounded-xl border-2 border-border bg-card px-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground/50 focus:border-neon-pink focus:outline-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed [text-transform:lowercase]"
               />
               <button
                 onClick={handleSendFollowUp}
                 disabled={agentStatus !== 'executing' || sending || (!followUpMessage.trim() && followUpImages.length === 0)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-primary hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                className="sticker-sm sticker-press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
                 title="Send message"
               >
-                <Send className="h-3.5 w-3.5" />
+                <PixelIcon name="cursor-click-point" className="h-4 w-4" />
               </button>
             </div>
           </div>
@@ -1182,23 +1141,42 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
   );
 }
 
+/** A chunky sticker tab. Active = neon fill + ink text + hard shadow. */
+function TabButton({ active, onClick, icon, hue, children }: { active: boolean; onClick: () => void; icon: string; hue: string; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex h-10 items-center gap-1.5 rounded-full px-3.5 font-display text-sm transition-all [text-transform:lowercase]',
+        active
+          ? 'sticker-sm border-ink'
+          : 'border-2 border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground'
+      )}
+      style={active ? { backgroundColor: hue, color: 'var(--color-ink)' } : undefined}
+    >
+      <PixelIcon name={icon} className="h-4 w-4" />
+      {children}
+    </button>
+  );
+}
+
 function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   return (
-    <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm">
+    <div className="rounded-xl border-2 border-destructive/40 bg-destructive/10 p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
-        <p className="whitespace-pre-wrap font-mono text-xs text-red-300">{message}</p>
+        <p className="whitespace-pre-wrap font-mono text-xs text-destructive">{message}</p>
         <button
           onClick={() => navigator.clipboard.writeText(message)}
-          className="shrink-0 rounded px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20"
+          className="shrink-0 rounded-md px-2 py-1 font-pixel text-[10px] text-destructive hover:bg-destructive/20 [text-transform:lowercase]"
         >
-          Copy
+          copy
         </button>
       </div>
       <button
         onClick={onDismiss}
-        className="mt-2 text-[10px] text-zinc-300 hover:text-white"
+        className="mt-2 font-pixel text-[10px] text-muted-foreground hover:text-foreground [text-transform:lowercase]"
       >
-        Dismiss
+        dismiss
       </button>
     </div>
   );
@@ -1206,13 +1184,13 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss: () =>
 
 function FailureSummary({ message }: { message: string }) {
   return (
-    <div className="shrink-0 border-b border-border px-4 py-3">
-      <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+    <div className="shrink-0 border-b-2 border-border px-4 py-3">
+      <div className="rounded-2xl border-2 border-destructive/40 bg-destructive/10 p-3.5">
         <div className="flex items-start gap-2">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500 dark:text-red-400" />
+          <PixelIcon name="alert-triangle-1" className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-red-700 dark:text-red-300">Agent failed</p>
-            <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-red-700/80 dark:text-red-300/80">
+            <p className="font-display text-sm text-destructive [text-transform:lowercase]">agent failed</p>
+            <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-destructive/80">
               {message}
             </p>
           </div>
@@ -1226,5 +1204,5 @@ function FailureSummary({ message }: { message: string }) {
 function FollowUpImagePreview({ file }: { file: File }) {
   const url = useMemo(() => URL.createObjectURL(file), [file]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
-  return <img src={url} alt={file.name} className="w-10 h-10 object-cover rounded border border-border" />;
+  return <img src={url} alt={file.name} className="w-10 h-10 object-cover rounded-lg border-2 border-ink" />;
 }

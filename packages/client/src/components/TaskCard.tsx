@@ -1,22 +1,11 @@
 import { useState, useEffect, useRef, memo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  Clock,
-  Brain,
-  Cog,
-  CheckCircle2,
-  AlertCircle,
-  Circle,
-  Pencil,
-  Trash2,
-  Archive,
-  RotateCw,
-} from 'lucide-react';
 import type { Task, AgentStatus } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
 import { getPriorityDisplay } from '@/lib/priority-config';
 import { cn, formatDuration } from '@/lib/utils';
+import { PixelIcon } from '@/components/PixelIcon';
 import { FcStateBadge } from '@/components/fc/FcStateBadge';
 import { taskToFcState } from '@/components/fc/taskToFcState';
 import { FC_STATE_META } from '@/components/fc/fcState';
@@ -26,13 +15,13 @@ import { FcCelebration } from '@/components/fc/FcCelebration';
 
 const agentStatusConfig: Record<
   AgentStatus,
-  { icon: React.ElementType; label: string; className: string }
+  { icon: string; label: string; className: string; spin?: boolean; pulse?: boolean }
 > = {
-  idle: { icon: Circle, label: 'Idle', className: 'text-muted-foreground' },
-  planning: { icon: Brain, label: 'Planning', className: 'text-purple-400' },
-  executing: { icon: Cog, label: 'Executing', className: 'text-blue-400' },
-  complete: { icon: CheckCircle2, label: 'Complete', className: 'text-emerald-400' },
-  failed: { icon: AlertCircle, label: 'Failed', className: 'text-red-400' },
+  idle: { icon: 'alarm-bell-sleep', label: 'Idle', className: 'text-muted-foreground' },
+  planning: { icon: 'light-bulb', label: 'Planning', className: 'text-neon-purple', pulse: true },
+  executing: { icon: 'loading-circle-1', label: 'Executing', className: 'text-neon-blue', spin: true },
+  complete: { icon: 'rating-star-1', label: 'Complete', className: 'text-neon-green' },
+  failed: { icon: 'alert-triangle-1', label: 'Failed', className: 'text-destructive' },
 };
 
 function formatElapsed(startedAt?: number): string {
@@ -80,7 +69,6 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
     : undefined;
 
   const agentStatus = agentStatusConfig[task.agentStatus];
-  const StatusIcon = agentStatus.icon;
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
   const priorityDisplay = getPriorityDisplay(task.priority);
   const needsInput = useNeedsInput(task.id);
@@ -121,20 +109,25 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       data-fc-state={fcState}
       className={cn(
         'fc-card',
-        'group relative cursor-grab active:cursor-grabbing rounded-lg border border-border bg-card p-3 shadow-sm transition-all',
-        'hover:border-primary/30 hover:shadow-md',
-        priorityDisplay?.borderClass,
-        isDragging && 'z-50 rotate-2 scale-105 shadow-xl opacity-90',
-        isActive && 'border-primary/20',
-        task.archived && 'opacity-60 bg-muted'
+        'group relative cursor-grab active:cursor-grabbing rounded-2xl p-4',
+        isDragging && 'z-50 rotate-2 scale-105 opacity-90',
+        task.archived && 'opacity-60 saturate-50'
       )}
       onClick={() => { if (!wasDragging.current) onClick(); }}
     >
+      {/* Priority edge — a chunky neon tab hugging the left side */}
+      {priorityDisplay?.accent && (
+        <span
+          aria-hidden="true"
+          className="absolute -left-0.5 bottom-4 top-4 w-1.5 rounded-r-full"
+          style={{ backgroundColor: priorityDisplay.accent }}
+        />
+      )}
 
       {/* Action buttons — top right, visible on hover */}
       {(onEdit || onDelete || onArchive || onUnarchive || onRetry) && (
         <div
-          className="absolute right-2 top-2 flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+          className="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
         >
           {onRetry && task.agentStatus === 'failed' && !task.archived && (
@@ -143,10 +136,10 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
                 e.stopPropagation();
                 onRetry(task);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-amber-400"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-yellow"
               aria-label="Retry task"
             >
-              <RotateCw className="h-3 w-3" />
+              <PixelIcon name="recycle" className="h-3.5 w-3.5" />
             </button>
           )}
           {onEdit && !task.archived && (
@@ -155,10 +148,10 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
                 e.stopPropagation();
                 onEdit(task);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Edit task"
             >
-              <Pencil className="h-3 w-3" />
+              <PixelIcon name="quill-ink" className="h-3.5 w-3.5" />
             </button>
           )}
           {onArchive && (task.columnId === 'done' || task.agentStatus === 'failed') && !task.archived && (
@@ -167,10 +160,10 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
                 e.stopPropagation();
                 onArchive(task);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Archive task"
             >
-              <Archive className="h-3 w-3" />
+              <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
             </button>
           )}
           {onUnarchive && task.archived && (
@@ -179,10 +172,10 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
                 e.stopPropagation();
                 onUnarchive(task);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label="Unarchive task"
             >
-              <Archive className="h-3 w-3" />
+              <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
             </button>
           )}
           {onDelete && (
@@ -191,10 +184,10 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
                 e.stopPropagation();
                 onDelete(task);
               }}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-red-400"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
               aria-label="Delete task"
             >
-              <Trash2 className="h-3 w-3" />
+              <PixelIcon name="bin" className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -202,55 +195,57 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
       <div>
         {/* Title with priority emoji */}
-        <h3 className="line-clamp-2 pr-16 text-base font-medium leading-snug text-card-foreground">
-          {priorityDisplay && <span className="mr-1">{priorityDisplay.emoji}</span>}{task.title}
+        <h3 className="line-clamp-2 pr-16 text-lg font-bold leading-snug tracking-tight text-card-foreground">
+          {priorityDisplay && <span className="mr-1.5">{priorityDisplay.emoji}</span>}{task.title}
         </h3>
 
         {/* Description preview */}
-        <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
           {task.description}
         </p>
 
         {/* Agent card state badge (card-states feature) */}
-        <div className="mt-2">
+        <div className="mt-3">
           <FcStateBadge state={fcState} />
         </div>
 
         {/* Footer */}
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {/* Agent type badge */}
             {task.agentType && task.columnId !== 'backlog' && (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {agentDisplay?.emoji} {agentDisplay?.label}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 font-pixel text-[10px] text-accent-foreground">
+                <PixelIcon name="chipset" className="h-3 w-3" />
+                {agentDisplay?.label}
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             {/* Elapsed time (running) */}
             {isActive && elapsed && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock className="h-3 w-3" />
+              <span className="flex items-center gap-1 font-pixel text-[10px] text-muted-foreground">
+                <PixelIcon name="clock" className="h-3 w-3" />
                 {elapsed}
               </span>
             )}
 
             {/* Duration (completed/failed) */}
             {!isActive && (task.agentStatus === 'complete' || task.agentStatus === 'failed') && task.startedAt && task.completedAt && (
-              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock className="h-3 w-3" />
+              <span className="flex items-center gap-1 font-pixel text-[10px] text-muted-foreground">
+                <PixelIcon name="clock" className="h-3 w-3" />
                 {formatCompletedDuration(task.startedAt, task.completedAt)}
               </span>
             )}
 
             {/* Agent status */}
-            <div className={cn('flex items-center gap-1', agentStatus.className)}>
-              <StatusIcon
+            <div className={cn('flex items-center gap-1', agentStatus.className)} title={agentStatus.label}>
+              <PixelIcon
+                name={agentStatus.icon}
                 className={cn(
-                  'h-3.5 w-3.5',
-                  task.agentStatus === 'executing' && 'animate-spin',
-                  task.agentStatus === 'planning' && 'animate-pulse'
+                  'h-4 w-4',
+                  agentStatus.spin && 'animate-px-spin-fast',
+                  agentStatus.pulse && 'animate-px-blink'
                 )}
               />
             </div>
@@ -258,14 +253,14 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         </div>
       </div>
 
-      {/* Agent working progress bar — large, pinned to the card bottom (card-states) */}
+      {/* Agent working progress bar — marching rainbow pixels, pinned to the card bottom */}
       {FC_STATE_META[fcState].working && (
         <div className="fc-card-bar" aria-hidden="true">
           <i />
         </div>
       )}
 
-      {/* One-off green glow + confetti when the task finishes (card-states) */}
+      {/* One-off sticker pop + neon confetti when the task finishes (card-states) */}
       {celebrate && <FcCelebration />}
     </div>
   );

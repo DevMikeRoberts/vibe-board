@@ -1,75 +1,115 @@
 @import 'tailwindcss';
 
+/* ============================================================================
+   MIDNIGHT ARCADE — the AI Agent Board design system.
+
+   Two moods, one personality:
+     dark  = "Midnight Arcade": near-black canvas, neon panel columns,
+             sticker-pill chrome, pixel iconography.
+     light = "Paper Arcade": warm cream paper, same neon stickers, ink borders.
+
+   Type stack:
+     Chango     — fat bubble display face (titles, column stickers, big moments)
+     Outfit     — friendly geometric UI/body
+     Silkscreen — pixel face for tiny labels, counters, statuses
+   ========================================================================== */
+
 button, [role="button"] {
   cursor: pointer;
 }
+
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  /* Light mode: warm slate tones with visual depth */
-  --color-background: #f8f9fb;
-  --color-foreground: #1a1d23;
-  --color-muted: #eef0f4;
-  --color-muted-foreground: #64748b;
-  --color-border: #dde1e8;
-  --color-card: #ffffff;
-  --color-card-foreground: #1a1d23;
-  --color-popover: #ffffff;
-  --color-popover-foreground: #1a1d23;
-  --color-primary: #3b82f6;
-  --color-primary-foreground: #ffffff;
-  --color-accent: #eef0f4;
-  --color-accent-foreground: #1e293b;
-  --color-destructive: #ef4444;
-  --color-ring: #3b82f6;
-  --radius-lg: 0.25rem;
-  --radius-md: 0.1875rem;
-  --radius-sm: 0.125rem;
+  --font-sans: 'Outfit', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Chango', 'Outfit', ui-sans-serif, sans-serif;
+  --font-pixel: 'Silkscreen', 'Courier New', monospace;
+
+  /* ---- Paper Arcade (light) ---- */
+  --color-background: #ece3cb;
+  --color-foreground: #17121c;
+  --color-muted: #e0d5b6;
+  --color-muted-foreground: #6e6550;
+  --color-border: #cdc1a0;
+  --color-card: #f7f1dd;
+  --color-card-foreground: #17121c;
+  --color-popover: #f7f1dd;
+  --color-popover-foreground: #17121c;
+  --color-primary: #e8368f;
+  --color-primary-foreground: #fff6e8;
+  --color-accent: #e4dabd;
+  --color-accent-foreground: #17121c;
+  --color-destructive: #e03e3e;
+  --color-ring: #e8368f;
+
+  /* ---- the neon crayon box (slightly inked-down for paper) ---- */
+  --color-neon-blue: #4b3ee8;
+  --color-neon-green: #12b564;
+  --color-neon-yellow: #e7c900;
+  --color-neon-purple: #8a5cf0;
+  --color-neon-pink: #e8368f;
+  --color-ink: #0e0b14;
+  --color-cream: #f6f1de;
+
+  --radius-lg: 1.25rem;
+  --radius-md: 0.875rem;
+  --radius-sm: 0.625rem;
 }
 
-/* Agent panel code block colors — light mode */
+/* Non-Tailwind plumbing vars — light mode */
 :root {
-  --code-bg: #f1f3f7;
-  --code-text: #334155;
-  --code-command: #059669;
-  --code-diff-add-text: #166534;
-  --code-diff-add-bg: rgba(34, 197, 94, 0.1);
-  --code-diff-del-text: #991b1b;
-  --code-diff-del-bg: rgba(239, 68, 68, 0.1);
-  --code-diff-neutral: #64748b;
-  --prose-code-bg: #e2e5eb;
-  --overlay-bg: rgba(15, 23, 42, 0.12);
-  --column-bg: #f0f2f6;
+  --code-bg: #efe8d2;
+  --code-text: #3c3450;
+  --code-command: #0e9e5c;
+  --code-diff-add-text: #0c7a46;
+  --code-diff-add-bg: rgba(18, 181, 100, 0.12);
+  --code-diff-del-text: #b52a2a;
+  --code-diff-del-bg: rgba(224, 62, 62, 0.12);
+  --code-diff-neutral: #6e6550;
+  --prose-code-bg: #e4dabd;
+  --overlay-bg: rgba(23, 18, 28, 0.35);
+  --column-bg: #e3d9bd;
+  /* faint scattered pixel plus-signs on the paper */
+  --bg-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cg fill-opacity='0.09'%3E%3Cpath d='M24 12h4v4h-4zM20 16h12v4H20zM24 20h4v4h-4z' fill='%234b3ee8'/%3E%3Cpath d='M130 40h4v4h-4zM126 44h12v4h-12zM130 48h4v4h-4z' fill='%23e8368f'/%3E%3Cpath d='M64 108h4v4h-4zM60 112h12v4H60zM64 116h4v4h-4z' fill='%2312b564'/%3E%3Cpath d='M150 140h4v4h-4zM146 144h12v4h-12zM150 148h4v4h-4z' fill='%238a5cf0'/%3E%3Cpath d='M10 156h4v4h-4zM6 160h12v4H6zM10 164h4v4h-4z' fill='%23b89e00'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 .dark {
-  --color-background: #09090b;
-  --color-foreground: #fafafa;
-  --color-muted: #18181b;
-  --color-muted-foreground: #a1a1aa;
-  --color-border: #27272a;
-  --color-card: #0c0c0e;
-  --color-card-foreground: #fafafa;
-  --color-popover: #0c0c0e;
-  --color-popover-foreground: #fafafa;
-  --color-primary: #3b82f6;
-  --color-primary-foreground: #ffffff;
-  --color-accent: #27272a;
-  --color-accent-foreground: #fafafa;
-  --color-destructive: #ef4444;
-  --color-ring: #3b82f6;
+  /* ---- Midnight Arcade (dark) ---- */
+  --color-background: #08070c;
+  --color-foreground: #f6f1de;
+  --color-muted: #16141d;
+  --color-muted-foreground: #a29dbe;
+  --color-border: #29253a;
+  --color-card: #100e16;
+  --color-card-foreground: #f6f1de;
+  --color-popover: #14121c;
+  --color-popover-foreground: #f6f1de;
+  --color-primary: #ff6ec7;
+  --color-primary-foreground: #1c0512;
+  --color-accent: #1e1b2a;
+  --color-accent-foreground: #f6f1de;
+  --color-destructive: #ff5470;
+  --color-ring: #ff6ec7;
 
-  /* Agent panel code block colors — dark mode */
-  --code-bg: #18181b;
-  --code-text: #d4d4d8;
-  --code-command: #34d399;
-  --code-diff-add-text: #34d399;
-  --code-diff-add-bg: rgba(16, 185, 129, 0.1);
-  --code-diff-del-text: #f87171;
-  --code-diff-del-bg: rgba(239, 68, 68, 0.1);
-  --code-diff-neutral: #a1a1aa;
-  --prose-code-bg: #27272a;
-  --overlay-bg: rgba(0, 0, 0, 0.2);
-  --column-bg: #111113;
+  /* full-voltage neons on black */
+  --color-neon-blue: #6c5cff;
+  --color-neon-green: #3df285;
+  --color-neon-yellow: #f2e947;
+  --color-neon-purple: #b08bff;
+  --color-neon-pink: #ff6ec7;
+  --color-ink: #0a090f;
+  --color-cream: #f6f1de;
+
+  --code-bg: #14121c;
+  --code-text: #cfc9e6;
+  --code-command: #3df285;
+  --code-diff-add-text: #3df285;
+  --code-diff-add-bg: rgba(61, 242, 133, 0.1);
+  --code-diff-del-text: #ff5470;
+  --code-diff-del-bg: rgba(255, 84, 112, 0.12);
+  --code-diff-neutral: #a29dbe;
+  --prose-code-bg: #1e1b2a;
+  --overlay-bg: rgba(2, 1, 6, 0.6);
+  --column-bg: #100e16;
+  --bg-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cg fill-opacity='0.13'%3E%3Cpath d='M24 12h4v4h-4zM20 16h12v4H20zM24 20h4v4h-4z' fill='%236c5cff'/%3E%3Cpath d='M130 40h4v4h-4zM126 44h12v4h-12zM130 48h4v4h-4z' fill='%23ff6ec7'/%3E%3Cpath d='M64 108h4v4h-4zM60 112h12v4H60zM64 116h4v4h-4z' fill='%233df285'/%3E%3Cpath d='M150 140h4v4h-4zM146 144h12v4h-12zM150 148h4v4h-4z' fill='%23b08bff'/%3E%3Cpath d='M10 156h4v4h-4zM6 160h12v4H6zM10 164h4v4h-4z' fill='%23f2e947'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 * {
@@ -78,23 +118,165 @@ button, [role="button"] {
 
 body {
   background-color: var(--color-background);
+  background-image: var(--bg-pattern);
   color: var(--color-foreground);
   font-family: var(--font-sans);
 }
 
-/* Scrollbar styling */
+::selection {
+  background: var(--color-neon-pink);
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-neon-pink);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+   Sticker system — chunky pills with ink borders and hard offset shadows.
+   ========================================================================== */
+
+.sticker {
+  border: 2px solid var(--color-ink);
+  box-shadow: 4px 4px 0 0 var(--color-ink);
+}
+
+.sticker-sm {
+  border: 2px solid var(--color-ink);
+  box-shadow: 3px 3px 0 0 var(--color-ink);
+}
+
+/* Interactive sticker: lifts on hover, squishes flat on press. */
+.sticker-press {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.sticker-press:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 var(--color-ink);
+}
+.sticker-press:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 0 var(--color-ink);
+}
+
+/* Sticker peel — for cards: a playful lift + tilt on hover. */
+.sticker-peel {
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease;
+}
+.sticker-peel:hover {
+  transform: translate(-2px, -3px) rotate(-0.6deg);
+  box-shadow: 6px 7px 0 0 var(--color-ink);
+}
+
+/* ============================================================================
+   Neon panel — the giant rounded column surfaces.
+   Set `--panel: <neon color>` on the element.
+   ========================================================================== */
+
+.panel-neon {
+  --panel: var(--color-neon-blue);
+  background:
+    linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--panel) 16%, var(--color-background)),
+      color-mix(in oklab, var(--panel) 7%, var(--color-background)) 65%
+    );
+  border: 2px solid color-mix(in oklab, var(--panel) 45%, var(--color-background));
+}
+.panel-neon-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--panel) 25%, transparent),
+    0 0 44px -8px color-mix(in oklab, var(--panel) 55%, transparent);
+}
+
+/* ============================================================================
+   Motion — the arcade personality. Chunky, stepped, springy.
+   ========================================================================== */
+
+/* pixel-perfect 8-frame rotation (the pinwheel logo) */
+@keyframes px-spin {
+  to { transform: rotate(360deg); }
+}
+.animate-px-spin {
+  animation: px-spin 7s steps(8) infinite;
+}
+.animate-px-spin-fast {
+  animation: px-spin 1.2s steps(8) infinite;
+}
+
+/* chunky two-frame bob for empty states */
+@keyframes px-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.animate-px-bob {
+  animation: px-bob 1.6s steps(2, jump-none) infinite;
+}
+
+/* sticker pop-in */
+@keyframes px-pop {
+  0% { transform: scale(0.4) rotate(-4deg); opacity: 0; }
+  60% { transform: scale(1.12) rotate(2deg); }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+.animate-px-pop {
+  animation: px-pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+/* excited wiggle (needs-attention moments) */
+@keyframes px-wiggle {
+  0%, 100% { transform: rotate(0); }
+  25% { transform: rotate(-2deg); }
+  75% { transform: rotate(2deg); }
+}
+
+/* pixel blink for the live dot */
+@keyframes px-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.15; }
+}
+.animate-px-blink {
+  animation: px-blink 1.4s steps(2, jump-none) infinite;
+}
+
+/* ============================================================================
+   Scrollbars — square pixel bricks.
+   ========================================================================== */
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-muted-foreground);
-  border-radius: 3px;
-  opacity: 0.3;
+  background: color-mix(in oklab, var(--color-foreground) 22%, transparent);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  border-radius: 0;
 }
 ::-webkit-scrollbar-thumb:hover {
-  opacity: 0.5;
+  background: var(--color-neon-pink);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ============================================================================
+   Accessibility
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-px-spin,
+  .animate-px-spin-fast,
+  .animate-px-bob,
+  .animate-px-pop,
+  .animate-px-blink {
+    animation: none !important;
+  }
+  .sticker-press,
+  .sticker-peel {
+    transition: none;
+  }
 }

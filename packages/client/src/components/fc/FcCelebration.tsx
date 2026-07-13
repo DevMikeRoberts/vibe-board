@@ -15,7 +15,7 @@ export function FcCelebration() {
           <i key={i} style={{ '--i': i } as CSSProperties} />
         ))}
       </div>
-      <span className="fc-celebrate-box">🎉 Completed!</span>
+      <span className="fc-celebrate-box">★ done!!</span>
     </div>
   );
 }

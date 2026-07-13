@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { PixelIcon } from './PixelIcon';
 import type { ProjectConfig } from '@/types';
 
 interface ConfigDialogProps {
@@ -54,33 +54,40 @@ export function ConfigDialog({ open, config, onClose, onSubmit }: ConfigDialogPr
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 bg-[var(--overlay-bg)] backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label="Settings"
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-card p-6 shadow-2xl"
+            initial={{ opacity: 0, scale: 0.92, y: 24, rotate: -1 }}
+            animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 24 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="sticker panel-neon fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] bg-popover p-6"
+            style={{ '--panel': 'var(--color-neon-yellow)' } as React.CSSProperties}
           >
             <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-base font-semibold">Settings</h2>
+              <h2 className="flex items-center gap-2.5 font-display text-xl leading-none [text-transform:lowercase]">
+                <span className="sticker-sm flex h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: 'var(--color-neon-yellow)', color: 'var(--color-ink)' }}>
+                  <PixelIcon name="settings-toggle-horizontal" className="h-5 w-5" />
+                </span>
+                settings
+              </h2>
               <button
                 onClick={onClose}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
                 aria-label="Close"
               >
-                <X className="h-4 w-4" />
+                ✕
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="config-clone-root" className="mb-1.5 block text-xs font-medium text-muted-foreground">
-                  Clone Root
+                <label htmlFor="config-clone-root" className="mb-1.5 block font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
+                  clone root
                 </label>
                 <input
                   id="config-clone-root"
@@ -88,33 +95,34 @@ export function ConfigDialog({ open, config, onClose, onSubmit }: ConfigDialogPr
                   onChange={(e) => { setCloneRoot(e.target.value); setError(''); }}
                   placeholder="~/agentboard/projects"
                   autoFocus
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="h-11 w-full rounded-xl border-2 border-border bg-card px-3 font-mono text-sm placeholder:text-muted-foreground/50 focus:border-neon-pink focus:outline-none transition-colors"
                 />
-                <p className="mt-1 text-xs text-muted-foreground/60">
+                <p className="mt-1.5 text-xs text-muted-foreground/70">
                   Repos created from a GitHub URL are cloned into this folder. It is created automatically.
                 </p>
               </div>
 
               {error && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                <div className="flex items-center gap-2 rounded-xl border-2 border-destructive/40 bg-destructive/10 px-3 py-2.5 font-pixel text-[11px] text-destructive">
+                  <PixelIcon name="alert-triangle-1" className="h-4 w-4 shrink-0" />
                   {error}
                 </div>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="rounded-lg px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent"
+                  className="h-11 rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground [text-transform:lowercase]"
                 >
-                  Cancel
+                  cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="sticker-sm sticker-press h-11 rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 [text-transform:lowercase]"
                 >
-                  {submitting ? 'Saving…' : 'Save'}
+                  {submitting ? 'saving…' : 'save'}
                 </button>
               </div>
             </form>

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import type { TaskAttachment } from '@/types';
 import { api } from '@/lib/api';
+import { PixelIcon } from './PixelIcon';
 
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
 const MAX_SIZE = 10 * 1024 * 1024; // 10MB
@@ -130,29 +131,32 @@ export default function ImageUpload({ taskId, existing = [], onPendingChange, on
         onDragLeave={handleDragLeave}
         onClick={() => inputRef.current?.click()}
         className={`
-          border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
+          border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-colors
           ${dragOver
-            ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20'
-            : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500'}
+            ? 'border-neon-pink bg-[color-mix(in_srgb,var(--color-neon-pink)_12%,transparent)]'
+            : 'border-border bg-card hover:border-neon-pink/60'}
           ${uploading ? 'opacity-60 pointer-events-none' : ''}
         `}
       >
         <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleInputChange} />
-        <div className="flex flex-col items-center gap-1">
-          <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-          </svg>
-          <span className="text-sm text-gray-500 dark:text-gray-400">
-            {uploading ? 'Uploading…' : 'Drop images here or click to browse'}
+        <div className="flex flex-col items-center gap-2">
+          <PixelIcon name="camera-1" className="animate-px-bob h-8 w-8 text-neon-pink" />
+          <span className="font-pixel text-[11px] text-foreground/80 [text-transform:lowercase]">
+            {uploading ? 'uploading…' : 'drop images here or click to browse'}
           </span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">
-            PNG, JPEG, GIF, WebP, SVG · Max 10MB · {MAX_ATTACHMENTS - totalCount} remaining
+          <span className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
+            png · jpeg · gif · webp · svg — max 10mb — {MAX_ATTACHMENTS - totalCount} left
           </span>
         </div>
       </div>
 
       {/* Error */}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && (
+        <p className="flex items-center gap-1.5 font-pixel text-[10px] text-destructive">
+          <PixelIcon name="alert-triangle-1" className="h-3.5 w-3.5 shrink-0" />
+          {error}
+        </p>
+      )}
 
       {/* Thumbnails */}
       {hasImages && (
@@ -163,16 +167,16 @@ export default function ImageUpload({ taskId, existing = [], onPendingChange, on
               <img
                 src={api.getAttachmentUrl(a.id)}
                 alt={a.originalName}
-                className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                className="w-16 h-16 object-cover rounded-xl border-2 border-ink"
               />
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removeExisting(a); }}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                className="sticker-sm absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive font-pixel text-cream text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
-                ×
+                ✕
               </button>
-              <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] px-1 truncate rounded-b-lg">
+              <span className="absolute bottom-0 left-0 right-0 bg-ink/70 text-cream font-pixel text-[8px] px-1 truncate rounded-b-xl">
                 {a.originalName}
               </span>
             </div>
@@ -183,16 +187,16 @@ export default function ImageUpload({ taskId, existing = [], onPendingChange, on
               <img
                 src={p.preview}
                 alt={p.file.name}
-                className="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-700"
+                className="w-16 h-16 object-cover rounded-xl border-2 border-ink"
               />
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removePending(i); }}
-                className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                className="sticker-sm absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive font-pixel text-cream text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
-                ×
+                ✕
               </button>
-              <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] px-1 truncate rounded-b-lg">
+              <span className="absolute bottom-0 left-0 right-0 bg-ink/70 text-cream font-pixel text-[8px] px-1 truncate rounded-b-xl">
                 {p.file.name}
               </span>
             </div>

@@ -72,34 +72,36 @@ function eventToLines(event: AgentEvent): string {
   }
 }
 
+// Midnight Arcade terminal palette — neon on near-black.
 const DARK_THEME = {
-  background: '#0f172a',
-  foreground: '#f1f5f9',
-  cursor:     '#f1f5f9',
-  black:      '#1e293b',
-  red:        '#fca5a5',
-  green:      '#86efac',
-  yellow:     '#fde68a',
-  blue:       '#93c5fd',
-  magenta:    '#d8b4fe',
-  cyan:       '#67e8f9',
-  white:      '#f1f5f9',
-  brightBlack:'#cbd5e1',
+  background:  '#08070c',
+  foreground:  '#f6f1de',
+  cursor:      '#ff6ec7',
+  black:       '#100e16',
+  red:         '#ff5470',
+  green:       '#3df285',
+  yellow:      '#f2e947',
+  blue:        '#6c5cff',
+  magenta:     '#ff6ec7',
+  cyan:        '#7de3ff',
+  white:       '#f6f1de',
+  brightBlack: '#a29dbe',
 };
 
+// Paper Arcade terminal palette — inked neons on cream.
 const LIGHT_THEME = {
-  background: '#f8fafc',
-  foreground: '#0f172a',
-  cursor:     '#0f172a',
-  black:      '#e2e8f0',
-  red:        '#dc2626',
-  green:      '#16a34a',
-  yellow:     '#ca8a04',
-  blue:       '#2563eb',
-  magenta:    '#9333ea',
-  cyan:       '#0891b2',
-  white:      '#0f172a',
-  brightBlack:'#64748b',
+  background:  '#f6f1de',
+  foreground:  '#17121c',
+  cursor:      '#e8368f',
+  black:       '#e0d5b6',
+  red:         '#d12a4e',
+  green:       '#0e9e5c',
+  yellow:      '#b89e00',
+  blue:        '#4b3ee8',
+  magenta:     '#e8368f',
+  cyan:        '#1f8fb0',
+  white:       '#17121c',
+  brightBlack: '#6e6550',
 };
 
 export function TerminalView({ events, streaming, theme = 'dark' }: TerminalViewProps) {

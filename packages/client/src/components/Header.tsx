@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Kanban, Search, Archive, ArrowUpDown, Filter, Plus, X, Menu } from 'lucide-react';
+import { motion } from 'framer-motion';
 import { ThemeToggle } from './ThemeToggle';
+import { PixelIcon } from './PixelIcon';
 import { FilterChips, type StatusFilter } from './FilterChips';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
+import { cn } from '@/lib/utils';
 import type { AgentType } from '@/types';
 
 type SortBy = 'title' | 'priority' | 'created' | 'status';
@@ -37,6 +39,10 @@ const SORT_OPTIONS: { value: SortBy; label: string }[] = [
   { value: 'status', label: 'Status' },
 ];
 
+/** Chunky bordered control shell shared by the header's secondary buttons. */
+const controlShell =
+  'flex items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground';
+
 export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showArchived, onToggleArchived, sortBy, sortDir, onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses, onToggleAgentType, onToggleStatus, onClearFilters, onNewTask, onNewGroup, title = 'AI Agent Board', onBackToProjects }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -51,117 +57,126 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
   }, [mobileMenuOpen]);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-700/30 bg-zinc-900 shadow-md">
-      <div className="flex h-14 items-center justify-between px-3 md:px-6">
+    <header className="sticky top-0 z-50 border-b-2 border-border bg-background/90 backdrop-blur-md">
+      <div className="flex h-16 items-center justify-between gap-3 px-3 md:h-20 md:px-7">
         {/* Logo + title */}
-        <div className="flex min-w-0 items-center gap-2 md:gap-3">
+        <div className="flex min-w-0 items-center gap-2.5 md:gap-4">
           {onBackToProjects && (
             <button
               onClick={onBackToProjects}
-              className="flex h-8 shrink-0 items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
+              className={cn(controlShell, 'h-10 shrink-0 gap-1.5 px-3 font-pixel text-[11px]')}
               aria-label="Back to Projects"
             >
-              <ArrowLeft className="h-3.5 w-3.5" />
+              <PixelIcon name="navigation-left-circle-1" className="h-4 w-4" />
               <span className="hidden sm:inline">Projects</span>
             </button>
           )}
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500">
-            <Kanban className="h-4 w-4 text-white" />
+
+          {/* Pinwheel logo — pixel flash on a pink sticker */}
+          <div className="sticker-sm flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary">
+            <PixelIcon name="flash" className="animate-px-spin h-6 w-6 text-primary-foreground" />
           </div>
-          <h1 className="truncate text-base font-semibold tracking-tight text-white md:text-lg">
+
+          <h1 className="truncate font-display text-xl leading-none text-foreground md:text-2xl [text-transform:lowercase]">
             {title}
           </h1>
-          <span className="hidden items-center gap-1 text-[10px] md:flex">
+
+          {/* Live connection status */}
+          <span className="hidden items-center gap-1.5 font-pixel text-[10px] md:flex">
             {wsStatus === 'connected' && (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-emerald-500/70">Live</span>
+                <PixelIcon name="wifi-feed" className="animate-px-blink h-3.5 w-3.5 text-neon-green" />
+                <span className="text-neon-green">live</span>
               </>
             )}
             {wsStatus === 'disconnected' && wasConnected && (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                <span className="text-red-400">Reconnecting…</span>
+                <PixelIcon name="alert-triangle-1" className="h-3.5 w-3.5 text-destructive" />
+                <span className="text-destructive">reconnecting…</span>
               </>
             )}
             {wsStatus === 'connecting' && (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-amber-400/70">Connecting…</span>
+                <PixelIcon name="wifi-feed" className="animate-px-blink h-3.5 w-3.5 text-neon-yellow" />
+                <span className="text-neon-yellow">connecting…</span>
               </>
             )}
           </span>
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-1 md:gap-0">
+        <div className="flex items-center gap-1.5 md:gap-0">
           {/* ── Desktop-only controls ── */}
 
-          {/* Group 1: Create actions */}
-          <div className="hidden md:flex items-center gap-1.5">
-            <button
+          {/* Group 1: Create actions — the loudest stickers on the shelf */}
+          <div className="hidden md:flex items-center gap-2.5">
+            <motion.button
+              whileTap={{ scale: 0.94 }}
               onClick={onNewTask}
-              className="flex items-center gap-1.5 h-8 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors px-3"
+              className="sticker-sm sticker-press flex h-11 items-center gap-2 rounded-full bg-primary px-4 font-display text-sm text-primary-foreground [text-transform:lowercase]"
               aria-label="New Task"
             >
-              <Plus className="h-3.5 w-3.5 shrink-0" />
-              <span>New Task</span>
-            </button>
-            <button
+              <PixelIcon name="flash" className="h-4 w-4" />
+              <span>new task</span>
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.94 }}
               onClick={onNewGroup}
-              className="flex items-center gap-1.5 h-8 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors px-3"
+              className="sticker-sm sticker-press flex h-11 items-center gap-2 rounded-full px-4 font-display text-sm [text-transform:lowercase]"
+              style={{ backgroundColor: 'var(--color-neon-purple)', color: 'var(--color-ink)' }}
               aria-label="New Group"
             >
-              <Plus className="h-3.5 w-3.5 shrink-0" />
-              <span>New Group</span>
-            </button>
+              <PixelIcon name="layer" className="h-4 w-4" />
+              <span>new group</span>
+            </motion.button>
           </div>
 
           {/* Divider */}
-          <div className="hidden md:block mx-2.5 h-5 w-px bg-zinc-700" />
+          <div className="hidden md:block mx-3.5 h-7 w-0.5 rounded bg-border" />
 
           {/* Group 2: Search */}
           <div className="relative hidden md:block">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-300" />
+            <PixelIcon name="find-text" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search tasks..."
+              placeholder="search tasks…"
               aria-label="Search tasks"
-              className="h-8 w-48 rounded-lg border border-zinc-700 bg-zinc-800 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-300 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className="h-11 w-56 rounded-xl border-2 border-border bg-card pl-10 pr-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors"
             />
           </div>
 
           {/* Divider */}
-          <div className="hidden md:block mx-2.5 h-5 w-px bg-zinc-700" />
+          <div className="hidden md:block mx-3.5 h-7 w-0.5 rounded bg-border" />
 
           {/* Group 3: View controls — filter, sort, archive */}
-          <div className="hidden md:flex items-center gap-1.5">
+          <div className="hidden md:flex items-center gap-2">
             {/* Filter toggle */}
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex items-center gap-1.5 h-8 rounded-lg border transition-colors text-xs font-medium px-3 ${
-                showFilters || hasActiveFilters
-                  ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-              }`}
+              className={cn(
+                controlShell,
+                'h-11 gap-1.5 px-3.5 font-pixel text-[11px]',
+                (showFilters || hasActiveFilters) &&
+                  'border-neon-yellow bg-[color-mix(in_srgb,var(--color-neon-yellow)_16%,var(--color-card))] text-foreground'
+              )}
               aria-label="Toggle filters"
               title="Filter"
             >
-              <Filter className="h-3.5 w-3.5 shrink-0" />
+              <PixelIcon name="filter" className="h-4 w-4" />
               {hasActiveFilters && <span>{activeAgentTypes.length + activeStatuses.length}</span>}
             </button>
 
             {/* Sort control — joined group */}
-            <div className="flex items-center h-8 rounded-lg border border-zinc-700 bg-zinc-800 overflow-hidden">
-              <div className="flex items-center gap-1.5 pl-2.5 pr-1 text-zinc-400">
-                <ArrowUpDown className="h-3.5 w-3.5 shrink-0" />
+            <div className="flex items-center h-11 rounded-xl border-2 border-border bg-card overflow-hidden">
+              <div className="flex items-center pl-3 pr-1 text-muted-foreground">
+                <PixelIcon name="flip-vertical-down" className="h-4 w-4" />
               </div>
               <select
                 value={sortBy}
                 onChange={(e) => onSortByChange(e.target.value as SortBy)}
-                className="h-full bg-transparent px-1 text-xs text-zinc-200 focus:outline-none cursor-pointer"
+                className="h-full bg-transparent px-1 font-pixel text-[11px] text-foreground focus:outline-none cursor-pointer"
               >
                 {SORT_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -169,7 +184,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
               </select>
               <button
                 onClick={() => onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')}
-                className="flex h-full w-7 items-center justify-center border-l border-zinc-700 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+                className="flex h-full w-9 items-center justify-center border-l-2 border-border font-pixel text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
                 aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
               >
                 {sortDir === 'asc' ? '↑' : '↓'}
@@ -179,82 +194,85 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             {/* Archive toggle */}
             <button
               onClick={onToggleArchived}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                showArchived
-                  ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
-                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-              }`}
+              className={cn(
+                controlShell,
+                'h-11 w-11',
+                showArchived &&
+                  'border-neon-purple bg-[color-mix(in_srgb,var(--color-neon-purple)_18%,var(--color-card))] text-foreground'
+              )}
               aria-label={showArchived ? 'Hide Archived' : 'Show Archived'}
               title={showArchived ? 'Hide Archived' : 'Show Archived'}
             >
-              <Archive className="h-3.5 w-3.5 shrink-0" />
+              <PixelIcon name="floppy-disk" className="h-4 w-4" />
             </button>
           </div>
 
           {/* Divider */}
-          <div className="hidden md:block mx-2.5 h-5 w-px bg-zinc-700" />
+          <div className="hidden md:block mx-3.5 h-7 w-0.5 rounded bg-border" />
 
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
           {/* ── Mobile hamburger ── */}
           <button
             onClick={() => setMobileMenuOpen((v) => !v)}
-            className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors md:hidden ${
-              mobileMenuOpen || hasActiveFilters || showArchived
-                ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-            }`}
+            className={cn(
+              controlShell,
+              'h-10 w-10 md:hidden',
+              (mobileMenuOpen || hasActiveFilters || showArchived) &&
+                'border-neon-pink bg-[color-mix(in_srgb,var(--color-neon-pink)_14%,var(--color-card))]'
+            )}
             aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={mobileMenuOpen}
           >
-            {mobileMenuOpen ? <X className="h-3.5 w-3.5" /> : <Menu className="h-3.5 w-3.5" />}
+            <PixelIcon name={mobileMenuOpen ? 'expand-3' : 'navigation-menu-1'} className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       {/* ── Mobile expanded menu panel ── */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-zinc-700/40 bg-zinc-900 px-3 py-3 space-y-3">
+        <div className="md:hidden border-t-2 border-border bg-background px-3 py-3.5 space-y-3">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+            <PixelIcon name="find-text" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               ref={mobileMenuSearchRef}
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search tasks..."
+              placeholder="search tasks…"
               aria-label="Search tasks"
-              className="h-9 w-full rounded-lg border border-zinc-700 bg-zinc-800 pl-8 pr-3 text-xs text-zinc-200 placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className="h-11 w-full rounded-xl border-2 border-border bg-card pl-10 pr-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors"
             />
           </div>
 
           {/* New Task + New Group */}
-          <div className="flex gap-2">
+          <div className="flex gap-2.5">
             <button
               onClick={() => { onNewTask(); setMobileMenuOpen(false); }}
-              className="flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors"
+              className="sticker-sm flex flex-1 items-center justify-center gap-2 h-11 rounded-full bg-primary font-display text-sm text-primary-foreground [text-transform:lowercase]"
             >
-              <Plus className="h-3.5 w-3.5 shrink-0" />
-              New Task
+              <PixelIcon name="flash" className="h-4 w-4" />
+              new task
             </button>
             <button
               onClick={() => { onNewGroup(); setMobileMenuOpen(false); }}
-              className="flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg border border-primary/50 text-primary text-xs font-medium hover:bg-primary/10 transition-colors"
+              className="sticker-sm flex flex-1 items-center justify-center gap-2 h-11 rounded-full font-display text-sm [text-transform:lowercase]"
+              style={{ backgroundColor: 'var(--color-neon-purple)', color: 'var(--color-ink)' }}
             >
-              <Plus className="h-3.5 w-3.5 shrink-0" />
-              New Group
+              <PixelIcon name="layer" className="h-4 w-4" />
+              new group
             </button>
           </div>
 
           {/* Sort row */}
           <div className="flex items-center gap-2">
-            <ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-            <span className="text-xs text-zinc-400">Sort</span>
+            <PixelIcon name="flip-vertical-down" className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="font-pixel text-[11px] text-muted-foreground">sort</span>
             <select
               value={sortBy}
               onChange={(e) => onSortByChange(e.target.value as SortBy)}
-              className="flex-1 h-9 rounded-lg border border-zinc-700 bg-zinc-800 px-2 text-xs text-zinc-200 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+              className="flex-1 h-11 rounded-xl border-2 border-border bg-card px-2 font-pixel text-[11px] text-foreground focus:border-neon-pink focus:outline-none transition-colors"
             >
               {SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -262,7 +280,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             </select>
             <button
               onClick={() => onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 text-xs text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 transition-colors"
+              className={cn(controlShell, 'h-11 w-11 shrink-0 font-pixel text-sm')}
               aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
             >
               {sortDir === 'asc' ? '↑' : '↓'}
@@ -270,30 +288,32 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
           </div>
 
           {/* Filter + Archive row */}
-          <div className="flex gap-2">
+          <div className="flex gap-2.5">
             <button
               onClick={() => setShowFilters(!showFilters)}
-              className={`flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg border transition-colors text-xs font-medium ${
-                showFilters || hasActiveFilters
-                  ? 'border-blue-500/50 bg-blue-500/10 text-blue-400'
-                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-              }`}
+              className={cn(
+                controlShell,
+                'flex-1 h-11 gap-1.5 font-pixel text-[11px]',
+                (showFilters || hasActiveFilters) &&
+                  'border-neon-yellow bg-[color-mix(in_srgb,var(--color-neon-yellow)_16%,var(--color-card))]'
+              )}
               aria-label="Toggle filters"
             >
-              <Filter className="h-3.5 w-3.5 shrink-0" />
-              Filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}
+              <PixelIcon name="filter" className="h-4 w-4" />
+              filter{hasActiveFilters ? ` (${activeAgentTypes.length + activeStatuses.length})` : ''}
             </button>
             <button
               onClick={onToggleArchived}
-              className={`flex flex-1 items-center justify-center gap-1.5 h-9 rounded-lg border transition-colors text-xs font-medium ${
-                showArchived
-                  ? 'border-zinc-500 bg-zinc-700 text-zinc-100'
-                  : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100'
-              }`}
+              className={cn(
+                controlShell,
+                'flex-1 h-11 gap-1.5 font-pixel text-[11px]',
+                showArchived &&
+                  'border-neon-purple bg-[color-mix(in_srgb,var(--color-neon-purple)_18%,var(--color-card))]'
+              )}
               aria-label={showArchived ? 'Hide archived' : 'Show archived'}
             >
-              <Archive className="h-3.5 w-3.5 shrink-0" />
-              {showArchived ? 'Hide' : 'Show'} Archived
+              <PixelIcon name="floppy-disk" className="h-4 w-4" />
+              {showArchived ? 'hide' : 'show'} archived
             </button>
           </div>
 
@@ -314,7 +334,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
 
       {/* Desktop filter chips row */}
       {showFilters && (
-        <div className="hidden md:flex items-center justify-end gap-2 px-6 pb-2">
+        <div className="hidden md:flex items-center justify-end gap-2 px-7 pb-3">
           <FilterChips
             activeAgentTypes={activeAgentTypes}
             activeStatuses={activeStatuses}

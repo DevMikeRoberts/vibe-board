@@ -1,10 +1,11 @@
-// FcStateBadge.tsx — the dot + label + corner chrome for a card's agent state.
+// FcStateBadge.tsx — the pixel icon + label chrome for a card's agent state.
 //
 // Render <FcStateBadge state={fcState} /> inside a task card, and add the `fc-card`
-// class + `data-fc-state` to the card root so the card-level cues (state tint, the
+// class + `data-fc-state` to the card root so the card-level cues (state glow, the
 // "needs you" nudge, the failed shake) attach. Pure markup + CSS, no extra deps.
 
 import { FC_STATE_META, type FcState } from './fcState';
+import { PixelIcon } from '@/components/PixelIcon';
 import './workshop-cards.css';
 
 interface Props {
@@ -20,11 +21,13 @@ export function FcStateBadge({ state, compact = false }: Props) {
   return (
     <span className="fc-chrome" data-fc-state={state}>
       <span className="fc-badge" title={meta.label}>
-        <span className="fc-dot" aria-hidden="true" />
-        {!compact && (
-          <span className="fc-badge-text">
-            {meta.emoji} {meta.label}
-          </span>
+        {compact ? (
+          <span className="fc-dot" aria-hidden="true" />
+        ) : (
+          <>
+            <PixelIcon name={meta.icon} className="h-3.5 w-3.5" />
+            <span className="fc-badge-text">{meta.label}</span>
+          </>
         )}
       </span>
       {meta.corner && (

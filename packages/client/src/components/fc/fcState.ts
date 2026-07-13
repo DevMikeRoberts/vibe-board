@@ -15,6 +15,8 @@ export type FcState =
 
 export interface FcStateMeta {
   emoji: string;
+  /** pixel icon name (see PixelIcon) shown in the state badge */
+  icon: string;
   label: string;
   /** corner glyph overlay, '' for none */
   corner: string;
@@ -23,12 +25,12 @@ export interface FcStateMeta {
 }
 
 export const FC_STATE_META: Record<FcState, FcStateMeta> = {
-  idle:   { emoji: '💤', label: 'Backlog',           corner: '',   working: false },
-  groom:  { emoji: '✏️', label: 'Grooming',          corner: '',   working: true  },
-  needs:  { emoji: '🙋', label: 'Needs you',         corner: '?',  working: false },
-  ready:  { emoji: '📦', label: 'Ready',             corner: '',   working: false },
-  build:  { emoji: '🔨', label: 'Building',          corner: '',   working: true  },
-  review: { emoji: '🔍', label: 'In review',         corner: '',   working: false },
-  fail:   { emoji: '💥', label: 'Couldn’t complete', corner: '!',  working: false },
-  done:   { emoji: '🎉', label: 'Done',              corner: '🎉', working: false },
+  idle:   { emoji: '💤', icon: 'alarm-bell-sleep',     label: 'Backlog',           corner: '',   working: false },
+  groom:  { emoji: '✏️', icon: 'quill-ink',            label: 'Grooming',          corner: '',   working: true  },
+  needs:  { emoji: '🙋', icon: 'question-help-square', label: 'Needs you',         corner: '?',  working: false },
+  ready:  { emoji: '📦', icon: 'reward-gift',          label: 'Ready',             corner: '',   working: false },
+  build:  { emoji: '🔨', icon: 'hammer-1',             label: 'Building',          corner: '',   working: true  },
+  review: { emoji: '🔍', icon: 'iris-scan-approved',   label: 'In review',         corner: '',   working: false },
+  fail:   { emoji: '💥', icon: 'alert-triangle-1',     label: 'Couldn’t complete', corner: '!',  working: false },
+  done:   { emoji: '🎉', icon: 'rating-star-1',        label: 'Done',              corner: '★', working: false },
 };

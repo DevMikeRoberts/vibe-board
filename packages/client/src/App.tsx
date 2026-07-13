@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { PixelIcon } from '@/components/PixelIcon';
 import type { Task, AgentType, Priority, ColumnId, Project } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { useTasks } from '@/hooks/useTasks';
@@ -459,14 +459,16 @@ function BoardPage({
       <AnimatePresence>
         {error && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 shadow-lg backdrop-blur-sm"
+            initial={{ opacity: 0, y: 24, rotate: -2, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 24, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 20 }}
+            className="sticker fixed bottom-5 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2.5 rounded-2xl bg-destructive px-5 py-3 text-sm font-semibold text-cream"
           >
+            <PixelIcon name="alert-triangle-1" className="h-4 w-4 shrink-0" />
             <span>{error}</span>
-            <button onClick={clearError} className="ml-1 shrink-0 text-red-400 hover:text-red-300">
-              <X className="h-4 w-4" />
+            <button onClick={clearError} className="ml-1 shrink-0 font-pixel hover:opacity-70" aria-label="Dismiss error">
+              ✕
             </button>
           </motion.div>
         )}
@@ -590,8 +592,11 @@ export function App() {
 
   if (loading || !selectedProject) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-        Loading project…
+      <div className="flex h-screen flex-col items-center justify-center gap-5 bg-background">
+        <div className="sticker flex h-16 w-16 items-center justify-center rounded-3xl bg-primary">
+          <PixelIcon name="flash" className="animate-px-spin-fast h-8 w-8 text-primary-foreground" />
+        </div>
+        <p className="font-pixel text-xs text-muted-foreground">loading project…</p>
       </div>
     );
   }

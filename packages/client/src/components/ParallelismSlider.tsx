@@ -18,9 +18,10 @@ export default function ParallelismSlider({ value, max, onChange, disabled }: Pa
         value={clampedValue}
         disabled={disabled || clampedMax <= 1}
         onInput={(e) => onChange(Number((e.target as HTMLInputElement).value))}
-        className="h-2 flex-1 cursor-pointer appearance-none rounded-lg bg-muted accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-3 flex-1 cursor-pointer appearance-none rounded-full bg-ink disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ accentColor: 'var(--color-neon-pink)' }}
       />
-      <span className="min-w-[4rem] text-sm text-muted-foreground">
+      <span className="sticker-sm min-w-[4.5rem] rounded-full bg-card px-2.5 py-1 text-center font-pixel text-[10px] text-foreground [text-transform:lowercase]">
         {clampedValue} of {clampedMax}
       </span>
     </div>

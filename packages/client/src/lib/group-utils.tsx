@@ -1,5 +1,5 @@
-import { CheckCircle2, AlertCircle, Cog, Brain } from 'lucide-react';
 import type { Task, AgentStatus } from '@/types';
+import { PixelIcon } from '@/components/PixelIcon';
 import { cn } from '@/lib/utils';
 
 export interface GroupStatus {
@@ -25,10 +25,10 @@ export function computeGroupStatus(children: Task[]): GroupStatus {
 
 export function statusIcon(status: AgentStatus, size = 'h-4 w-4') {
   switch (status) {
-    case 'executing': return <Cog className={cn(size, 'animate-spin text-blue-400')} />;
-    case 'planning': return <Brain className={cn(size, 'animate-pulse text-purple-400')} />;
-    case 'complete': return <CheckCircle2 className={cn(size, 'text-emerald-400')} />;
-    case 'failed': return <AlertCircle className={cn(size, 'text-red-400')} />;
-    default: return <div className={cn(size, 'rounded-full border border-zinc-500')} />;
+    case 'executing': return <PixelIcon name="loading-circle-1" className={cn(size, 'animate-px-spin-fast text-neon-blue')} />;
+    case 'planning': return <PixelIcon name="light-bulb" className={cn(size, 'animate-px-blink text-neon-purple')} />;
+    case 'complete': return <PixelIcon name="rating-star-1" className={cn(size, 'text-neon-green')} />;
+    case 'failed': return <PixelIcon name="alert-triangle-1" className={cn(size, 'text-destructive')} />;
+    default: return <PixelIcon name="alarm-bell-sleep" className={cn(size, 'text-muted-foreground')} />;
   }
 }

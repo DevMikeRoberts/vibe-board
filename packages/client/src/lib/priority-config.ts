@@ -1,10 +1,10 @@
 import type { Priority } from '@/types';
 
-export const PRIORITY_DISPLAY: Record<Priority, { label: string; emoji: string; color: string; borderClass: string }> = {
-  critical: { label: 'Critical', emoji: '🔴', color: 'text-red-500', borderClass: 'border-l-4 border-l-red-500' },
-  high:     { label: 'High',     emoji: '🟠', color: 'text-amber-500', borderClass: 'border-l-4 border-l-amber-500' },
-  medium:   { label: 'Medium',   emoji: '🔵', color: 'text-blue-500', borderClass: '' },
-  low:      { label: 'Low',      emoji: '⚪', color: 'text-slate-400', borderClass: 'border-l-4 border-l-slate-400' },
+export const PRIORITY_DISPLAY: Record<Priority, { label: string; emoji: string; color: string; borderClass: string; accent: string }> = {
+  critical: { label: 'Critical', emoji: '🔥', color: 'text-neon-pink',   borderClass: 'border-l-4 border-l-neon-pink',   accent: 'var(--color-neon-pink)' },
+  high:     { label: 'High',     emoji: '⚡', color: 'text-neon-yellow', borderClass: 'border-l-4 border-l-neon-yellow', accent: 'var(--color-neon-yellow)' },
+  medium:   { label: 'Medium',   emoji: '💠', color: 'text-neon-blue',   borderClass: '',                                accent: '' },
+  low:      { label: 'Low',      emoji: '🫧', color: 'text-muted-foreground', borderClass: 'border-l-4 border-l-muted-foreground', accent: 'color-mix(in srgb, var(--color-muted-foreground) 60%, transparent)' },
 };
 
 /** Weight for sorting — lower = higher priority */
@@ -21,6 +21,6 @@ export const PRIORITY_OPTIONS: { value: Priority; label: string; emoji: string }
 ).map(([value, { emoji, label }]) => ({ value, label, emoji }));
 
 /** Safe lookup — returns undefined for unknown priorities */
-export function getPriorityDisplay(priority: string): { label: string; emoji: string; color: string; borderClass: string } | undefined {
+export function getPriorityDisplay(priority: string): { label: string; emoji: string; color: string; borderClass: string; accent: string } | undefined {
   return PRIORITY_DISPLAY[priority as Priority];
 }
