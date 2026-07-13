@@ -106,7 +106,7 @@ export function useTasks(projectId = 'default') {
 
   const configureAndRunTask = useCallback(async (
     id: string,
-    config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean; agentType?: AgentType }
+    config: { repoPath: string; branchName: string; baseBranch: string; agentType?: AgentType }
   ) => {
     try {
       const configured = await api.configureTask(id, config);
@@ -119,32 +119,16 @@ export function useTasks(projectId = 'default') {
   }, []);
 
   const createPR = useCallback(async (id: string) => {
-    try {
-      const result = await api.createPR(id);
-      return result.url;
-    } catch (err) {
-      setError(`Failed to create PR: ${(err as Error).message}`);
-      return undefined;
-    }
-  }, []);
-
-  const cleanupWorktree = useCallback(async (id: string) => {
-    try {
-      await api.cleanupWorktree(id);
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, worktreePath: undefined } : t)));
-    } catch (err) {
-      setError(`Failed to clean up worktree: ${(err as Error).message}`);
-    }
+    // Let errors propagate so the AgentPanel shows a persistent inline banner
+    // (a global toast here would auto-dismiss after 5s and read as "did nothing").
+    const result = await api.createPR(id);
+    return result.url;
   }, []);
 
   const mergeLocal = useCallback(async (id: string) => {
-    try {
-      const result = await api.mergeLocal(id);
-      return result.baseBranch;
-    } catch (err) {
-      setError(`Failed to merge locally: ${(err as Error).message}`);
-      return undefined;
-    }
+    // Let errors propagate so the AgentPanel shows a persistent inline banner.
+    const result = await api.mergeLocal(id);
+    return result.baseBranch;
   }, []);
 
   const stopTask = useCallback(async (id: string) => {
@@ -196,5 +180,5 @@ export function useTasks(projectId = 'default') {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, configureAndRunTask, createPR, mergeLocal, cleanupWorktree };
+  return { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, configureAndRunTask, createPR, mergeLocal };
 }

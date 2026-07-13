@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -b tsconfig.build.json",
-    "test": "node --import tsx/esm --test tests/agent-detection.test.ts",
+    "test": "node --import tsx/esm --test tests/agent-detection.test.ts tests/agent-fallback.test.ts tests/token-limit.test.ts tests/task-scheduler.test.ts tests/repo-scan.test.ts",
     "start": "node dist/index.js"
   },
   "dependencies": {
@@ -14,9 +14,8 @@
     "@codewithdan/agent-sdk-core": "^0.6.2",
     "@github/copilot-sdk": "^1.0.1",
     "@openai/codex-sdk": "^0.139.0",
-    "@opencode-ai/sdk": "^1.17.7",
     "@types/multer": "^2.0.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
     "express": "^4.22.2",

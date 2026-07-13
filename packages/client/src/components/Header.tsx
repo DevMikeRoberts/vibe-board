@@ -33,10 +33,10 @@ interface HeaderProps {
 }
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
-  { value: 'title', label: 'Title' },
+  { value: 'title',   label: 'Title' },
   { value: 'priority', label: 'Priority' },
   { value: 'created', label: 'Created' },
-  { value: 'status', label: 'Status' },
+  { value: 'status',  label: 'Status' },
 ];
 
 /** Chunky bordered control shell shared by the header's secondary buttons. */
@@ -46,14 +46,29 @@ const controlShell =
 export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showArchived, onToggleArchived, sortBy, sortDir, onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses, onToggleAgentType, onToggleStatus, onClearFilters, onNewTask, onNewGroup, title = 'AI Agent Board', onBackToProjects }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
   const mobileMenuSearchRef = useRef<HTMLInputElement>(null);
   const hasActiveFilters = activeAgentTypes.length > 0 || activeStatuses.length > 0;
   const { status: wsStatus, wasConnected } = useConnectionStatus();
 
-  useEffect(() => {
-    if (mobileMenuOpen) {
-      mobileMenuSearchRef.current?.focus();
+  const handleRestart = async () => {
+    if (!confirm('This will pull the latest code from GitHub and restart the server. Continue?')) {
+      return;
     }
+    
+    setIsRestarting(true);
+    try {
+      await api.restartServer();
+      // Server is restarting, no response expected
+    } catch (err: unknown) {
+      console.error('Restart failed:', err);
+      alert(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
+      setIsRestarting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (mobileMenuOpen) mobileMenuSearchRef.current?.focus();
   }, [mobileMenuOpen]);
 
   return (
@@ -101,7 +116,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
                 <span className="text-neon-yellow">connecting…</span>
               </>
             )}
-          </span>
+          </div>
         </div>
 
         {/* Action buttons */}
@@ -179,7 +194,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
                 className="h-full bg-transparent px-1 font-pixel text-[11px] text-foreground focus:outline-none cursor-pointer"
               >
                 {SORT_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <option key={opt.value} value={opt.value} className="bg-zinc-900">{opt.label}</option>
                 ))}
               </select>
               <button
@@ -212,6 +227,21 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
 
           <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
 
+          {/* Restart button */}
+          <button
+            onClick={handleRestart}
+            disabled={isRestarting}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-all ${
+              isRestarting
+                ? 'border-orange-500/50 bg-orange-500/20 text-orange-400 cursor-not-allowed opacity-70'
+                : 'border-white/8 bg-white/5 text-zinc-400 hover:border-orange-500/30 hover:bg-orange-500/8 hover:text-orange-300'
+            }`}
+            aria-label="Restart server"
+            title="Restart server (pull latest code from GitHub)"
+          >
+            <RotateCw className={`h-3.5 w-3.5 shrink-0 ${isRestarting ? 'animate-spin' : ''}`} />
+          </button>
+
           {/* ── Mobile hamburger ── */}
           <button
             onClick={() => setMobileMenuOpen((v) => !v)}
@@ -229,7 +259,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
         </div>
       </div>
 
-      {/* ── Mobile expanded menu panel ── */}
+      {/* ── Mobile expanded panel ── */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t-2 border-border bg-background px-3 py-3.5 space-y-3">
           {/* Search */}
@@ -265,7 +295,6 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
             </button>
           </div>
 
-          {/* Sort row */}
           <div className="flex items-center gap-2">
             <PixelIcon name="flip-vertical-down" className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span className="font-pixel text-[11px] text-muted-foreground">sort</span>
@@ -275,7 +304,7 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
               className="flex-1 h-11 rounded-xl border-2 border-border bg-card px-2 font-pixel text-[11px] text-foreground focus:border-neon-pink focus:outline-none transition-colors"
             >
               {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value} className="bg-zinc-900">{opt.label}</option>
               ))}
             </select>
             <button
@@ -315,9 +344,22 @@ export function Header({ theme, toggleTheme, searchQuery, onSearchChange, showAr
               <PixelIcon name="floppy-disk" className="h-4 w-4" />
               {showArchived ? 'hide' : 'show'} archived
             </button>
+            <button
+              onClick={handleRestart}
+              disabled={isRestarting}
+              className={`flex items-center justify-center gap-1.5 h-10 rounded-xl border transition-all text-xs font-semibold ${
+                isRestarting
+                  ? 'border-orange-500/50 bg-orange-500/20 text-orange-400 cursor-not-allowed opacity-70'
+                  : 'border-white/8 bg-white/5 text-zinc-400 hover:border-orange-500/30 hover:text-orange-300'
+              }`}
+              aria-label="Restart server"
+              title="Restart server (pull latest code from GitHub)"
+            >
+              <RotateCw className={`h-3.5 w-3.5 shrink-0 ${isRestarting ? 'animate-spin' : ''}`} />
+              Restart
+            </button>
           </div>
 
-          {/* Filter chips (shown when filter is active) */}
           {showFilters && (
             <div className="flex items-center gap-2 flex-wrap pt-0.5">
               <FilterChips

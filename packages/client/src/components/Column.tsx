@@ -42,11 +42,20 @@ interface ColumnProps {
   onArchiveTask?: (task: Task) => void;
   onUnarchiveTask?: (task: Task) => void;
   onRetryTask?: (task: Task) => void;
+  onExpandTask?: (task: Task) => void;
   onAddTask?: () => void;
   extraContent?: React.ReactNode;
 }
 
-export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onArchiveTask, onUnarchiveTask, onRetryTask, onAddTask, extraContent }: ColumnProps) {
+/* Column accent color data */
+const COLUMN_META: Record<string, { glow: string; dotColor: string; badgeColor: string; label: string }> = {
+  'bg-zinc-500':    { glow: 'rgba(113,113,122,0.45)',  dotColor: '#71717a', badgeColor: 'rgba(113,113,122,0.15)', label: '#a1a1aa' },
+  'bg-blue-500':    { glow: 'rgba(59,130,246,0.50)',   dotColor: '#60a5fa', badgeColor: 'rgba(59,130,246,0.14)',  label: '#93c5fd' },
+  'bg-amber-500':   { glow: 'rgba(245,158,11,0.50)',   dotColor: '#fbbf24', badgeColor: 'rgba(245,158,11,0.14)', label: '#fcd34d' },
+  'bg-emerald-500': { glow: 'rgba(16,185,129,0.50)',   dotColor: '#34d399', badgeColor: 'rgba(16,185,129,0.14)', label: '#6ee7b7' },
+};
+
+export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, onArchiveTask, onUnarchiveTask, onRetryTask, onExpandTask, onAddTask, extraContent }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id });
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollDown, setCanScrollDown] = useState(false);

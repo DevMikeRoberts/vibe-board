@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import type { Task, Priority, ColumnId, AgentStatus, AgentType, AgentEvent } from '../types.js';
+import type { Task, Priority, ColumnId, AgentStatus, AgentType, AgentEvent, ReviewStatus } from '../types.js';
 import type { TaskRepository } from './types.js';
 import { errorMessage } from '../utils.js';
 
@@ -19,11 +19,16 @@ interface TaskRow {
   use_worktree: number | null;
   worktree_path: string | null;
   agent_type: AgentType;
+  model: string | null;
   archived: number;
   project_id: string;
   group_id: string | null;
   group_order: number | null;
   summary: string | null;
+  pr_url: string | null;
+  review_round: number | null;
+  review_status: string | null;
+  retry_at: number | null;
 }
 
 function rowToTask(row: TaskRow): Task {
@@ -44,10 +49,15 @@ function rowToTask(row: TaskRow): Task {
     useWorktree: row.use_worktree != null ? Boolean(row.use_worktree) : undefined,
     worktreePath: row.worktree_path ?? undefined,
     agentType: row.agent_type,
+    model: row.model ?? undefined,
     archived: Boolean(row.archived),
     groupId: row.group_id ?? undefined,
     groupOrder: row.group_order ?? undefined,
     summary: row.summary ?? null,
+    prUrl: row.pr_url ?? undefined,
+    reviewRound: row.review_round ?? undefined,
+    reviewStatus: (row.review_status as ReviewStatus | null) ?? undefined,
+    retryAt: row.retry_at ?? undefined,
   };
 }
 
@@ -75,10 +85,10 @@ export class SqliteTaskRepository implements TaskRepository {
       getArchived: db.prepare('SELECT * FROM tasks WHERE project_id = ? AND archived = 1 ORDER BY created_at DESC'),
       getById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
       insert: db.prepare(`
-        INSERT INTO tasks (id, project_id, title, description, priority, column_id, agent_status, agent_type, created_at, started_at, completed_at,
-          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived, group_id, group_order, summary)
-        VALUES (@id, @project_id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @created_at, @started_at, @completed_at,
-          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived, @group_id, @group_order, @summary)
+        INSERT INTO tasks (id, project_id, title, description, priority, column_id, agent_status, agent_type, model, created_at, started_at, completed_at,
+          repo_path, branch_name, base_branch, use_worktree, worktree_path, archived, group_id, group_order, summary, pr_url, review_round, review_status, retry_at)
+        VALUES (@id, @project_id, @title, @description, @priority, @column_id, @agent_status, @agent_type, @model, @created_at, @started_at, @completed_at,
+          @repo_path, @branch_name, @base_branch, @use_worktree, @worktree_path, @archived, @group_id, @group_order, @summary, @pr_url, @review_round, @review_status, @retry_at)
       `),
       update: db.prepare(`
         UPDATE tasks SET
@@ -88,6 +98,7 @@ export class SqliteTaskRepository implements TaskRepository {
           column_id = @column_id,
           agent_status = @agent_status,
           agent_type = @agent_type,
+          model = @model,
           started_at = @started_at,
           completed_at = @completed_at,
           repo_path = @repo_path,
@@ -96,7 +107,11 @@ export class SqliteTaskRepository implements TaskRepository {
           use_worktree = @use_worktree,
           worktree_path = @worktree_path,
           archived = @archived,
-          summary = @summary
+          summary = @summary,
+          pr_url = @pr_url,
+          review_round = @review_round,
+          review_status = @review_status,
+          retry_at = @retry_at
         WHERE id = @id
       `),
       delete: db.prepare('DELETE FROM tasks WHERE id = ?'),
@@ -130,6 +145,7 @@ export class SqliteTaskRepository implements TaskRepository {
       column_id: task.columnId,
       agent_status: task.agentStatus,
       agent_type: task.agentType ?? 'copilot',
+      model: task.model ?? null,
       created_at: task.createdAt,
       started_at: task.startedAt ?? null,
       completed_at: task.completedAt ?? null,
@@ -142,6 +158,10 @@ export class SqliteTaskRepository implements TaskRepository {
       group_id: task.groupId ?? null,
       group_order: task.groupOrder ?? null,
       summary: task.summary ?? null,
+      pr_url: task.prUrl ?? null,
+      review_round: task.reviewRound ?? null,
+      review_status: task.reviewStatus ?? null,
+      retry_at: task.retryAt ?? null,
     });
     return task;
   }
@@ -160,6 +180,7 @@ export class SqliteTaskRepository implements TaskRepository {
         column_id: merged.columnId,
         agent_status: merged.agentStatus,
         agent_type: merged.agentType,
+        model: merged.model ?? null,
         started_at: merged.startedAt ?? null,
         completed_at: merged.completedAt ?? null,
         repo_path: merged.repoPath ?? null,
@@ -169,6 +190,10 @@ export class SqliteTaskRepository implements TaskRepository {
         worktree_path: merged.worktreePath ?? null,
         archived: merged.archived ? 1 : 0,
         summary: merged.summary ?? null,
+        pr_url: merged.prUrl ?? null,
+        review_round: merged.reviewRound ?? null,
+        review_status: merged.reviewStatus ?? null,
+        retry_at: merged.retryAt ?? null,
       });
       return merged;
     })();

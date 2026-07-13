@@ -12,11 +12,11 @@ import ImageUpload from './ImageUpload';
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (task: { title: string; description: string; priority: Priority; columnId: ColumnId; agentType: AgentType; autoRun?: boolean; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean }) => Promise<unknown>;
+  onSubmit: (task: { title: string; description: string; priority: Priority; columnId: ColumnId; agentType: AgentType; autoRun?: boolean; repoPath?: string; branchName?: string; baseBranch?: string }) => Promise<unknown>;
   /** When set, dialog is in edit mode with pre-populated fields */
   editTask?: Task | null;
   /** Called on save in edit mode */
-  onEditSubmit?: (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean }) => Promise<unknown>;
+  onEditSubmit?: (id: string, updates: { title: string; description: string; priority: Priority; agentType: AgentType; repoPath?: string; branchName?: string; baseBranch?: string }) => Promise<unknown>;
   /** When true, highlight missing required fields (e.g. opened from Play button) */
   highlightRequired?: boolean;
   /** Project-level repo path that cannot be changed per task. */
@@ -26,7 +26,6 @@ interface TaskDialogProps {
     defaultAgentType?: AgentType;
     defaultPriority?: Priority;
     defaultBaseBranch?: string;
-    defaultUseWorktree?: boolean;
   };
 }
 
@@ -45,13 +44,13 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
   const [agentType, setAgentType] = useState<AgentType>('copilot');
+  const [model, setModel] = useState<string | undefined>(undefined);
   const [showPriority, setShowPriority] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
   const [autoRun, setAutoRun] = useState(false);
   const [repoPath, setRepoPath] = useState('');
   const [branchName, setBranchName] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
-  const [useWorktree, setUseWorktree] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pathError, setPathError] = useState('');
   const [pendingImages, setPendingImages] = useState<File[]>([]);
@@ -64,7 +63,6 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const defaultAgent = projectDefaults?.defaultAgentType ?? 'copilot';
   const defaultPriority = projectDefaults?.defaultPriority ?? 'medium';
   const defaultBaseBranch = projectDefaults?.defaultBaseBranch ?? 'main';
-  const defaultUseWorktree = projectDefaults?.defaultUseWorktree ?? false;
 
   // Pre-populate fields when editing
   useEffect(() => {
@@ -73,10 +71,10 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setDescription(editTask.description);
       setPriority(editTask.priority || 'medium');
       setAgentType(editTask.agentType || 'copilot');
+      setModel(editTask.model || undefined);
       setRepoPath(lockedRepoPath || editTask.repoPath || '');
       setBranchName(editTask.branchName || `task/${slugify(editTask.title)}`);
       setBaseBranch(editTask.baseBranch || 'main');
-      setUseWorktree(editTask.useWorktree ?? false);
       // Load attachments from server
       api.getAttachments(editTask.id).then(setExistingAttachments).catch(() => setExistingAttachments([]));
       // Highlight missing path if opened via Play button
@@ -87,27 +85,27 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       // Opening in create mode — prefill from project defaults (each overridable)
       setPriority(defaultPriority);
       setAgentType(defaultAgent);
+      setModel(undefined);
       setBaseBranch(defaultBaseBranch);
-      setUseWorktree(defaultUseWorktree);
     } else if (!open) {
       // Reset when dialog closes
       setTitle('');
       setDescription('');
       setPriority('medium');
       setAgentType('copilot');
+      setModel(undefined);
       setShowPriority(false);
       setShowAgent(false);
       setAutoRun(false);
       setRepoPath('');
       setBranchName('');
       setBaseBranch('main');
-      setUseWorktree(false);
       setSubmitting(false);
       setPathError('');
       setPendingImages([]);
       setExistingAttachments([]);
     }
-  }, [editTask, open, highlightRequired, lockedRepoPath, defaultAgent, defaultPriority, defaultBaseBranch, defaultUseWorktree]);
+  }, [editTask, open, highlightRequired, lockedRepoPath, defaultAgent, defaultPriority, defaultBaseBranch]);
 
   useEffect(() => {
     if (open && lockedRepoPath) {
@@ -157,16 +155,12 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
     }
     setPathError('');
 
-    // Auto-generate branch name from title if using worktree and no custom name set
-    const effectiveBranch = useWorktree
-      ? (branchName.trim() || `task/${slugify(title.trim())}`)
-      : undefined;
+    const effectiveBranch = branchName.trim() || `task/${slugify(title.trim())}`;
 
     const repoFields = {
       repoPath: trimmedPath,
       branchName: effectiveBranch,
       baseBranch: baseBranch.trim() || 'main',
-      useWorktree,
     };
 
     setSubmitting(true);
@@ -178,6 +172,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
           description: description.trim(),
           priority,
           agentType,
+          model: model || undefined,
           ...repoFields,
         });
         if (result === undefined) return; // Server error — keep dialog open
@@ -189,6 +184,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
           priority,
           columnId: autoRun ? 'in-progress' : 'backlog',
           agentType,
+          model: model || undefined,
           autoRun: autoRun || undefined,
           ...repoFields,
         }) as Task | undefined;
@@ -209,11 +205,11 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setDescription('');
       setPriority(defaultPriority);
       setAgentType(defaultAgent);
+      setModel(undefined);
       setAutoRun(false);
       setRepoPath('');
       setBranchName('');
       setBaseBranch(defaultBaseBranch);
-      setUseWorktree(defaultUseWorktree);
       setPendingImages([]);
       setExistingAttachments([]);
       onClose();
@@ -457,6 +453,23 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                 </label>
               )}
 
+              {/* Model selection for OpenCode (local Ollama models) */}
+              {agentType === 'opencode' && (
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Model</label>
+                  <select
+                    value={model ?? ''}
+                    onChange={(e) => setModel(e.target.value || undefined)}
+                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Use provider default</option>
+                    <option value="qwen3:4B">ollama qwen3:4B</option>
+                    <option value="qwen2.5-coder:7b-16k">qwen2.5-coder:7b-16k</option>
+                  </select>
+                  <p className="mt-1 text-xs text-muted-foreground/60">Local Ollama model selection (OpenCode must point at your Ollama endpoint).</p>
+                </div>
+              )}
+
               {/* Repository configuration */}
               <div className="space-y-3.5 rounded-2xl border-2 border-border bg-muted/40 p-4">
                 <div>
@@ -541,7 +554,10 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                       />
                       <p className="mt-1 font-pixel text-[10px] text-muted-foreground/70">leave blank to auto-generate from title</p>
                     </div>
-                  )}
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/60">
+                    Each task creates a branch from the latest copy of the base branch. Leave the branch blank to auto-generate it from the title.
+                  </p>
                 </div>
 
               </div>

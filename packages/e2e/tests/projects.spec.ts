@@ -885,7 +885,6 @@ test.describe('Projects page', () => {
     await page.getByLabel('Default Agent').selectOption('codex');
     await page.getByLabel('Default Priority').selectOption('high');
     await page.getByLabel('Default Base Branch').fill('develop');
-    await page.getByLabel('Default Worktree').selectOption('true');
     await page.getByRole('button', { name: 'Create Project' }).click();
     await expect(page.getByRole('article', { name: projectName })).toBeVisible();
 
@@ -901,7 +900,6 @@ test.describe('Projects page', () => {
       defaultAgentType: 'codex',
       defaultPriority: 'high',
       defaultBaseBranch: 'develop',
-      defaultUseWorktree: true,
     });
   });
 });
@@ -954,6 +952,30 @@ test.describe('Projects config + repo-URL cloning', () => {
     const restoreRes = await request.patch(`${API}/api/projects/config`, { data: { cloneRoot } });
     expect(restoreRes.status()).toBe(200);
     cleanupTestPath(newRoot);
+  });
+
+  test('PATCH /api/projects/config toggles autoPrEnabled and rejects non-booleans', async ({ request }) => {
+    const current = await request.get(`${API}/api/projects/config`);
+    const { cloneRoot, autoPrEnabled } = await current.json() as { cloneRoot: string; autoPrEnabled?: boolean };
+    originalCloneRoot ??= cloneRoot;
+    // Defaults to on.
+    expect(autoPrEnabled ?? true).toBe(true);
+
+    const badRes = await request.patch(`${API}/api/projects/config`, { data: { autoPrEnabled: 'yes' } });
+    expect(badRes.status()).toBe(400);
+
+    const offRes = await request.patch(`${API}/api/projects/config`, { data: { autoPrEnabled: false } });
+    expect(offRes.status()).toBe(200);
+    expect((await offRes.json() as { autoPrEnabled: boolean }).autoPrEnabled).toBe(false);
+
+    // The change persists across a fresh read.
+    const afterOff = await request.get(`${API}/api/projects/config`);
+    expect((await afterOff.json() as { autoPrEnabled: boolean }).autoPrEnabled).toBe(false);
+
+    // Restore the default so other suites see auto-PR enabled.
+    const onRes = await request.patch(`${API}/api/projects/config`, { data: { autoPrEnabled: true } });
+    expect(onRes.status()).toBe(200);
+    expect((await onRes.json() as { autoPrEnabled: boolean }).autoPrEnabled).toBe(true);
   });
 
   test('POST /api/projects clones a repo from a URL and persists repoUrl', async ({ request }) => {

@@ -3,6 +3,21 @@ export type ColumnId = 'backlog' | 'in-progress' | 'review' | 'done';
 export type AgentStatus = 'idle' | 'planning' | 'executing' | 'complete' | 'failed';
 export type AgentType = 'copilot' | 'claude' | 'codex' | 'opencode' | 'hermes' | 'openclaw';
 
+/**
+ * Legacy review-pipeline state. The automatic PR + adversarial-review pipeline
+ * has been removed — completed tasks now land in the "review" column for manual
+ * PR/merge. This type and the `reviewStatus`/`reviewRound` fields are retained
+ * only for backward compatibility with existing database rows.
+ */
+export type ReviewStatus =
+  | 'opening_pr'         // creating/locating the PR for the finished branch
+  | 'reviewing'          // an adversarial reviewer agent is examining the diff
+  | 'changes_requested'  // reviewer rejected; task bounced back to in-progress
+  | 'approved'           // reviewer approved (merge in progress)
+  | 'merged'             // approved and merged into the base branch
+  | 'needs_human'        // round cap hit without approval — handed back to you
+  | 'error';             // the pipeline failed (see task events)
+
 export interface AgentInfo {
   name: AgentType;
   displayName: string;
@@ -24,15 +39,31 @@ export interface Task {
   repoPath?: string;
   branchName?: string;
   baseBranch?: string;
+  /** @deprecated Worktrees removed — kept for DB backward compat. */
   useWorktree?: boolean;
+  /** @deprecated Worktrees removed — kept for DB backward compat. */
   worktreePath?: string;
   agentType?: AgentType;
+  /** Optional model string used by local providers (e.g. Ollama model name). */
+  model?: string;
   archived?: boolean;
   groupId?: string;
   groupOrder?: number;
   attachments?: TaskAttachment[];
   projectId: string;
   summary?: string | null;
+  /** URL of the pull request opened by the auto-PR pipeline, if any. */
+  prUrl?: string;
+  /** How many adversarial-review cycles this task has been through. */
+  reviewRound?: number;
+  /** Current state of the auto-PR + adversarial-review pipeline. */
+  reviewStatus?: ReviewStatus;
+  /**
+   * Epoch ms at which this task is scheduled to automatically re-run after its
+   * agent hit a token/usage/rate limit. Set by the token-limit retry scheduler;
+   * cleared once the retry fires (or the task is run/edited/manually).
+   */
+  retryAt?: number;
 }
 
 export interface TaskGroup {
@@ -73,6 +104,7 @@ export interface Project {
   defaultAgentType?: AgentType;
   defaultPriority?: Priority;
   defaultBaseBranch?: string;
+  /** @deprecated Worktrees removed — kept for DB backward compat. */
   defaultUseWorktree?: boolean;
 }
 
@@ -84,6 +116,7 @@ export interface CreateProjectRequest {
   defaultAgentType?: AgentType;
   defaultPriority?: Priority;
   defaultBaseBranch?: string;
+  /** @deprecated Worktrees removed. */
   defaultUseWorktree?: boolean;
 }
 
@@ -94,6 +127,7 @@ export interface UpdateProjectRequest {
   defaultAgentType?: AgentType | null;
   defaultPriority?: Priority | null;
   defaultBaseBranch?: string | null;
+  /** @deprecated Worktrees removed. */
   defaultUseWorktree?: boolean | null;
 }
 
@@ -101,6 +135,31 @@ export interface UpdateProjectRequest {
 export interface ProjectConfig {
   /** Absolute path under which repos cloned from a URL are placed. */
   cloneRoot: string;
+  /**
+   * Auto-pickup ("stagger"): when enabled, the board automatically starts the
+   * next idle backlog task — one at a time per project — as soon as the project
+   * has no task currently running. Disabled by default.
+   */
+  autoPickupEnabled?: boolean;
+  /**
+   * Token-limit retry: when enabled, a task whose agent fails because it hit a
+   * token/usage/rate limit is automatically re-run around the time the limit is
+   * reported to reset (best-effort parse of the error). Disabled by default.
+   */
+  tokenLimitRetryEnabled?: boolean;
+  /**
+   * Minutes to wait before retrying a token-limited task when no reset time can
+   * be parsed from the error. Defaults to 60.
+   */
+  tokenLimitFallbackMinutes?: number;
+  /**
+   * Auto-PR: when enabled (the default), a task that completes successfully on a
+   * repo with a configured `origin` remote automatically opens a pull request
+   * for its branch. The board then watches that PR and, once it is merged, moves
+   * the task to "done" and cleans up the worktree/branch. Set to false to fall
+   * back to the manual Create-PR / Merge buttons.
+   */
+  autoPrEnabled?: boolean;
 }
 
 export interface ProjectPathValidation {
@@ -141,6 +200,10 @@ export interface AgentEvent {
     agentType?: AgentType;
     duration?: number;
     error?: string;
+    /** Set on events produced by the auto-PR/review pipeline ('pipeline' | 'review'). */
+    phase?: string;
+    /** Agent type that produced an adversarial-review event. */
+    reviewer?: AgentType;
   };
 }
 
@@ -166,8 +229,11 @@ export interface TaskTemplate {
   description: string;
   priority: Priority;
   agentType: AgentType;
+  /** Optional model for local providers (e.g. Ollama model name) */
+  model?: string;
   repoPath?: string;
   baseBranch?: string;
+  /** @deprecated Worktrees removed — kept for DB backward compat. */
   useWorktree?: boolean;
   createdAt: number;
 }

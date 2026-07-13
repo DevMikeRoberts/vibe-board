@@ -15,7 +15,6 @@ interface ChildRow {
   title: string;
   description: string;
   agentType: AgentType;
-  useWorktree: boolean;
 }
 
 interface TaskGroupDialogProps {
@@ -39,7 +38,6 @@ interface TaskGroupDialogProps {
     defaultAgentType?: AgentType;
     defaultPriority?: Priority;
     defaultBaseBranch?: string;
-    defaultUseWorktree?: boolean;
   };
 }
 
@@ -54,8 +52,8 @@ const textareaShell =
   'w-full rounded-xl border-2 border-border bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors';
 
 let nextKey = 0;
-function makeRow(agentType: AgentType = 'copilot', useWorktree = true): ChildRow {
-  return { key: `child-${nextKey++}`, title: '', description: '', agentType, useWorktree };
+function makeRow(agentType: AgentType = 'copilot'): ChildRow {
+  return { key: `child-${nextKey++}`, title: '', description: '', agentType };
 }
 
 export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubmit, lockedRepoPath, projectDefaults }: TaskGroupDialogProps) {
@@ -77,8 +75,6 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
   const defaultAgent = projectDefaults?.defaultAgentType ?? 'copilot';
   const defaultPriorityVal = projectDefaults?.defaultPriority ?? 'medium';
   const defaultBaseBranchVal = projectDefaults?.defaultBaseBranch ?? 'main';
-  const defaultUseWorktreeVal = projectDefaults?.defaultUseWorktree ?? true;
-
   // Pre-populate in edit mode, reset when dialog closes
   useEffect(() => {
     if (editGroup && open) {
@@ -93,15 +89,14 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
         title: c.title,
         description: c.description,
         agentType: c.agentType || 'copilot',
-        useWorktree: c.useWorktree ?? true,
       })));
     } else if (open && !editGroup) {
       // Opening in create mode — prefill from project defaults (each overridable)
       setPriority(defaultPriorityVal);
       setBaseBranch(defaultBaseBranchVal);
       setChildren([
-        makeRow(defaultAgent, defaultUseWorktreeVal),
-        makeRow(defaultAgent, defaultUseWorktreeVal),
+        makeRow(defaultAgent),
+        makeRow(defaultAgent),
       ]);
     } else if (!open) {
       setTitle('');
@@ -115,7 +110,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
       setSubmitting(false);
       setPathError('');
     }
-  }, [editGroup, open, lockedRepoPath, defaultAgent, defaultPriorityVal, defaultBaseBranchVal, defaultUseWorktreeVal]);
+  }, [editGroup, open, lockedRepoPath, defaultAgent, defaultPriorityVal, defaultBaseBranchVal]);
 
   useEffect(() => {
     if (open && lockedRepoPath) {
@@ -129,7 +124,6 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
     if (maxConcurrency > children.length) setMaxConcurrency(children.length);
   }, [children.length, maxConcurrency]);
 
-  const hasWorktreeWarning = children.length >= 2 && children.some((c) => !c.useWorktree);
   const repoPathPlaceholder = getRepoPathPlaceholder();
   const repoPathHelpText = getRepoPathHelpText();
 
@@ -174,7 +168,6 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
           title: c.title.trim(),
           description: c.description.trim() || undefined,
           agentType: c.agentType,
-          useWorktree: c.useWorktree,
         })),
         autoRun,
       });
@@ -187,7 +180,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
 
   function addChild() {
     if (children.length >= MAX_GROUP_CHILDREN) return;
-    setChildren((prev) => [...prev, isEditMode ? makeRow() : makeRow(defaultAgent, defaultUseWorktreeVal)]);
+    setChildren((prev) => [...prev, isEditMode ? makeRow() : makeRow(defaultAgent)]);
   }
 
   function removeChild(key: string) {
@@ -376,7 +369,7 @@ export function TaskGroupDialog({ open, onClose, onSubmit, editGroup, onEditSubm
                             rows={2}
                             className="w-full rounded-xl border-2 border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors"
                           />
-                          {/* Agent + Worktree row */}
+                          {/* Agent row */}
                           <div className="flex items-center gap-3">
                             {/* Agent selector */}
                             <select

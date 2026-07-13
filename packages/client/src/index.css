@@ -71,6 +71,7 @@ button, [role="button"] {
   --bg-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cg fill-opacity='0.09'%3E%3Cpath d='M24 12h4v4h-4zM20 16h12v4H20zM24 20h4v4h-4z' fill='%234b3ee8'/%3E%3Cpath d='M130 40h4v4h-4zM126 44h12v4h-12zM130 48h4v4h-4z' fill='%23e8368f'/%3E%3Cpath d='M64 108h4v4h-4zM60 112h12v4H60zM64 116h4v4h-4z' fill='%2312b564'/%3E%3Cpath d='M150 140h4v4h-4zM146 144h12v4h-12zM150 148h4v4h-4z' fill='%238a5cf0'/%3E%3Cpath d='M10 156h4v4h-4zM6 160h12v4H6zM10 164h4v4h-4z' fill='%23b89e00'/%3E%3C/g%3E%3C/svg%3E");
 }
 
+/* ── Dark mode ── */
 .dark {
   /* ---- Midnight Arcade (dark) ---- */
   --color-background: #08070c;
@@ -112,9 +113,7 @@ button, [role="button"] {
   --bg-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cg fill-opacity='0.13'%3E%3Cpath d='M24 12h4v4h-4zM20 16h12v4H20zM24 20h4v4h-4z' fill='%236c5cff'/%3E%3Cpath d='M130 40h4v4h-4zM126 44h12v4h-12zM130 48h4v4h-4z' fill='%23ff6ec7'/%3E%3Cpath d='M64 108h4v4h-4zM60 112h12v4H60zM64 116h4v4h-4z' fill='%233df285'/%3E%3Cpath d='M150 140h4v4h-4zM146 144h12v4h-12zM150 148h4v4h-4z' fill='%23b08bff'/%3E%3Cpath d='M10 156h4v4h-4zM6 160h12v4H6zM10 164h4v4h-4z' fill='%23f2e947'/%3E%3C/g%3E%3C/svg%3E");
 }
 
-* {
-  border-color: var(--color-border);
-}
+* { border-color: var(--color-border); }
 
 body {
   background-color: var(--color-background);
@@ -248,8 +247,77 @@ body {
   width: 10px;
   height: 10px;
 }
-::-webkit-scrollbar-track {
+
+@keyframes card-float {
+  0%, 100% { transform: translateY(0px) rotateX(0deg); }
+  50%       { transform: translateY(-4px) rotateX(1deg); }
+}
+
+@keyframes glow-ping {
+  0%   { box-shadow: 0 0 0 0 rgba(249,115,22,0.5); }
+  100% { box-shadow: 0 0 0 12px rgba(249,115,22,0); }
+}
+
+/* ─── Orange gradient button ─────────────────────────────────────────────── */
+.btn-orange-gradient {
+  background: linear-gradient(135deg, #d4610b 0%, #f97316 35%, #fb923c 65%, #f97316 100%);
+  background-size: 220% 220%;
+  color: #fff !important;
+  font-weight: 600;
+  border: none !important;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.25s ease;
+  box-shadow: 0 2px 10px rgba(249,115,22,0.35), inset 0 1px 0 rgba(255,255,255,0.18);
+  animation: gradient-shift 5s ease infinite;
+}
+.btn-orange-gradient::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.30), transparent);
+  transform: translateX(-100%) skewX(-12deg);
+  pointer-events: none;
+}
+.btn-orange-gradient:hover {
+  box-shadow: 0 0 22px rgba(249,115,22,0.70), 0 6px 28px rgba(249,115,22,0.40), inset 0 1px 0 rgba(255,255,255,0.22);
+  transform: translateY(-1px);
+}
+.btn-orange-gradient:hover::before {
+  animation: shimmer-sweep 0.65s ease-out 1;
+}
+.btn-orange-gradient:active {
+  transform: translateY(0px);
+  box-shadow: 0 1px 4px rgba(249,115,22,0.30);
+}
+
+/* ─── Orange outline button ──────────────────────────────────────────────── */
+.btn-orange-outline {
   background: transparent;
+  color: #f97316 !important;
+  border: 1px solid rgba(249,115,22,0.55) !important;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+.btn-orange-outline::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 35%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(249,115,22,0.12), transparent);
+  transform: translateX(-100%) skewX(-12deg);
+  pointer-events: none;
+}
+.btn-orange-outline:hover {
+  background: rgba(249,115,22,0.10) !important;
+  border-color: rgba(249,115,22,0.85) !important;
+  box-shadow: 0 0 14px rgba(249,115,22,0.28), inset 0 0 14px rgba(249,115,22,0.06);
+  color: #fb923c !important;
+  transform: translateY(-1px);
 }
 ::-webkit-scrollbar-thumb {
   background: color-mix(in oklab, var(--color-foreground) 22%, transparent);

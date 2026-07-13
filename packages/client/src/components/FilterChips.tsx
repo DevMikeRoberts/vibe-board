@@ -15,11 +15,10 @@ const AGENT_CHIPS: { value: AgentType; label: string }[] = (
   Object.entries(AGENT_DISPLAY) as [AgentType, { emoji: string; label: string }][]
 ).map(([value, { label }]) => ({ value, label }));
 
-/** Map StatusFilter to actual AgentStatus values */
 export function statusFilterToStatuses(filter: StatusFilter): AgentStatus[] {
   switch (filter) {
-    case 'running': return ['planning', 'executing'];
-    case 'failed': return ['failed'];
+    case 'running':  return ['planning', 'executing'];
+    case 'failed':   return ['failed'];
     case 'complete': return ['complete'];
   }
 }
@@ -79,7 +78,6 @@ export function FilterChips({ activeAgentTypes, activeStatuses, onToggleAgentTyp
         );
       })}
 
-      {/* Clear button */}
       {hasActiveFilters && (
         <button
           onClick={onClear}

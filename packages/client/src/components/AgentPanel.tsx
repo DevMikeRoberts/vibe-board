@@ -194,11 +194,11 @@ function compactToolSummary(content: string | undefined): string | null {
 interface AgentPanelProps {
   task: Task | null;
   onClose: () => void;
+  onExpand?: (task: Task) => void;
   onRun?: (id: string) => void;
   onStop?: (id: string) => void;
   onCreatePR?: (id: string) => Promise<string | undefined>;
   onMergeLocal?: (id: string) => Promise<string | undefined>;
-  onCleanupWorktree?: (id: string) => Promise<void>;
   onReconfigureRetry?: (id: string) => void;
   theme?: 'dark' | 'light';
 }
@@ -409,7 +409,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
   );
 }
 
-export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLocal, onCleanupWorktree, onReconfigureRetry, theme }: AgentPanelProps) {
+export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR, onMergeLocal, onReconfigureRetry, theme }: AgentPanelProps) {
   const [events, setEvents] = useState<AgentEvent[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [prUrl, setPrUrl] = useState<string | null>(null);
@@ -428,7 +428,6 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
   // auto-default (Summary for review/done) doesn't clobber an explicit choice.
   const userSelectedTabRef = useRef(false);
   const agentDisplay = task?.agentType ? getAgentDisplay(task.agentType) : undefined;
-  const [showWorktreeConfirm, setShowWorktreeConfirm] = useState(false);
   const [hasRemote, setHasRemote] = useState<boolean | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -452,7 +451,6 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
     setMergeResult(null);
     setMergeLoading(false);
     setMergeError(null);
-    setShowWorktreeConfirm(false);
     setHasRemote(null);
     setFollowUpMessage('');
     setSending(false);
@@ -713,6 +711,15 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                   <span className="block h-3 w-3 bg-current" aria-hidden="true" />
                 </button>
               )}
+              {onExpand && task && (
+                <button
+                  onClick={() => onExpand(task)}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  title="Expand to full page view"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                </button>
+              )}
               <button
                 onClick={onClose}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-foreground hover:border-destructive hover:bg-destructive hover:text-cream transition-colors"
@@ -765,7 +772,7 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
             </div>
           )}
 
-          {/* Worktree info bar */}
+          {/* Branch info bar */}
           {task.branchName && (
             <div className="shrink-0 border-b-2 border-border px-4 py-2.5 space-y-1.5">
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -774,16 +781,11 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                 <span className="text-muted-foreground/50">from</span>
                 <span className="font-mono">{task.baseBranch || 'main'}</span>
               </div>
-              {task.worktreePath && (
-                <div className="text-[10px] text-muted-foreground font-mono truncate">
-                  {task.worktreePath}
-                </div>
-              )}
 
-              {/* PR / Cleanup actions — show when task is done or complete */}
+              {/* PR / actions — show when task is done or complete */}
               {(task.agentStatus === 'complete' || task.columnId === 'done') && (
                 <div className="flex items-center gap-2 pt-1">
-                  {!prUrl && onCreatePR && hasRemote === true && (
+                  {!prUrl && !task.prUrl && onCreatePR && hasRemote === true && (
                     <button
                       onClick={async () => {
                         setPrLoading(true);
@@ -804,9 +806,9 @@ export function AgentPanel({ task, onClose, onRun, onStop, onCreatePR, onMergeLo
                       {prLoading ? 'creating…' : 'create pr'}
                     </button>
                   )}
-                  {prUrl && (
+                  {(prUrl ?? task.prUrl) && (
                     <a
-                      href={prUrl}
+                      href={prUrl ?? task.prUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1.5 rounded-full border-2 border-neon-green/40 bg-neon-green/10 px-3 py-1.5 font-pixel text-[10px] text-neon-green hover:bg-neon-green/20 transition-colors [text-transform:lowercase]"

@@ -36,10 +36,11 @@ ai-agent-board/
 - **Agent SDK abstraction** — all provider implementations live in the external `@codewithdan/agent-sdk-core` package. The server imports providers and the detection function from this package.
 - **Dual database backends** — SQLite via `better-sqlite3` (default, zero config) or PostgreSQL via `pg` (set `DATABASE_URL`). Both implement the `TaskRepository` and `TemplateRepository` interfaces.
 - **Route splitting** — REST API is split across `tasks.ts` (CRUD), `agent.ts` (start/stop/events/follow-up), `git.ts` (merge-local, create-pr, worktree cleanup, git-info), `templates.ts` (task template CRUD), and `groups.ts` (group CRUD + run/stop/archive).
+- **Auto-PR + merge watcher** — when a standalone task completes successfully on a repo with an `origin` remote, the board automatically opens a PR for its branch (`autoOpenPrOnComplete` in `routes/helpers.ts`) and records `prUrl`. PR creation is retried up to 3 times with exponential backoff (2 s, 5 s) to handle transient push/network failures. After a successful creation the PR state is immediately checked: merge conflicts trigger an automatic rebase (`AgentManager.rebaseOnBase`), and failing CI checks emit a visible warning event. The `PrWatcher` service (`services/pr-watcher.ts`) polls those PRs every 60 s and handles four outcomes: ① PR merged → task moved to **done**, branch/worktree cleaned up; ② PR conflicting → auto-rebase attempted (once per conflict window), debounced warning event emitted; ③ CI failing → debounced error event emitted, recovery notice sent when CI passes; ④ PR closed without merging → one-time error event prompts the developer to reopen or re-create the PR. Gated by the `autoPrEnabled` setting (default on); group children are excluded and roll up to their group instead.
 - **API key auth** — optional Bearer token via `API_KEY` env var. When set, all API and WebSocket requests require `Authorization: Bearer <key>`. Middleware in `middleware/auth.ts`.
 - **Task Groups** — parent entity with N child tasks, concurrency-controlled execution via `GroupQueue` in agent-manager. Groups move as a single card on the board; auto-advance to review when all children complete. Parallelism slider locked once running.
 - **Event streaming** — SDK events mapped to `AgentEvent`s, persisted to database, broadcast via WebSocket. In-memory LRU cache (200 tasks max, 100 events per task).
-- **Git worktrees** — optional per-task branch isolation. Agent works in worktree directory, path rewriting via `onPreToolUse` hook. Worktrees auto-cleaned after successful merge or PR creation.
+- **Git worktrees** — optional per-task branch isolation. Agent works in worktree directory, path rewriting via `onPreToolUse` hook. Worktrees auto-cleaned after successful merge, PR creation, or once a watched PR is merged.
 - **Local merge** — `mergeLocal()` merges worktree branch into base branch locally with per-repo mutex to prevent concurrent checkout races. Auto-aborts on conflict.
 - **Smart PR/merge buttons** — `GET /api/tasks/:id/git-info` checks for remote; UI shows "Create PR" only when remote exists, "Merge to main" always available.
 - **Vite proxy** — client proxies `/api` and `/ws` to the server.
@@ -107,6 +108,7 @@ npm run build:server   # tsc -b tsconfig.build.json
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Comma-separated allowed repo root paths (security whitelist) |
 | `ALLOWED_ORIGINS` | `http://localhost:4175,http://localhost:4176` | CORS origins |
 | `AGENT_TIMEOUT_MS` | `600000` (10 min) | Max agent execution time |
+| `AGENTBOARD_REPO_SCAN` | `1` (on) | Inject the repo-scan skill into non-Claude agents so they build repository context before implementing; set to `0`/`false` to disable |
 | `API_URL` | `http://localhost:3001` | Vite proxy target |
 | `PROJECTS_DIR` | `~/projects` | Host projects path |
 
@@ -127,7 +129,7 @@ The committed `.githooks/pre-push` hook runs `npm run gate:required` and must no
 
 ## Code Patterns
 
-- **Task lifecycle**: backlog → in-progress → review → done (validated transitions in `VALID_TRANSITIONS` from `shared/constants.ts`)
+- **Task lifecycle**: backlog → in-progress → review → done (validated transitions in `VALID_TRANSITIONS` from `shared/constants.ts`). With auto-PR on, a completed task lands in **review** with an open PR and is advanced to **done** automatically by `PrWatcher` when that PR merges.
 - **Agent lifecycle**: idle → planning → executing → complete/failed (set via `agentStatus`)
 - **Agent types**: `copilot | claude | codex | opencode | hermes | openclaw` — each task can specify which agent to use via `agentType`
 - **Provider pattern**: `AgentProvider` creates `AgentSession`s (from `@codewithdan/agent-sdk-core`). `AgentManager` orchestrates sessions with timeouts, event caching, and graceful cleanup.

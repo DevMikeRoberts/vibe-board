@@ -126,6 +126,9 @@ function migrate(db: Database.Database): void {
   if (!colNames.has('agent_type')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'copilot'`);
   }
+  if (!colNames.has('model')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN model TEXT`);
+  }
   if (!colNames.has('archived')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`);
   }
@@ -140,6 +143,18 @@ function migrate(db: Database.Database): void {
   }
   if (!colNames.has('summary')) {
     db.exec(`ALTER TABLE tasks ADD COLUMN summary TEXT`);
+  }
+  if (!colNames.has('pr_url')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN pr_url TEXT`);
+  }
+  if (!colNames.has('review_round')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN review_round INTEGER`);
+  }
+  if (!colNames.has('review_status')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN review_status TEXT`);
+  }
+  if (!colNames.has('retry_at')) {
+    db.exec(`ALTER TABLE tasks ADD COLUMN retry_at INTEGER`);
   }
 
   // Task groups table
@@ -182,6 +197,7 @@ function migrate(db: Database.Database): void {
       description   TEXT NOT NULL DEFAULT '',
       priority      TEXT NOT NULL DEFAULT 'medium',
       agent_type    TEXT NOT NULL DEFAULT 'copilot',
+      model         TEXT,
       repo_path     TEXT,
       base_branch   TEXT,
       use_worktree  INTEGER,
@@ -285,11 +301,16 @@ function ensureSqliteProjectForeignKeys(db: Database.Database): void {
         use_worktree  INTEGER,
         worktree_path TEXT,
         agent_type    TEXT NOT NULL DEFAULT 'copilot',
+        model         TEXT,
         archived      INTEGER NOT NULL DEFAULT 0,
         project_id    TEXT NOT NULL DEFAULT 'default',
         group_id      TEXT,
         group_order   INTEGER,
         summary       TEXT,
+        pr_url        TEXT,
+        review_round  INTEGER,
+        review_status TEXT,
+        retry_at      INTEGER,
         FOREIGN KEY (project_id) REFERENCES projects(id),
         FOREIGN KEY (group_id) REFERENCES task_groups(id) ON DELETE CASCADE
       );
@@ -297,12 +318,14 @@ function ensureSqliteProjectForeignKeys(db: Database.Database): void {
       INSERT INTO tasks_new (
         id, title, description, priority, column_id, agent_status, created_at,
         started_at, completed_at, repo_path, branch_name, base_branch, use_worktree,
-        worktree_path, agent_type, archived, project_id, group_id, group_order, summary
+        worktree_path, agent_type, model, archived, project_id, group_id, group_order, summary,
+        pr_url, review_round, review_status, retry_at
       )
       SELECT
         id, title, description, priority, column_id, agent_status, created_at,
         started_at, completed_at, repo_path, branch_name, base_branch, use_worktree,
-        worktree_path, agent_type, archived, project_id, group_id, group_order, summary
+        worktree_path, agent_type, model, archived, project_id, group_id, group_order, summary,
+        pr_url, review_round, review_status, retry_at
       FROM tasks;
 
       DROP TABLE tasks;
@@ -413,11 +436,16 @@ export async function initPostgresDatabase(pool: Pool): Promise<void> {
   await addCol('use_worktree', 'BOOLEAN');
   await addCol('worktree_path', 'TEXT');
   await addCol('agent_type', "TEXT NOT NULL DEFAULT 'copilot'");
+  await addCol('model', 'TEXT');
   await addCol('archived', 'BOOLEAN NOT NULL DEFAULT FALSE');
   await addCol('project_id', "TEXT NOT NULL DEFAULT 'default'");
   await addCol('group_id', 'TEXT');
   await addCol('group_order', 'INTEGER');
   await addCol('summary', 'TEXT');
+  await addCol('pr_url', 'TEXT');
+  await addCol('review_round', 'INTEGER');
+  await addCol('review_status', 'TEXT');
+  await addCol('retry_at', 'BIGINT');
 
   // Task groups table
   await pool.query(`

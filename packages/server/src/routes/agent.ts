@@ -7,9 +7,10 @@ import type { TaskGroupRepository } from '../repositories/group-types.js';
 import type { ProjectRepository } from '../repositories/project-types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
+import type { TaskScheduler } from '../services/task-scheduler.js';
 import {
   asyncHandler, paramId, isAllowedRepoPath, expandTilde, isValidGitRef, normalizeRepoPathForCompare,
-  broadcastTaskUpdate, broadcastGroupUpdate, makeStatusCallback, makeWorktreeCallback, isRateLimited,
+  broadcastTaskUpdate, broadcastGroupUpdate, makeStatusCallback, isRateLimited,
 } from './helpers.js';
 
 export function createAgentRouter(
@@ -17,6 +18,7 @@ export function createAgentRouter(
   agentManager: AgentManager,
   groupRepo?: TaskGroupRepository,
   projectRepo?: ProjectRepository,
+  scheduler?: TaskScheduler,
 ): Router {
   const router = Router();
 
@@ -29,7 +31,7 @@ export function createAgentRouter(
       return;
     }
 
-    const { repoPath, branchName, baseBranch, useWorktree, agentType } = req.body;
+    const { repoPath, branchName, baseBranch, agentType } = req.body;
     const project = projectRepo ? await projectRepo.getById(task.projectId ?? 'default') : undefined;
     if (req.body.projectId !== undefined && req.body.projectId !== (task.projectId ?? 'default')) {
       res.status(400).json({ error: 'projectId is immutable' });
@@ -50,10 +52,6 @@ export function createAgentRouter(
     }
     if (baseBranch !== undefined && typeof baseBranch !== 'string') {
       res.status(400).json({ error: 'baseBranch must be a string' });
-      return;
-    }
-    if (useWorktree !== undefined && typeof useWorktree !== 'boolean') {
-      res.status(400).json({ error: 'useWorktree must be a boolean' });
       return;
     }
     if (agentType !== undefined && !isValidAgentType(agentType)) {
@@ -89,7 +87,6 @@ export function createAgentRouter(
     if (repoPath !== undefined && !project?.repoPath) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
     if (branchName !== undefined) updates.branchName = branchName || undefined;
     if (baseBranch !== undefined) updates.baseBranch = baseBranch;
-    if (useWorktree !== undefined) updates.useWorktree = useWorktree;
     if (agentType !== undefined) updates.agentType = agentType;
 
     const updated = await repo.update(id, updates);
@@ -121,10 +118,14 @@ export function createAgentRouter(
     // Clear old events from any previous run
     agentManager.resetEvents(task.id);
 
+    // A manual run supersedes any scheduled token-limit retry for this task.
+    scheduler?.cancelRetry(task.id);
+
     const updates: Partial<Task> = {
       agentStatus: 'planning',
       startedAt: Date.now(),
       completedAt: undefined,
+      retryAt: undefined,
     };
     if (task.columnId === 'backlog') {
       updates.columnId = 'in-progress';
@@ -148,7 +149,7 @@ export function createAgentRouter(
       }
     }
 
-    agentManager.startAgent(updated, makeStatusCallback(repo, task.id), makeWorktreeCallback(repo, task.id));
+    agentManager.startAgent(updated, makeStatusCallback(repo, task.id, agentManager));
 
     res.json(updated);
   }));
@@ -170,7 +171,9 @@ export function createAgentRouter(
       res.status(409).json({ error: 'no running agent for this task' });
       return;
     }
-    const updated = await repo.update(task.id, { agentStatus: 'failed' });
+    // A manual stop also cancels any pending token-limit retry.
+    scheduler?.cancelRetry(task.id);
+    const updated = await repo.update(task.id, { agentStatus: 'failed', retryAt: undefined });
     if (!updated) {
       res.status(404).json({ error: 'task not found' });
       return;

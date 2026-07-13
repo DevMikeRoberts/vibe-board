@@ -28,7 +28,7 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
 
   // POST /api/templates
   router.post('/', asyncHandler(async (req: Request, res: Response) => {
-    const { name, title, description, priority, agentType, repoPath, baseBranch, useWorktree } = req.body;
+    const { name, title, description, priority, agentType, repoPath, baseBranch } = req.body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       res.status(400).json({ error: 'name is required' });
@@ -77,7 +77,6 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       agentType: agentType || 'copilot',
       repoPath: typeof repoPath === 'string' ? expandTilde(repoPath) : undefined,
       baseBranch: baseBranch || undefined,
-      useWorktree: useWorktree ?? undefined,
       createdAt: Date.now(),
     };
 
@@ -102,7 +101,7 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
       return;
     }
 
-    const { name, title, description, priority, agentType, repoPath, baseBranch, useWorktree } = req.body;
+    const { name, title, description, priority, agentType, repoPath, baseBranch } = req.body;
 
     if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
       res.status(400).json({ error: 'name must be a non-empty string' });
@@ -150,7 +149,6 @@ export function createTemplateRouter(templateRepo: TemplateRepository): Router {
     if (agentType !== undefined) updates.agentType = agentType;
     if (repoPath !== undefined) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
     if (baseBranch !== undefined) updates.baseBranch = baseBranch;
-    if (useWorktree !== undefined) updates.useWorktree = useWorktree;
 
     try {
       const updated = await templateRepo.update(paramId(req), updates);

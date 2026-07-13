@@ -32,6 +32,7 @@ interface BoardProps {
   onArchiveTask?: (task: Task) => void;
   onUnarchiveTask?: (task: Task) => void;
   onRetryTask?: (task: Task) => void;
+  onExpandTask?: (task: Task) => void;
   onAddTask: () => void;
   onDropInProgress?: (task: Task) => void;
   showArchived?: boolean;
@@ -42,8 +43,6 @@ interface BoardProps {
   onEditGroup?: (group: TaskGroupWithChildren) => void;
 }
 
-// Use pointerWithin first (ideal for dropping into columns),
-// fall back to rectIntersection if pointer isn't inside any droppable.
 const kanbanCollision: CollisionDetection = (args) => {
   const pointerCollisions = pointerWithin(args);
   if (pointerCollisions.length > 0) return pointerCollisions;
@@ -61,6 +60,7 @@ export function Board({
   onArchiveTask,
   onUnarchiveTask,
   onRetryTask,
+  onExpandTask,
   onAddTask,
   onDropInProgress,
   showArchived = false,
@@ -72,10 +72,8 @@ export function Board({
 }: BoardProps) {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
-  // Dynamically add archived column when showArchived is true
   const columns = useMemo(() => {
     if (!showArchived) return baseColumns;
-
     return [
       ...baseColumns,
       {
@@ -88,9 +86,7 @@ export function Board({
   }, [showArchived]);
 
   const getTasksForColumn = useCallback((columnId: ColumnId | string) => {
-    if (columnId === 'archived') {
-      return tasks.filter(t => t.archived === true);
-    }
+    if (columnId === 'archived') return tasks.filter(t => t.archived === true);
     return getTasksByColumn(columnId as ColumnId);
   }, [tasks, getTasksByColumn]);
 
@@ -99,62 +95,46 @@ export function Board({
   }, [groups]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  const handleDragStart = useCallback(
-    (event: DragStartEvent) => {
-      const task = tasks.find((t) => t.id === event.active.id);
-      if (task) setActiveTask(task);
-      document.body.style.cursor = 'grabbing';
-    },
-    [tasks]
-  );
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const task = tasks.find((t) => t.id === event.active.id);
+    if (task) setActiveTask(task);
+    document.body.style.cursor = 'grabbing';
+  }, [tasks]);
 
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      document.body.style.cursor = '';
-      setActiveTask(null);
-      const { active, over } = event;
-      if (!over) return;
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    document.body.style.cursor = '';
+    setActiveTask(null);
+    const { active, over } = event;
+    if (!over) return;
 
-      const taskId = active.id as string;
-      const overId = over.id as string;
-      const draggedTask = tasks.find((t) => t.id === taskId);
-      if (!draggedTask) return;
+    const taskId = active.id as string;
+    const overId = over.id as string;
+    const draggedTask = tasks.find((t) => t.id === taskId);
+    if (!draggedTask) return;
 
-      // Resolve target column
-      const isColumn = columns.some((c) => c.id === overId);
-      let targetColumn: ColumnId;
-      if (isColumn) {
-        targetColumn = overId as ColumnId;
-      } else {
-        const overTask = tasks.find((t) => t.id === overId);
-        if (!overTask) return;
-        targetColumn = overTask.columnId;
-      }
+    const isColumn = columns.some((c) => c.id === overId);
+    let targetColumn: ColumnId;
+    if (isColumn) {
+      targetColumn = overId as ColumnId;
+    } else {
+      const overTask = tasks.find((t) => t.id === overId);
+      if (!overTask) return;
+      targetColumn = overTask.columnId;
+    }
 
-      // Don't allow moving archived tasks
-      if (draggedTask.archived) return;
+    if (draggedTask.archived) return;
+    if ((targetColumn as string) === 'archived') return;
+    if (targetColumn === draggedTask.columnId) return;
+    if (!VALID_TRANSITIONS[draggedTask.columnId]?.includes(targetColumn)) return;
 
-      // Don't allow dropping into archived column
-      if ((targetColumn as string) === 'archived') return;
-
-      // Validate transition before moving
-      if (targetColumn === draggedTask.columnId) return;
-      if (!VALID_TRANSITIONS[draggedTask.columnId]?.includes(targetColumn)) return;
-
-      onMoveTask(taskId, targetColumn);
-
-      // Auto-open agent panel when dropped into in-progress
-      if (targetColumn === 'in-progress' && onDropInProgress) {
-        onDropInProgress(draggedTask);
-      }
-    },
-    [onMoveTask, onDropInProgress, tasks, columns]
-  );
+    onMoveTask(taskId, targetColumn);
+    if (targetColumn === 'in-progress' && onDropInProgress) {
+      onDropInProgress(draggedTask);
+    }
+  }, [onMoveTask, onDropInProgress, tasks, columns]);
 
   const handleDragCancel = useCallback(() => {
     document.body.style.cursor = '';
@@ -187,6 +167,7 @@ export function Board({
               onArchiveTask={onArchiveTask}
               onUnarchiveTask={onUnarchiveTask}
               onRetryTask={onRetryTask}
+              onExpandTask={onExpandTask}
               onAddTask={column.id === 'backlog' ? onAddTask : undefined}
               extraContent={
                 getGroupsForColumn(column.id).map((g) => (

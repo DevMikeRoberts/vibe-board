@@ -6,13 +6,14 @@ import type { TaskRepository } from '../repositories/types.js';
 import type { ProjectRepository } from '../repositories/project-types.js';
 import { broadcast } from '../websocket.js';
 import type { AgentManager } from '../services/agent-manager.js';
+import type { TaskScheduler } from '../services/task-scheduler.js';
 import {
   asyncHandler, paramId, isAllowedRepoPath, expandTilde,
   validateTaskFields, buildTask, broadcastTaskUpdate,
   failTaskWithEvent, startAgentForTask, normalizeRepoPathForCompare,
 } from './helpers.js';
 
-export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager, projectRepo: ProjectRepository): Router {
+export function createTaskRouter(repo: TaskRepository, agentManager: AgentManager, projectRepo: ProjectRepository, scheduler?: TaskScheduler): Router {
   const router = Router();
 
   // GET /api/tasks
@@ -69,6 +70,8 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       return;
     }
 
+    // A new backlog task may be eligible for auto-pickup ("staggering").
+    scheduler?.notifyTaskChanged(task.projectId);
     res.status(201).json(task);
   }));
 
@@ -134,6 +137,11 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       }
     }
 
+    // Re-evaluate auto-pickup once per affected project after the batch lands.
+    for (const projectId of new Set(created.map((t) => t.projectId))) {
+      scheduler?.notifyTaskChanged(projectId);
+    }
+
     res.status(201).json({ tasks: created });
   }));
 
@@ -173,7 +181,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       return;
     }
 
-    const { title, description, priority, columnId, agentStatus, agentType, repoPath, branchName, baseBranch, useWorktree, archived } = req.body;
+    const { title, description, priority, columnId, agentStatus, agentType, repoPath, branchName, baseBranch, archived, model } = req.body;
 
     if (title !== undefined && (typeof title !== 'string' || !title.trim())) {
       res.status(400).json({ error: 'title must be a non-empty string' });
@@ -227,6 +235,14 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
         return;
       }
     }
+    if (model !== undefined && typeof model !== 'string') {
+      res.status(400).json({ error: 'model must be a string' });
+      return;
+    }
+    if (typeof model === 'string' && model.length > 200) {
+      res.status(400).json({ error: 'model identifier is too long' });
+      return;
+    }
 
     // Validate column transition if columnId is changing
     if (columnId && columnId !== task.columnId) {
@@ -245,10 +261,10 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
     if (columnId !== undefined) updates.columnId = columnId;
     if (agentStatus !== undefined) updates.agentStatus = agentStatus;
     if (agentType !== undefined) updates.agentType = agentType;
+    if (model !== undefined) updates.model = model || undefined;
     if (repoPath !== undefined && !taskProject.repoPath) updates.repoPath = typeof repoPath === 'string' ? expandTilde(repoPath) : repoPath;
     if (branchName !== undefined) updates.branchName = branchName || undefined;
     if (baseBranch !== undefined) updates.baseBranch = baseBranch;
-    if (useWorktree !== undefined) updates.useWorktree = Boolean(useWorktree);
     if (archived !== undefined) updates.archived = Boolean(archived);
 
     // Reset agent state when moved to in-progress
@@ -258,12 +274,22 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       updates.completedAt = undefined;
     }
 
+    // Moving/re-statusing a task supersedes any scheduled token-limit retry.
+    const movedOrRestatused = (columnId !== undefined && columnId !== task.columnId)
+      || (agentStatus !== undefined && agentStatus !== task.agentStatus);
+    if (movedOrRestatused && task.retryAt != null) {
+      scheduler?.cancelRetry(task.id);
+      updates.retryAt = undefined;
+    }
+
     const updated = await repo.update(task.id, updates);
     if (!updated) {
       res.status(500).json({ error: 'failed to update task' });
       return;
     }
     broadcastTaskUpdate(updated);
+    // A task dropped back to an idle backlog state may now be auto-pickable.
+    if (movedOrRestatused) scheduler?.notifyTaskChanged(updated.projectId);
     res.json(updated);
   }));
 
@@ -274,6 +300,7 @@ export function createTaskRouter(repo: TaskRepository, agentManager: AgentManage
       res.status(404).json({ error: 'task not found' });
       return;
     }
+    scheduler?.cancelRetry(id);
     agentManager.stopAgent(id);
     agentManager.clearEvents(id);
     await repo.deleteEventsByTaskId(id);
@@ -345,8 +372,7 @@ function enforceProjectRepoPath(body: Record<string, any>, project: Project): Re
 
 /**
  * Fill task fields left undefined by the request with the project's configured defaults.
- * Each field remains overridable: an explicit value (including `useWorktree: false`) is
- * preserved. Applied at create time only — editing a task never re-applies defaults.
+ * Each field is overridable. Applied at create time only — editing a task never re-applies defaults.
  */
 function applyProjectDefaults(body: Record<string, any>, project: Project): Record<string, any> {
   const result = { ...body };
@@ -358,9 +384,6 @@ function applyProjectDefaults(body: Record<string, any>, project: Project): Reco
   }
   if (result.baseBranch === undefined && project.defaultBaseBranch !== undefined) {
     result.baseBranch = project.defaultBaseBranch;
-  }
-  if (result.useWorktree === undefined && project.defaultUseWorktree !== undefined) {
-    result.useWorktree = project.defaultUseWorktree;
   }
   return result;
 }

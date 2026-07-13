@@ -19,10 +19,14 @@ import { TaskDialog } from '@/components/TaskDialog';
 import { TaskGroupDialog } from '@/components/TaskGroupDialog';
 import { GroupPanel } from '@/components/GroupPanel';
 import { AgentPanel } from '@/components/AgentPanel';
+import { TaskFullView } from '@/components/TaskFullView';
 import type { TaskGroupWithChildren } from '@/lib/api';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
-import { ProjectsPage } from '@/components/ProjectsPage';
+import { ProjectDialog } from '@/components/ProjectDialog';
 import type { ProjectDialogInitialValues } from '@/components/ProjectDialog';
+import { ConfigDialog } from '@/components/ConfigDialog';
+import { ProjectsSidebar } from '@/components/ProjectsSidebar';
+import { GitHubSetupModal } from '@/components/GitHubSetupModal';
 
 const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
 
@@ -36,28 +40,28 @@ type TaskSubmitData = {
   repoPath?: string;
   branchName?: string;
   baseBranch?: string;
-  useWorktree?: boolean;
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BoardPage
+// ─────────────────────────────────────────────────────────────────────────────
 
 function BoardPage({
   project,
   theme,
   toggleTheme,
-  onBackToProjects,
 }: {
   project: Project;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
-  onBackToProjects: () => void;
 }) {
   const lockedRepoPath = project.repoPath;
   const projectDefaults = {
     defaultAgentType: project.defaultAgentType,
     defaultPriority: project.defaultPriority,
     defaultBaseBranch: project.defaultBaseBranch,
-    defaultUseWorktree: project.defaultUseWorktree,
   };
-  const { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, configureAndRunTask, createPR, mergeLocal, cleanupWorktree } = useTasks(project.id);
+  const { tasks, error, clearError, showArchived, setShowArchived, addTask, updateTask, moveTask, runTask, stopTask, deleteTask, archiveTask, unarchiveTask, configureAndRunTask, createPR, mergeLocal } = useTasks(project.id);
   const { groups, createGroup, runGroup, stopGroup, deleteGroup, updateGroup, refreshGroup } = useTaskGroups(project.id);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
@@ -65,6 +69,7 @@ function BoardPage({
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [fullViewTaskId, setFullViewTaskId] = useState<string | null>(null);
   const [highlightRequiredFields, setHighlightRequiredFields] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingTask, setDeletingTask] = useState<Task | null>(null);
@@ -112,6 +117,17 @@ function BoardPage({
     },
     [selectedTaskId, tasks, groups]
   );
+
+  const fullViewTask = useMemo(() => {
+    if (!fullViewTaskId) return null;
+    const standalone = tasks.find((t) => t.id === fullViewTaskId);
+    if (standalone) return standalone;
+    for (const g of groups) {
+      const child = g.children.find((c) => c.id === fullViewTaskId);
+      if (child) return child;
+    }
+    return null;
+  }, [fullViewTaskId, tasks, groups]);
 
   const selectedGroup = useMemo(
     () => (selectedGroupId ? groups.find((g) => g.id === selectedGroupId) ?? null : null),
@@ -299,20 +315,14 @@ function BoardPage({
     if (!task) return;
 
     if (task.repoPath) {
-      // Task already configured — run directly
-      const wantWorktree = task.useWorktree ?? false;
       setSelectedTaskId(taskId);
       configureAndRunTask(taskId, {
         repoPath: task.repoPath,
-        branchName: wantWorktree
-          ? (task.branchName || `task/${slugify(task.title)}`)
-          : '',
+        branchName: task.branchName || `task/${slugify(task.title)}`,
         baseBranch: task.baseBranch || 'main',
-        useWorktree: wantWorktree,
         agentType: task.agentType,
       });
     } else {
-      // Missing config — open edit dialog with required fields highlighted
       setEditingTask(task);
       setHighlightRequiredFields(true);
       setDialogOpen(true);
@@ -324,6 +334,24 @@ function BoardPage({
     runTask(task.id);
   }, [runTask]);
 
+  const handleExpandTask = useCallback((task: Task) => {
+    setFullViewTaskId(task.id);
+    // Close the slide-in panel when expanding to full view
+    setSelectedTaskId(null);
+  }, []);
+
+  const handleCloseFullView = useCallback(() => {
+    setFullViewTaskId(null);
+  }, []);
+
+  const handleMinimizeFullView = useCallback(() => {
+    // Collapse full view back to slide-in panel
+    if (fullViewTaskId) {
+      setSelectedTaskId(fullViewTaskId);
+    }
+    setFullViewTaskId(null);
+  }, [fullViewTaskId]);
+
   const handleReconfigureRetry = useCallback((taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -334,7 +362,9 @@ function BoardPage({
 
   // Keyboard shortcuts
   const handleCloseAll = useCallback(() => {
-    if (deletingTask || deletingGroupId) {
+    if (fullViewTaskId) {
+      setFullViewTaskId(null);
+    } else if (deletingTask || deletingGroupId) {
       setDeletingTask(null);
       setDeletingGroupId(null);
     } else if (groupDialogOpen) {
@@ -348,11 +378,11 @@ function BoardPage({
     } else if (selectedTaskId) {
       setSelectedTaskId(null);
     }
-  }, [deletingTask, deletingGroupId, groupDialogOpen, dialogOpen, selectedGroupId, selectedTaskId]);
+  }, [fullViewTaskId, deletingTask, deletingGroupId, groupDialogOpen, dialogOpen, selectedGroupId, selectedTaskId]);
 
   const isAnyOpen = useCallback(
-    () => dialogOpen || groupDialogOpen || selectedTaskId !== null || selectedGroupId !== null || deletingTask !== null || deletingGroupId !== null,
-    [dialogOpen, groupDialogOpen, selectedTaskId, selectedGroupId, deletingTask, deletingGroupId]
+    () => fullViewTaskId !== null || dialogOpen || groupDialogOpen || selectedTaskId !== null || selectedGroupId !== null || deletingTask !== null || deletingGroupId !== null,
+    [fullViewTaskId, dialogOpen, groupDialogOpen, selectedTaskId, selectedGroupId, deletingTask, deletingGroupId]
   );
 
   useKeyboardShortcuts({
@@ -370,10 +400,9 @@ function BoardPage({
   }, [error, clearError]);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden">
       <Header
         title={project.name === 'Default' ? 'AI Agent Board' : project.name}
-        onBackToProjects={onBackToProjects}
         theme={theme}
         toggleTheme={toggleTheme}
         searchQuery={searchQuery}
@@ -405,6 +434,7 @@ function BoardPage({
           onArchiveTask={handleArchiveTask}
           onUnarchiveTask={handleUnarchiveTask}
           onRetryTask={handleRetryTask}
+          onExpandTask={handleExpandTask}
           onAddTask={handleOpenDialog}
           showArchived={showArchived}
           onDropInProgress={(task) => setSelectedTaskId(task.id)}
@@ -437,7 +467,23 @@ function BoardPage({
         projectDefaults={projectDefaults}
       />
 
-      <AgentPanel task={selectedTask} onClose={handleClosePanel} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onMergeLocal={mergeLocal} onCleanupWorktree={cleanupWorktree} onReconfigureRetry={handleReconfigureRetry} theme={theme} />
+      <AgentPanel task={selectedTask} onClose={handleClosePanel} onExpand={handleExpandTask} onRun={handleRunWithConfig} onStop={stopTask} onCreatePR={createPR} onMergeLocal={mergeLocal} onReconfigureRetry={handleReconfigureRetry} theme={theme} />
+
+      <TaskFullView
+        task={fullViewTask}
+        onClose={handleCloseFullView}
+        onMinimize={handleMinimizeFullView}
+        onRun={handleRunWithConfig}
+        onStop={stopTask}
+        onEdit={handleEditTask}
+        onDelete={handleDeleteTask}
+        onArchive={handleArchiveTask}
+        onUnarchive={handleUnarchiveTask}
+        onCreatePR={createPR}
+        onMergeLocal={mergeLocal}
+        onReconfigureRetry={handleReconfigureRetry}
+        theme={theme}
+      />
 
       <GroupPanel
         group={selectedGroup}
@@ -477,6 +523,10 @@ function BoardPage({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Routing helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 type RouteState =
   | { view: 'projects'; initialCreate?: ProjectDialogInitialValues }
   | { view: 'board'; projectId?: string };
@@ -492,12 +542,6 @@ function parseCreateQuery(search: string): ProjectDialogInitialValues {
       : repoUrl
         ? 'repo'
         : 'local';
-  const useWorktreeParam = params.get('defaultUseWorktree');
-  const defaultUseWorktree =
-    useWorktreeParam === 'true' || useWorktreeParam === 'false' || useWorktreeParam === 'inherit'
-      ? (useWorktreeParam as 'true' | 'false' | 'inherit')
-      : undefined;
-
   return {
     source,
     name: params.get('name') ?? undefined,
@@ -506,7 +550,6 @@ function parseCreateQuery(search: string): ProjectDialogInitialValues {
     defaultAgentType: params.get('defaultAgentType') ?? undefined,
     defaultPriority: params.get('defaultPriority') ?? undefined,
     defaultBaseBranch: params.get('defaultBaseBranch') ?? undefined,
-    defaultUseWorktree,
     autoSubmit: params.get('autostart') === '1',
   };
 }
@@ -522,6 +565,10 @@ function readRoute(): RouteState {
   return { view: 'board' };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// App root
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function App() {
   const { theme, toggleTheme } = useTheme();
   const {
@@ -530,6 +577,7 @@ export function App() {
     loading,
     error,
     clearError,
+    refreshProjects,
     createProject,
     updateProject,
     deleteProject,
@@ -537,7 +585,24 @@ export function App() {
     validateProjectPath,
     selectProjectDirectory,
   } = useProjects();
+
   const [route, setRoute] = useState<RouteState>(() => readRoute());
+
+  // Project-management dialog state (lifted out of ProjectsPage)
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [createInitialValues, setCreateInitialValues] = useState<ProjectDialogInitialValues | null>(null);
+
+  // Handle /projects/new deep-link: open the create dialog immediately
+  useEffect(() => {
+    if (route.view === 'projects' && route.initialCreate) {
+      setEditingProject(null);
+      setCreateInitialValues(route.initialCreate);
+      setProjectDialogOpen(true);
+    }
+  }, [route]);
 
   useEffect(() => {
     const onPopState = () => setRoute(readRoute());
@@ -555,40 +620,66 @@ export function App() {
   }, [navigate]);
 
   const defaultProject = useMemo(
-    () => projects.find((project) => project.isDefault) ?? projects.find((project) => project.id === 'default') ?? projects[0],
+    () => projects.find((p) => p.isDefault) ?? projects.find((p) => p.id === 'default') ?? projects[0],
     [projects],
   );
 
   const selectedProject = useMemo(() => {
-    if (route.view !== 'board') return undefined;
-    if (route.projectId) return projects.find((project) => project.id === route.projectId);
+    // /projects or /projects/new → default to the default project (board stays visible)
+    if (route.view === 'projects') return defaultProject;
+    if (route.projectId) return projects.find((p) => p.id === route.projectId);
     return defaultProject;
   }, [defaultProject, projects, route]);
 
-  if (route.view === 'projects' || (!loading && !selectedProject)) {
-    return (
-      <ProjectsPage
+  // ── Dialog handlers ──────────────────────────────────────────────────────
+
+  function openCreateDialog() {
+    setEditingProject(null);
+    setCreateInitialValues(null);
+    setProjectDialogOpen(true);
+  }
+
+  function openEditDialog(project: Project) {
+    setEditingProject(project);
+    setCreateInitialValues(null);
+    setProjectDialogOpen(true);
+  }
+
+  function closeProjectDialog() {
+    setProjectDialogOpen(false);
+    setEditingProject(null);
+    setCreateInitialValues(null);
+    // If we landed here via /projects/new, return to root
+    if (route.view === 'projects' && route.initialCreate) navigate('/');
+  }
+
+  async function handleProjectDialogSubmit(data: CreateProjectRequest | UpdateProjectRequest) {
+    if (editingProject) return updateProject(editingProject.id, data);
+    return createProject(data as CreateProjectRequest);
+  }
+
+  async function handleConfirmDeleteProject() {
+    if (!deletingProject) return;
+    await deleteProject(deletingProject.id);
+    setDeletingProject(null);
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex h-screen overflow-hidden bg-background">
+      {/* ── Left sidebar: project list ── */}
+      <ProjectsSidebar
         projects={projects}
-        config={config}
-        loading={loading}
-        error={error}
-        initialCreate={route.view === 'projects' ? route.initialCreate ?? null : null}
-        onConsumeInitialCreate={() => {
-          if (route.view === 'projects' && route.initialCreate) navigate('/projects');
-        }}
-        onClearError={clearError}
-        onCreateProject={createProject}
-        onUpdateProject={updateProject}
-        onDeleteProject={deleteProject}
-        onUpdateConfig={updateConfig}
-        onValidateProjectPath={validateProjectPath}
-        onSelectProjectDirectory={selectProjectDirectory}
-        onOpenProject={openProject}
+        selectedProjectId={selectedProject?.id}
+        onSelectProject={openProject}
+        onNewProject={openCreateDialog}
+        onEditProject={openEditDialog}
+        onDeleteProject={(p) => setDeletingProject(p)}
+        onOpenSettings={() => setConfigOpen(true)}
         theme={theme}
         toggleTheme={toggleTheme}
       />
-    );
-  }
 
   if (loading || !selectedProject) {
     return (
@@ -598,15 +689,64 @@ export function App() {
         </div>
         <p className="font-pixel text-xs text-muted-foreground">loading project…</p>
       </div>
-    );
-  }
 
-  return (
-    <BoardPage
-      project={selectedProject}
-      theme={theme}
-      toggleTheme={toggleTheme}
-      onBackToProjects={() => navigate('/projects')}
-    />
+      {/* ── Project management dialogs ── */}
+
+      <ProjectDialog
+        open={projectDialogOpen}
+        project={editingProject}
+        initialValues={createInitialValues}
+        onClose={closeProjectDialog}
+        onSubmit={handleProjectDialogSubmit}
+        onValidatePath={validateProjectPath}
+        onSelectDirectory={selectProjectDirectory}
+      />
+
+      <ConfigDialog
+        open={configOpen}
+        config={config}
+        onClose={() => setConfigOpen(false)}
+        onSubmit={updateConfig}
+        onProjectsImported={refreshProjects}
+      />
+
+      <DeleteConfirmDialog
+        open={deletingProject !== null}
+        taskTitle={deletingProject?.name ?? ''}
+        title="Delete project?"
+        description={
+          <p className="mb-5 text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{deletingProject?.name}</span> will be
+            permanently deleted, along with all of its tasks and groups. This cannot be undone.
+          </p>
+        }
+        onCancel={() => setDeletingProject(null)}
+        onConfirm={handleConfirmDeleteProject}
+      />
+
+      {/* ── GitHub setup modal (shown on first load when no token is configured) ── */}
+      <GitHubSetupModal onImported={refreshProjects} />
+
+      {/* Global error toast (project-level errors from useProjects) */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-400 shadow-lg backdrop-blur-sm"
+          >
+            <span>{error}</span>
+            <button
+              onClick={clearError}
+              className="ml-1 shrink-0 text-red-400 hover:text-red-300"
+              aria-label="Dismiss error"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

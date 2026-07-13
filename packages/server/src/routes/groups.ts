@@ -25,7 +25,6 @@ import {
   broadcastGroupUpdate,
   broadcastTaskUpdate,
   makeStatusCallback,
-  makeWorktreeCallback,
   isRateLimited,
   normalizeRepoPathForCompare,
 } from './helpers.js';
@@ -154,9 +153,6 @@ export function createGroupsRouter(
     };
 
     const childDefs = children.map((child: any, i: number) => {
-      const useWorktree = child.useWorktree !== undefined
-        ? child.useWorktree
-        : (project.defaultUseWorktree ?? true);
       return {
         id: uuid(),
         projectId: project.id,
@@ -164,10 +160,7 @@ export function createGroupsRouter(
         description: child.description?.trim() || '',
         priority: child.priority || group.priority,
         agentType: child.agentType !== undefined ? child.agentType : (project.defaultAgentType ?? 'copilot'),
-        useWorktree,
-        branchName: useWorktree !== false
-          ? `group/${groupId.slice(0, 8)}/${i}-${slugify(child.title)}`
-          : undefined,
+        branchName: `group/${groupId.slice(0, 8)}/${i}-${slugify(child.title)}`,
         groupId,
         groupOrder: i,
       };
@@ -265,16 +258,11 @@ export function createGroupsRouter(
       }
       const children = await groupRepo.getChildTasks(id);
       for (const child of children) {
-        // Clean up worktree if one was created
-        if (child.worktreePath) {
-          try { agentManager.removeWorktree(child); } catch { /* best effort */ }
-        }
         if (child.agentStatus !== 'idle') {
           await taskRepo.update(child.id, {
             agentStatus: 'idle',
             startedAt: undefined,
             completedAt: undefined,
-            worktreePath: undefined,
           });
         }
       }
@@ -300,14 +288,6 @@ export function createGroupsRouter(
 
     // Stop group queue + all running agents
     await agentManager.stopGroup(id);
-
-    // Clean up worktrees
-    const children = await groupRepo.getChildTasks(id);
-    for (const child of children) {
-      if (child.worktreePath) {
-        try { agentManager.removeWorktree(child); } catch { /* best effort */ }
-      }
-    }
 
     // CASCADE delete handles children
     await groupRepo.delete(id);
@@ -377,13 +357,10 @@ export function createGroupsRouter(
       await agentManager.stopGroup(id);
     }
 
-    // Archive all children and clean up worktrees
+    // Archive all children
     const children = await groupRepo.getChildTasks(id);
     for (const child of children) {
-      if (child.worktreePath) {
-        try { agentManager.removeWorktree(child); } catch { /* best effort */ }
-      }
-      const t = await taskRepo.update(child.id, { archived: true, worktreePath: undefined });
+      const t = await taskRepo.update(child.id, { archived: true });
       if (t) broadcastTaskUpdate(t);
     }
 
@@ -465,7 +442,6 @@ async function startGroupExecution(
     group,
     pendingChildren,
     (task: Task) => makeStatusCallback(taskRepo, task.id),
-    (task: Task) => makeWorktreeCallback(taskRepo, task.id),
     onChildComplete,
   );
 }

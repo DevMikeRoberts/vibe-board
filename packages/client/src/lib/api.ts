@@ -23,7 +23,6 @@ export interface CreateGroupChild {
   title: string;
   description?: string;
   agentType?: AgentType;
-  useWorktree?: boolean;
 }
 
 function withQuery(path: string, params: Record<string, string | boolean | undefined>): string {
@@ -35,7 +34,11 @@ function withQuery(path: string, params: Record<string, string | boolean | undef
   return qs ? `${path}?${qs}` : path;
 }
 
-const BASE = '/api';
+// Absolute backend origin for hosted deploys (e.g. the Vercel frontend talking
+// to a self-hosted backend). Empty in local dev → relative '/api' via the Vite
+// proxy. Set VITE_API_BASE=https://your-backend at build time for production.
+const API_BASE = ((import.meta.env.VITE_API_BASE as string | undefined) || '').replace(/\/+$/, '');
+const BASE = `${API_BASE}/api`;
 const API_KEY = import.meta.env.VITE_API_KEY as string | undefined;
 
 function authHeaders(): Record<string, string> {
@@ -90,14 +93,14 @@ export const api = {
   getProjectConfig: () =>
     request<ProjectConfig>('/projects/config'),
 
-  updateProjectConfig: (cloneRoot: string) =>
-    request<ProjectConfig>('/projects/config', { method: 'PATCH', body: JSON.stringify({ cloneRoot }) }),
+  updateProjectConfig: (patch: Partial<ProjectConfig>) =>
+    request<ProjectConfig>('/projects/config', { method: 'PATCH', body: JSON.stringify(patch) }),
 
   // --- Task CRUD ---
   getTasks: (includeArchived = false, projectId?: string) =>
     request<Task[]>(withQuery('/tasks', { includeArchived, projectId })),
 
-  createTask: (data: { title: string; description?: string; priority?: Priority; columnId?: ColumnId; agentType?: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; useWorktree?: boolean; autoRun?: boolean; projectId?: string }) =>
+  createTask: (data: { title: string; description?: string; priority?: Priority; columnId?: ColumnId; agentType?: AgentType; repoPath?: string; branchName?: string; baseBranch?: string; autoRun?: boolean; projectId?: string }) =>
     request<Task>('/tasks', { method: 'POST', body: JSON.stringify(data) }),
 
   updateTask: (id: string, data: Partial<Task>) =>
@@ -117,14 +120,11 @@ export const api = {
 
   getAgents: () => request<AgentInfo[]>('/agents'),
 
-  configureTask: (id: string, config: { repoPath: string; branchName: string; baseBranch: string; useWorktree: boolean; agentType?: AgentType }) =>
+  configureTask: (id: string, config: { repoPath: string; branchName: string; baseBranch: string; agentType?: AgentType }) =>
     request<Task>(`/tasks/${id}/configure`, { method: 'POST', body: JSON.stringify(config) }),
 
   createPR: (id: string) =>
     request<{ url: string }>(`/tasks/${id}/create-pr`, { method: 'POST' }),
-
-  cleanupWorktree: (id: string) =>
-    request<{ success: boolean }>(`/tasks/${id}/cleanup-worktree`, { method: 'POST' }),
 
   mergeLocal: (id: string) =>
     request<{ merged: boolean; baseBranch: string }>(`/tasks/${id}/merge-local`, { method: 'POST' }),
@@ -194,6 +194,31 @@ export const api = {
   stopGroup: (id: string) =>
     request<{ stopped: boolean }>(`/groups/${id}/stop`, { method: 'POST' }),
 
+  // --- System ---
+  restartServer: () =>
+    request<{ success: boolean; message: string }>('/system/restart', { method: 'POST' }),
+
+  // --- GitHub integration ---
+  getGithubStatus: () =>
+    request<{
+      configured: boolean;
+      tokenSource: 'env' | 'config' | null;
+      username?: string | null;
+      name?: string | null;
+    }>('/system/github-status'),
+
+  saveGithubToken: (token: string) =>
+    request<{ success: boolean; username: string; name: string | null }>(
+      '/system/github-token',
+      { method: 'POST', body: JSON.stringify({ token }) },
+    ),
+
+  importGithubRepos: (token?: string) =>
+    request<{ imported: number; skipped: number; errors: number }>(
+      '/system/import-github-repos',
+      { method: 'POST', body: JSON.stringify({ token }) },
+    ),
+
 };
 
 // --- WebSocket (shared singleton) ---
@@ -236,8 +261,12 @@ export function subscribeConnectionStatus(listener: (status: ConnectionStatus) =
 function ensureConnection() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
 
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  let url = `${proto}//${location.host}/ws`;
+  // Derive the WS origin from the configured backend base (prod) or the current
+  // page origin (local dev, where Vite proxies /ws to the backend).
+  const wsOrigin = API_BASE
+    ? API_BASE.replace(/^http/, 'ws')
+    : `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}`;
+  let url = `${wsOrigin}/ws`;
   if (API_KEY) {
     url += `?token=${encodeURIComponent(API_KEY)}`;
   }

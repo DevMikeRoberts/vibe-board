@@ -21,7 +21,6 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
   const pct = status.total > 0 ? ((status.completed / status.total) * 100) : 0;
   const priorityInfo = PRIORITY_DISPLAY[group.priority];
 
-  // Agent breakdown
   const agentCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of group.children) {
@@ -37,6 +36,14 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
         'sticker sticker-peel group relative cursor-pointer rounded-2xl bg-card p-4',
         isRunning && 'border-b-[6px] border-b-neon-blue',
       )}
+      style={{
+        background: 'rgba(255,255,255,0.035)',
+        backdropFilter: 'blur(16px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(180%)',
+        boxShadow: isRunning
+          ? '0 0 20px rgba(59,130,246,0.15), 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)'
+          : '0 8px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)',
+      }}
       onClick={() => onClickGroup(group)}
     >
       {/* Priority edge — chunky neon tab hugging the left side */}
@@ -54,8 +61,8 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
           <PixelIcon name="layer" className="h-4 w-4 shrink-0 text-neon-purple" />
           <h3 className="text-base font-bold leading-snug tracking-tight text-card-foreground line-clamp-1">{group.title}</h3>
         </div>
-        {/* Action buttons (visible on hover) */}
-        <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
           {!isRunning && status.idle > 0 && group.columnId !== 'done' && (
             <button
               onClick={(e) => { e.stopPropagation(); onRunGroup(group.id); }}
@@ -133,12 +140,12 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
         {status.idle > 0 && <span>{status.idle} pending</span>}
       </div>
 
-      {/* Child task cards */}
+      {/* Child tasks */}
       {group.children.length > 0 && (
         <div className="mt-3 space-y-2 border-t-2 border-border pt-3">
           {group.children.map((child) => {
             const agentDisplay = AGENT_DISPLAY[child.agentType as keyof typeof AGENT_DISPLAY];
-            const priorityInfo = PRIORITY_DISPLAY[child.priority];
+            const prio = PRIORITY_DISPLAY[child.priority];
             return (
               <div
                 key={child.id}
@@ -146,6 +153,7 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
                   'rounded-xl border-2 border-border bg-accent px-3 py-2',
                   priorityInfo?.borderClass,
                 )}
+                style={{ background: 'rgba(255,255,255,0.03)' }}
               >
                 <div className="flex items-start justify-between gap-2">
                   <h4 className="text-sm font-bold leading-snug text-accent-foreground line-clamp-1">

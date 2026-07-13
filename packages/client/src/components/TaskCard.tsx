@@ -42,23 +42,19 @@ interface TaskCardProps {
   onArchive?: (task: Task) => void;
   onUnarchive?: (task: Task) => void;
   onRetry?: (task: Task) => void;
+  onExpand?: (task: Task) => void;
 }
 
-function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarchive, onRetry }: TaskCardProps) {
+function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarchive, onRetry, onExpand }: TaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: task.id,
-      disabled: task.archived // Disable dragging for archived tasks
-    });
+    useDraggable({ id: task.id, disabled: task.archived });
   const agentDisplay = task.agentType ? getAgentDisplay(task.agentType) : undefined;
 
-  // Suppress click that fires immediately after a drag ends
   const wasDragging = useRef(false);
   useEffect(() => {
     if (isDragging) {
       wasDragging.current = true;
     } else if (wasDragging.current) {
-      // Clear on next frame so the click event from drag-end is suppressed
       const id = requestAnimationFrame(() => { wasDragging.current = false; });
       return () => cancelAnimationFrame(id);
     }
@@ -70,11 +66,14 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
   const agentStatus = agentStatusConfig[task.agentStatus];
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
+  const retryPending = typeof task.retryAt === 'number' && task.retryAt > Date.now();
+  const retryLabel = retryPending
+    ? new Date(task.retryAt!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : '';
   const priorityDisplay = getPriorityDisplay(task.priority);
   const needsInput = useNeedsInput(task.id);
   const fcState = taskToFcState(task, needsInput);
 
-  // Fire a one-off celebration when the task crosses into a finished state.
   const finished = task.agentStatus === 'complete' || task.columnId === 'done';
   const prevFinishedRef = useRef(finished);
   const [celebrate, setCelebrate] = useState(false);
@@ -90,10 +89,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
   const [elapsed, setElapsed] = useState('');
   useEffect(() => {
-    if (!isActive || !task.startedAt) {
-      setElapsed('');
-      return;
-    }
+    if (!isActive || !task.startedAt) { setElapsed(''); return; }
     const tick = () => setElapsed(formatElapsed(task.startedAt!));
     tick();
     const id = setInterval(tick, 1000);
@@ -124,12 +120,22 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         />
       )}
 
-      {/* Action buttons — top right, visible on hover */}
-      {(onEdit || onDelete || onArchive || onUnarchive || onRetry) && (
+      {/* Action buttons */}
+      {(onEdit || onDelete || onArchive || onUnarchive || onRetry || onExpand) && (
         <div
           className="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {onExpand && task.columnId !== 'backlog' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onExpand(task); }}
+              className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground transition-all hover:bg-primary/15 hover:text-primary"
+              aria-label="Expand task view"
+              title="Open full view"
+            >
+              <Maximize2 className="h-3 w-3" />
+            </button>
+          )}
           {onRetry && task.agentStatus === 'failed' && !task.archived && (
             <button
               onClick={(e) => {
@@ -212,7 +218,6 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         {/* Footer */}
         <div className="mt-3.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {/* Agent type badge */}
             {task.agentType && task.columnId !== 'backlog' && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 font-pixel text-[10px] text-accent-foreground">
                 <PixelIcon name="chipset" className="h-3 w-3" />
@@ -230,7 +235,6 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
               </span>
             )}
 
-            {/* Duration (completed/failed) */}
             {!isActive && (task.agentStatus === 'complete' || task.agentStatus === 'failed') && task.startedAt && task.completedAt && (
               <span className="flex items-center gap-1 font-pixel text-[10px] text-muted-foreground">
                 <PixelIcon name="clock" className="h-3 w-3" />
@@ -247,6 +251,9 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
                   agentStatus.spin && 'animate-px-spin-fast',
                   agentStatus.pulse && 'animate-px-blink'
                 )}
+                style={agentStatus.glowColor !== 'transparent'
+                  ? { filter: `drop-shadow(0 0 4px ${agentStatus.glowColor})` }
+                  : {}}
               />
             </div>
           </div>

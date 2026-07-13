@@ -1,20 +1,29 @@
 import { v4 as uuid } from 'uuid';
 import { execFileSync } from 'child_process';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
 import type { Task, TaskGroup, AgentEvent, AgentType } from '../types.js';
 import type { TaskRepository } from '../repositories/types.js';
 import type { AgentProvider, AgentSession, AgentInfo, AgentAttachment } from '@codewithdan/agent-sdk-core';
 import type { AgentEvent as CoreAgentEvent } from '@codewithdan/agent-sdk-core';
-import { CopilotProvider, ClaudeProvider, CodexProvider, OpenCodeProvider, HermesProvider, OpenClawProvider } from '@codewithdan/agent-sdk-core';
+import { CopilotProvider, ClaudeProvider, CodexProvider, HermesProvider, OpenClawProvider } from '@codewithdan/agent-sdk-core';
+import { OpenCodeRunProvider } from './opencode-run-provider.js';
 import { broadcast } from '../websocket.js';
 import { UPLOADS_DIR } from '../routes/attachments.js';
 import type { AttachmentStore } from '../repositories/attachment-types.js';
 import { errorMessage } from '../utils.js';
 import { detectAvailableAgents } from './agent-detection.js';
+import { resolveAgentSelection, getConfiguredFallbackAgent } from './agent-fallback.js';
+import { buildRepoScanPromptSection } from './repo-scan.js';
+import { ContainerRunner } from './container-runner.js';
 
-const AGENT_TIMEOUT_MS = parseInt(process.env.AGENT_TIMEOUT_MS || '600000', 10);
+// Max agent execution time, in ms. Default 0 = no timeout: agents run until they
+// finish or are explicitly stopped. Set AGENT_TIMEOUT_MS to a positive value to
+// re-enable a hard cap (also used as the per-task container timeout).
+const AGENT_TIMEOUT_MS = (() => {
+  const parsed = parseInt(process.env.AGENT_TIMEOUT_MS ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+})();
 
 function loadAttachmentAsBase64(filePath: string, displayName: string, mimeType: string): AgentAttachment | null {
   try {
@@ -38,6 +47,22 @@ interface ManagedSession {
   startTime: number;
   agentType: AgentType;
 }
+
+/**
+ * Fired once per natural agent completion (success or failure) so an external
+ * scheduler can react — e.g. retry a token-limited task at its reset time, or
+ * pick up the next backlog task. NOT fired for user-initiated stops.
+ */
+export interface TaskSettledInfo {
+  taskId: string;
+  status: 'complete' | 'failed';
+  error?: string;
+  agentType?: AgentType;
+  /** Group id when the task is a group child (schedulers should ignore those). */
+  groupId?: string;
+}
+
+export type TaskSettledHandler = (info: TaskSettledInfo) => void;
 
 // Event log per task (capped to prevent unbounded growth)
 const MAX_EVENTS_PER_TASK = 2000;
@@ -91,7 +116,6 @@ interface GroupQueue {
   failedTaskIds: Set<string>;
   tasks: Map<string, Task>;
   makeStatusCallback: (task: Task) => (status: Task['agentStatus']) => void | Promise<void>;
-  makeWorktreeCallback: (task: Task) => (worktreePath: string) => void | Promise<void>;
   onChildComplete: (taskId: string) => void | Promise<void>;
 }
 
@@ -111,6 +135,17 @@ export class AgentManager {
   /** Per-repo mutex to serialize git operations (merge, checkout) */
   private repoLocks = new Map<string, Promise<void>>();
 
+  /** Containerized execution backend; null unless container mode is configured. */
+  private containerRunner: ContainerRunner | null = null;
+
+  /** Optional listener notified when a (non-group, non-stopped) task settles. */
+  private taskSettledHandler: TaskSettledHandler | null = null;
+
+  /** Register a listener for natural task completions (see {@link TaskSettledInfo}). */
+  setTaskSettledHandler(handler: TaskSettledHandler | null): void {
+    this.taskSettledHandler = handler;
+  }
+
   /** Call once at startup to enable event persistence. */
   initEventPersistence(repo: TaskRepository): void {
     this.eventRepo = repo;
@@ -126,7 +161,7 @@ export class AgentManager {
     this.providers.set('copilot', new CopilotProvider());
     this.providers.set('claude', new ClaudeProvider());
     this.providers.set('codex', new CodexProvider());
-    this.providers.set('opencode', new OpenCodeProvider());
+    this.providers.set('opencode', new OpenCodeRunProvider());
     this.providers.set('hermes', new HermesProvider());
     this.providers.set('openclaw', new OpenClawProvider());
 
@@ -178,10 +213,62 @@ export class AgentManager {
         }
       }
     }
+
+    this.initContainerRunner();
   }
 
   getAvailableAgents(): AgentInfo[] {
     return [...this.availableAgents];
+  }
+
+  /** Enable containerized task execution when AGENTBOARD_CONTAINER_MODE is set
+   *  and its prerequisites (ANTHROPIC_API_KEY, data host path, Docker) are present. */
+  private initContainerRunner(): void {
+    const enabled = ['1', 'true', 'yes'].includes((process.env.AGENTBOARD_CONTAINER_MODE || '').toLowerCase());
+    if (!enabled) return;
+
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    const dataHostPath = process.env.AGENTBOARD_DATA_HOST;
+    const missing: string[] = [];
+    if (!anthropicApiKey) missing.push('ANTHROPIC_API_KEY');
+    // Must be ABSOLUTE: it becomes the `docker run -v <src>:/repo` source on the
+    // host daemon, which rejects a relative path (or mounts the wrong dir).
+    if (!dataHostPath) missing.push('AGENTBOARD_DATA_HOST');
+    else if (!path.isAbsolute(dataHostPath)) missing.push(`an ABSOLUTE AGENTBOARD_DATA_HOST (got "${dataHostPath}")`);
+    if (!this.isDockerAvailable()) missing.push('a working Docker daemon');
+    if (missing.length > 0) {
+      console.warn(`[agent-manager] AGENTBOARD_CONTAINER_MODE is set but missing ${missing.join(', ')} — falling back to local execution`);
+      return;
+    }
+
+    const image = process.env.AGENT_RUNNER_IMAGE || 'agentboard-agent-runner:latest';
+    this.containerRunner = new ContainerRunner({
+      image,
+      dataDir: process.env.AGENTBOARD_DATA_DIR || '/data',
+      dataHostPath: dataHostPath!,
+      anthropicApiKey: anthropicApiKey!,
+      model: process.env.CLAUDE_MODEL,
+      timeoutMs: AGENT_TIMEOUT_MS,
+    });
+    console.log(`[agent-manager] containerized execution ENABLED (image: ${image})`);
+  }
+
+  private isDockerAvailable(): boolean {
+    try {
+      execFileSync('docker', ['version', '--format', '{{.Server.Version}}'], { stdio: 'pipe' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Whether a task should run in a container instead of via a local provider. */
+  private shouldUseContainer(task: Task): boolean {
+    if (!this.containerRunner) return false;
+    if (task.groupId) return false;                       // group children stay on the local path for now
+    if (!task.repoPath || !task.branchName) return false; // need a branch/workspace to operate on
+    if (!this.hasRemote(task)) return false;              // need a pushable origin to open the PR
+    return true;
   }
 
   // ─── Event Management (moved from copilot.ts) ─────────────────────
@@ -272,94 +359,139 @@ export class AgentManager {
     }
   }
 
-  // ─── Worktree Management (moved from copilot.ts) ──────────────────
+  // ─── Branch Setup (replaces git worktrees) ─────────────────────────
 
-  // Returns true when `worktreePath` is registered with git as a worktree
-  // checked out on `branchName`. Used to safely reuse a worktree left over
-  // from a prior (e.g. failed) run instead of colliding on the branch.
-  private worktreeRegisteredForBranch(repoPath: string, worktreePath: string, branchName: string): boolean {
-    try {
-      const out = execFileSync('git', ['worktree', 'list', '--porcelain'], {
-        cwd: repoPath,
-        stdio: 'pipe',
-      }).toString();
-      const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-      const target = norm(worktreePath);
-      for (const block of out.split(/\r?\n\r?\n/)) {
-        const lines = block.split(/\r?\n/);
-        const wtLine = lines.find((l) => l.startsWith('worktree '));
-        if (!wtLine) continue;
-        if (norm(wtLine.slice('worktree '.length)) !== target) continue;
-        return lines.includes(`branch refs/heads/${branchName}`);
-      }
-    } catch {
-      /* fall through — treat as not reusable */
-    }
-    return false;
-  }
+  /**
+   * Set up a fresh branch for the task by:
+   *  1. Fetching the latest from origin (if a remote exists)
+   *  2. Checking out the base branch and pulling latest
+   *  3. Creating and checking out a new task-specific branch
+   *
+   * This avoids merge conflicts in PRs by basing the work on the most recent
+   * state of the base branch rather than on a stale worktree snapshot.
+   */
+  private setupBranch(task: Task): void {
+    if (!task.repoPath) return;
+    if (!task.branchName) task.branchName = this.generateBranchName(task);
 
-  setupWorktree(task: Task): string | undefined {
-    if (!task.useWorktree || !task.repoPath || !task.branchName) return undefined;
-
-    // Reuse a valid worktree left over from a prior run (e.g. after a failed
-    // attempt). Without this, a restart would mint a new temp dir and fail with
-    // "branch already used by worktree", since the old worktree still holds the
-    // branch — and any in-progress work in it would be stranded.
-    if (
-      task.worktreePath &&
-      path.resolve(task.worktreePath) !== path.resolve(task.repoPath) &&
-      fs.existsSync(task.worktreePath) &&
-      this.worktreeRegisteredForBranch(task.repoPath, task.worktreePath, task.branchName)
-    ) {
-      console.log(`[worktree] reusing existing ${task.worktreePath}`);
-      return task.worktreePath;
-    }
-
-    // Clear stale worktree records (e.g. dirs deleted out from under git) so a
-    // fresh add for this branch isn't blocked by a dangling registration.
-    try {
-      execFileSync('git', ['worktree', 'prune'], { cwd: task.repoPath, stdio: 'pipe' });
-    } catch {
-      /* best effort */
-    }
-
-    const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), `agentboard-${task.id}-`));
+    const repoPath = task.repoPath;
     const baseBranch = task.baseBranch || 'main';
 
+    // Stash any uncommitted changes so they don't interfere
     try {
-      execFileSync(
-        'git', ['worktree', 'add', '-b', task.branchName, worktreePath, baseBranch],
-        { cwd: task.repoPath, stdio: 'pipe' },
-      );
-      console.log(`[worktree] created at ${worktreePath} from ${baseBranch}`);
-      return worktreePath;
+      execFileSync('git', ['stash', 'push', '--include-untracked', '-m', `agentboard-stash-${task.id}`], { cwd: repoPath, stdio: 'pipe' });
+    } catch { /* nothing to stash */ }
+
+    // Fetch the latest from origin
+    try {
+      execFileSync('git', ['fetch', 'origin', baseBranch], { cwd: repoPath, stdio: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    } catch { /* no remote — proceed with local base branch */ }
+
+    // Checkout base branch
+    execFileSync('git', ['checkout', baseBranch], { cwd: repoPath, stdio: 'pipe' });
+
+    // Pull latest changes
+    try {
+      execFileSync('git', ['pull', 'origin', baseBranch], { cwd: repoPath, stdio: 'pipe', env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } });
+    } catch { /* no remote */ }
+
+    // Pick a non-colliding branch name (important for re-runs)
+    const branchName = this.uniqueBranchName(repoPath, task.branchName);
+    task.branchName = branchName;
+
+    // Create and checkout the task branch
+    execFileSync('git', ['checkout', '-b', branchName], { cwd: repoPath, stdio: 'pipe' });
+    console.log(`[branch] created ${branchName} from latest ${baseBranch}`);
+  }
+
+  /** Generate a readable branch name for a task that lacks one. */
+  private generateBranchName(task: Task): string {
+    const slug = (task.title || 'task')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'task';
+    return `task/${slug}-${task.id.slice(0, 8)}`;
+  }
+
+  /** True when `branch` already exists as a local branch in `repoPath`. */
+  private branchExists(repoPath: string, branch: string): boolean {
+    try {
+      execFileSync('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], {
+        cwd: repoPath, stdio: 'pipe',
+      });
+      return true;
     } catch {
-      try {
-        execFileSync(
-          'git', ['worktree', 'add', worktreePath, task.branchName],
-          { cwd: task.repoPath, stdio: 'pipe' },
-        );
-        console.log(`[worktree] attached existing branch ${task.branchName} at ${worktreePath}`);
-        return worktreePath;
-      } catch (err2: unknown) {
-        console.error(`[worktree] failed:`, errorMessage(err2));
-        throw new Error(`Failed to create worktree: ${errorMessage(err2)}`);
-      }
+      return false;
     }
   }
 
-  removeWorktree(task: Task): void {
-    if (!task.worktreePath || !task.repoPath) return;
-    try {
-      execFileSync('git', ['worktree', 'remove', task.worktreePath, '--force'], {
-        cwd: task.repoPath,
-        stdio: 'pipe',
-      });
-      console.log(`[worktree] removed ${task.worktreePath}`);
-    } catch (err: unknown) {
-      console.error(`[worktree] remove failed:`, errorMessage(err));
-      throw new Error(`Failed to remove worktree: ${errorMessage(err)}`);
+  /** Return `desired`, or the first `desired-N` (N≥2) that isn't already a branch. */
+  private uniqueBranchName(repoPath: string, desired: string): string {
+    if (!this.branchExists(repoPath, desired)) return desired;
+    for (let n = 2; n < 1000; n++) {
+      const candidate = `${desired}-${n}`;
+      if (!this.branchExists(repoPath, candidate)) return candidate;
     }
+    return `${desired}-${Date.now()}`;
+  }
+
+  /**
+   * Commit the agent's uncommitted work to its branch so there is something to
+   * open a PR from or merge. Agents are instructed to make edits but not to
+   * commit (and the board treats a dirty working tree as a normal end state),
+   * so without this the branch has no new commits and `gh pr create` fails with
+   * "No commits between …". Best-effort and idempotent: no-ops on a clean tree
+   * (e.g. the agent already committed) and never blocks completion.
+   */
+  private commitAgentWork(task: Task): void {
+    if (!task.repoPath) return;
+    const cwd = task.repoPath;
+    try {
+      const status = execFileSync('git', ['status', '--porcelain'], {
+        cwd, stdio: 'pipe',
+      }).toString().trim();
+      if (!status) return; // nothing to commit — agent already committed or made no changes
+
+      execFileSync('git', ['add', '-A'], { cwd, stdio: 'pipe' });
+      const subject = task.title.replace(/\s+/g, ' ').trim().slice(0, 72) || 'AI Agent Board task';
+      execFileSync(
+        'git',
+        ['commit', '--no-verify', '-m', subject, '-m', `Automated commit from AI Agent Board task ${task.id}`],
+        { cwd, stdio: 'pipe' },
+      );
+      console.log(`[commit] committed agent work on ${task.branchName}`);
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'output',
+        content: `Committed agent changes to ${task.branchName}.`,
+        timestamp: Date.now(),
+      });
+    } catch (err: unknown) {
+      const msg = getErrorStderr(err) || errorMessage(err);
+      console.error(`[commit] failed for task ${task.id}:`, msg);
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'error',
+        content: `Could not commit agent changes (PR/merge may be unavailable): ${msg.trim()}`,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  /** True when the task's repo has an 'origin' remote (so a PR can be opened). */
+  hasRemote(task: Task): boolean {
+    if (!task.repoPath) return false;
+    const cwd = this.gitCwd(task);
+    try {
+      const remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd, stdio: 'pipe' }).toString().trim();
+      return !!remoteUrl;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Directory to run git/gh from — always the repo root. */
+  private gitCwd(task: Task): string {
+    return task.repoPath!;
   }
 
   createPR(task: Task): { url: string } {
@@ -367,13 +499,10 @@ export class AgentManager {
       throw new Error('Task has no repo path or branch name configured');
     }
     const baseBranch = task.baseBranch || 'main';
-    const cwd = task.worktreePath || task.repoPath;
+    const cwd = this.gitCwd(task);
 
     // Check that a remote named 'origin' exists
-    try {
-      const remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], { cwd, stdio: 'pipe' }).toString().trim();
-      if (!remoteUrl) throw new Error('empty');
-    } catch {
+    if (!this.hasRemote(task)) {
       throw new Error(
         'No git remote "origin" configured. Push your repo to GitHub first:\n' +
         `  cd ${task.repoPath}\n` +
@@ -383,6 +512,19 @@ export class AgentManager {
 
     try {
       execFileSync('git', ['push', '-u', 'origin', task.branchName], { cwd, stdio: 'pipe' });
+
+      // Idempotent: reuse an existing open PR for this branch instead of failing.
+      try {
+        const existing = execFileSync(
+          'gh', ['pr', 'view', task.branchName, '--json', 'url', '--jq', '.url'],
+          { cwd, stdio: 'pipe' },
+        ).toString().trim();
+        if (existing) {
+          console.log(`[pr] reusing existing PR: ${existing}`);
+          return { url: existing };
+        }
+      } catch { /* no PR yet — create one below */ }
+
       const prTitle = task.title.replace(/[<>]/g, '').slice(0, 200);
       const result = execFileSync(
         'gh',
@@ -439,16 +581,347 @@ export class AgentManager {
     });
   }
 
+  /**
+   * Query the merge state of the task's open PR via the GitHub CLI. Returns the
+   * raw PR state (`OPEN` | `MERGED` | `CLOSED`) plus a convenience `merged` flag,
+   * or null when the state can't be determined (no `gh`, no PR for the branch,
+   * network/auth error). Best-effort: never throws. Used by {@link PrWatcher} to
+   * follow an auto-opened PR to its merge.
+   */
+  getPullRequestState(task: Task): { state: string; merged: boolean } | null {
+    if (!task.repoPath) return null;
+    // The PR URL uniquely identifies the PR even after the local branch is gone;
+    // fall back to the branch name when no URL was recorded.
+    const ref = task.prUrl || task.branchName;
+    if (!ref) return null;
+    const cwd = this.gitCwd(task);
+    try {
+      const out = execFileSync(
+        'gh', ['pr', 'view', ref, '--json', 'state,mergedAt'],
+        { cwd, stdio: 'pipe' },
+      ).toString().trim();
+      if (!out) return null;
+      const parsed = JSON.parse(out) as { state?: string; mergedAt?: string | null };
+      const state = parsed.state ?? 'UNKNOWN';
+      const merged = state === 'MERGED' || !!parsed.mergedAt;
+      return { state, merged };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Get detailed PR state including mergeable status and CI check results. Used
+   * by the auto-PR pipeline and {@link PrWatcher} to detect conflicts, failing
+   * CI, or a closed-without-merge PR as early as possible. Best-effort — never
+   * throws. Returns null when the state can't be determined.
+   */
+  getPRDetails(task: Task): {
+    url: string;
+    state: string;
+    mergeable: string;
+    merged: boolean;
+    ciPassed: boolean | null;
+    ciPending: boolean;
+    checkConclusions: string[];
+  } | null {
+    if (!task.repoPath) return null;
+    const ref = task.prUrl || task.branchName;
+    if (!ref) return null;
+    const cwd = this.gitCwd(task);
+    try {
+      const out = execFileSync(
+        'gh', ['pr', 'view', ref, '--json', 'state,mergeable,mergedAt,url,statusCheckRollup'],
+        { cwd, stdio: 'pipe' },
+      ).toString().trim();
+      if (!out) return null;
+      const parsed = JSON.parse(out) as {
+        state?: string;
+        mergeable?: string;
+        mergedAt?: string | null;
+        url?: string;
+        statusCheckRollup?: Array<{ conclusion?: string | null; status?: string }>;
+      };
+
+      const state = parsed.state ?? 'UNKNOWN';
+      const mergeable = parsed.mergeable ?? 'UNKNOWN';
+      const url = parsed.url ?? String(ref);
+      const merged = state === 'MERGED' || !!parsed.mergedAt;
+
+      const checkConclusions: string[] = [];
+      let ciPassed: boolean | null = null;
+      let ciPending = false;
+
+      if (parsed.statusCheckRollup && parsed.statusCheckRollup.length > 0) {
+        for (const check of parsed.statusCheckRollup) {
+          const c = ((check.conclusion ?? check.status) ?? '').toUpperCase();
+          if (c) checkConclusions.push(c);
+        }
+        const FAIL_STATES = ['FAILURE', 'ERROR', 'CANCELLED', 'ACTION_REQUIRED', 'TIMED_OUT'];
+        const PENDING_STATES = ['PENDING', 'IN_PROGRESS', 'QUEUED', 'WAITING', 'EXPECTED'];
+        const hasFailure = checkConclusions.some((s) => FAIL_STATES.includes(s));
+        const hasPending = checkConclusions.some((s) => PENDING_STATES.includes(s));
+        ciPending = hasPending && !hasFailure;
+        if (hasFailure) ciPassed = false;
+        else if (!hasPending) ciPassed = true; // all completed successfully
+      }
+
+      return { url, state, mergeable, merged, ciPassed, ciPending, checkConclusions };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Attempt to rebase the task's branch on the latest upstream base branch to
+   * resolve merge conflicts, then force-push the result to update the PR. Uses
+   * the per-repo mutex so it never races concurrent git operations. Throws on
+   * failure (caller is responsible for emitting a user-facing error event).
+   */
+  async rebaseOnBase(task: Task): Promise<void> {
+    if (!task.repoPath || !task.branchName) {
+      throw new Error('Task has no repo path or branch name configured');
+    }
+    const cwd = this.gitCwd(task);
+    const baseBranch = task.baseBranch || 'main';
+
+    return this.withRepoLock(task.repoPath, async () => {
+      try {
+        execFileSync('git', ['fetch', 'origin', baseBranch], { cwd, stdio: 'pipe', timeout: 30_000 });
+        execFileSync('git', ['rebase', `origin/${baseBranch}`], { cwd, stdio: 'pipe' });
+        execFileSync('git', ['push', '--force-with-lease', 'origin', task.branchName!], {
+          cwd, stdio: 'pipe', timeout: 60_000,
+        });
+        console.log(`[rebase] rebased ${task.branchName} on origin/${baseBranch} and pushed`);
+      } catch (err: unknown) {
+        try { execFileSync('git', ['rebase', '--abort'], { cwd, stdio: 'pipe' }); } catch { /* already clean */ }
+        const stderr = getErrorStderr(err);
+        const msg = stderr || errorMessage(err);
+        console.error(`[rebase] failed for task ${task.id}:`, msg);
+        throw new Error(`Rebase failed: ${msg.trim()}`);
+      }
+    });
+  }
+
+  /**
+   * Resolve merge conflicts on the task's branch by merging the latest base
+   * branch into it and, when that produces conflicts, launching an AI agent
+   * session to resolve them intelligently.
+   *
+   * Flow:
+   *  1. Fetch `origin/{baseBranch}`
+   *  2. Check out the task's feature branch
+   *  3. `git merge origin/{baseBranch}` — auto-merges what it can
+   *  4. If merge produces conflicts, create a provider session whose prompt
+   *     lists the conflicting files and asks the agent to resolve every
+   *     conflict marker while preserving the intent of both sides
+   *  5. Verify all conflicts are gone after the agent finishes
+   *  6. Stage the resolution, commit, and push
+   *
+   * Uses the per-repo mutex so it never races concurrent git operations.
+   * Throws on failure (caller is responsible for emitting a user-facing
+   * error event).
+   */
+  async resolveMergeConflicts(task: Task): Promise<void> {
+    if (!task.repoPath || !task.branchName) {
+      throw new Error('Task has no repo path or branch name configured');
+    }
+    const cwd = this.gitCwd(task);
+    const baseBranch = task.baseBranch || 'main';
+    const branchName: string = task.branchName;
+    const repoPath: string = task.repoPath;
+
+    return this.withRepoLock(repoPath, async () => {
+      // 1. Fetch latest base branch
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'output',
+        content: `Fetching latest origin/${baseBranch} to resolve merge conflicts…`,
+        timestamp: Date.now(), metadata: { phase: 'conflict-resolution' },
+      });
+      execFileSync('git', ['fetch', 'origin', baseBranch], { cwd, stdio: 'pipe', timeout: 30_000 });
+
+      // 2. Check out the feature branch
+      execFileSync('git', ['checkout', branchName], { cwd, stdio: 'pipe' });
+
+      // 3. Merge base into feature branch
+      try {
+        execFileSync('git', ['merge', `origin/${baseBranch}`, '--no-edit'], {
+          cwd, stdio: 'pipe', timeout: 30_000,
+        });
+        execFileSync('git', ['push', 'origin', branchName], {
+          cwd, stdio: 'pipe', timeout: 60_000,
+        });
+        this.emitEvent(task.id, {
+          id: uuid(), taskId: task.id, type: 'output',
+          content: `Merged origin/${baseBranch} into ${branchName} — no conflicts. Pushed update.`,
+          timestamp: Date.now(), metadata: { phase: 'conflict-resolution' },
+        });
+        return;
+      } catch {
+        // Merge has conflicts — proceed with agent-based resolution
+      }
+
+      // 4. List conflicted files
+      const conflictOutput = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { cwd, stdio: 'pipe' })
+        .toString().trim();
+      const conflictedFiles = conflictOutput ? conflictOutput.split('\n').filter(Boolean) : [];
+      if (conflictedFiles.length === 0) {
+        throw new Error('Merge failed but no conflicted files detected');
+      }
+
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'output',
+        content:
+          `Merge with origin/${baseBranch} produced conflicts in ${conflictedFiles.length} file(s):\n` +
+          conflictedFiles.map((f) => `  - ${f}`).join('\n') +
+          '\nLaunching agent to resolve conflicts…',
+        timestamp: Date.now(), metadata: { phase: 'conflict-resolution' },
+      });
+
+      // 5. Resolve which agent to use (honour fallback chain)
+      let agentType = task.agentType || 'copilot';
+      const selection = resolveAgentSelection({
+        requested: agentType,
+        agents: this.availableAgents,
+        preferredFallback: getConfiguredFallbackAgent(),
+      });
+      if (!selection.agentType) {
+        throw new Error(selection.reason || `Agent "${agentType}" is not available to resolve conflicts`);
+      }
+      agentType = selection.agentType;
+
+      const provider = this.providers.get(agentType);
+      if (!provider) {
+        throw new Error(`No provider registered for agent type: ${agentType}`);
+      }
+
+      // 6. Build concise conflict-resolution prompts
+      const safeTitle = task.title.replace(/[<>]/g, '');
+      const repoScanSection = buildRepoScanPromptSection(agentType, repoPath);
+
+      const systemPrompt = `
+<context>
+You are a coding agent resolving merge conflicts in the repository at ${repoPath}.
+
+Your task is to fix ALL merge conflict markers (<<<<<<<, =======, >>>>>>>) in the
+conflicted files listed below. For each conflict examine both the HEAD version (the
+feature branch) and the MERGE_HEAD version (the base branch), then produce a single
+correct merged result that preserves the intent of both sides.
+
+${repoScanSection}
+
+When you have finished fixing all conflicts, end your VERY LAST message with:
+<task-summary>
+## Completed
+What conflicts you resolved and how.
+</task-summary>
+</context>
+`;
+
+      const prompt =
+        `Task: ${safeTitle}\n\n` +
+        'The following files have merge conflicts between the feature branch and the base branch:\n' +
+        conflictedFiles.map((f) => `  - ${f}`).join('\n') +
+        '\n\n' +
+        'For each conflicted file, read it, examine both sides of every conflict marker, ' +
+        'and edit the file to produce the correct merged result. Remove ALL conflict markers ' +
+        '(<<<<<<<, =======, >>>>>>> and any accompanying git metadata lines).\n' +
+        'Do NOT add or remove anything unrelated to the conflict resolution.';
+
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'output',
+        content: `Agent ${provider.displayName} is resolving ${conflictedFiles.length} merge conflict(s)…`,
+        timestamp: Date.now(), metadata: { phase: 'conflict-resolution', agentType },
+      });
+
+      // 7. Create session and execute conflict resolution
+      const session = await provider.createSession({
+        contextId: `conflict-${task.id}`,
+        workingDirectory: repoPath,
+        repoPath,
+        systemPrompt,
+        onEvent: (coreEvent) => {
+          const eventType = coreEvent.type === 'error' ? 'error' : 'output';
+          this.emitEvent(task.id, {
+            id: coreEvent.id, taskId: task.id,
+            type: eventType as AgentEvent['type'],
+            content: coreEvent.content,
+            timestamp: coreEvent.timestamp,
+            metadata: { phase: 'conflict-resolution', agentType },
+          });
+        },
+      });
+
+      const result = await session.execute(prompt);
+      session.destroy().catch(() => {});
+
+      if (result.status === 'failed') {
+        throw new Error(`Agent conflict resolution failed: ${result.error || 'unknown error'}`);
+      }
+
+      // 8. Verify all conflicts are gone
+      const remaining = execFileSync('git', ['diff', '--name-only', '--diff-filter=U'], { cwd, stdio: 'pipe' })
+        .toString().trim();
+      if (remaining) {
+        throw new Error(
+          `Agent did not resolve all conflicts. Remaining conflicted files:\n${
+            remaining.split('\n').filter(Boolean).join('\n')
+          }`,
+        );
+      }
+
+      // 9. Stage, commit, and push the resolution
+      execFileSync('git', ['add', '-A'], { cwd, stdio: 'pipe' });
+      execFileSync(
+        'git',
+        ['commit', '--no-verify', '-m', `Resolve merge conflicts between ${branchName} and ${baseBranch}`,
+          '-m', 'Automated conflict resolution from AI Agent Board.'],
+        { cwd, stdio: 'pipe' },
+      );
+      execFileSync('git', ['push', 'origin', branchName], {
+        cwd, stdio: 'pipe', timeout: 60_000,
+      });
+
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'output',
+        content:
+          `Merge conflicts resolved and pushed to ${branchName}. ` +
+          'The pull request has been updated — GitHub will re-compute the merge state shortly.',
+        timestamp: Date.now(), metadata: { phase: 'conflict-resolution' },
+      });
+    });
+  }
+
+  /**
+   * Best-effort delete of the task's local branch once its PR has merged. Runs
+   * from the repo (never a worktree, which would still have the branch checked
+   * out) and is serialized per-repo to avoid racing concurrent git operations.
+   * Never throws — a missing/already-pruned branch is fine.
+   */
+  async deleteBranch(task: Task): Promise<void> {
+    if (!task.repoPath || !task.branchName) return;
+    const repoPath = task.repoPath;
+    const branchName = task.branchName;
+    await this.withRepoLock(repoPath, () => {
+      try {
+        execFileSync('git', ['branch', '-D', branchName], { cwd: repoPath, stdio: 'pipe' });
+        console.log(`[branch] deleted ${branchName}`);
+      } catch (err: unknown) {
+        // Branch may already be gone (e.g. worktree removal pruned it) — non-fatal.
+        console.warn(`[branch] delete ${branchName} skipped:`, errorMessage(err));
+      }
+    });
+  }
+
   // ─── Session Lifecycle ─────────────────────────────────────────────
 
   startAgent(
     task: Task,
     onStatusChange: (status: Task['agentStatus']) => void | Promise<void>,
-    onWorktreeCreated?: (worktreePath: string) => void | Promise<void>,
   ): void {
     if (this.sessions.has(task.id)) return;
 
-    const agentType = task.agentType || 'copilot';
+    let agentType = task.agentType || 'copilot';
     const sessionStartTime = Date.now();
     let terminated = false;
 
@@ -464,6 +937,9 @@ export class AgentManager {
       terminated = true;
       const entry = this.sessions.get(task.id);
       if (entry?.timeoutId) clearTimeout(entry.timeoutId);
+      // Always release the session here so every completion path (including the
+      // container branch's failure paths) clears `isRunning` and allows re-runs.
+      this.sessions.delete(task.id);
       const duration = Date.now() - sessionStartTime;
 
       // Item 5: Emit structured summary event
@@ -496,7 +972,124 @@ export class AgentManager {
       });
 
       onStatusChange(status);
+
+      // Notify the scheduler (token-limit retry / backlog auto-pickup). Runs
+      // after onStatusChange so DB state is (best-effort) up to date; the
+      // handler re-reads from the DB and never throws into this path.
+      if (this.taskSettledHandler) {
+        try {
+          this.taskSettledHandler({ taskId: task.id, status, error: errorMessage, agentType, groupId: task.groupId });
+        } catch (err) {
+          console.error(`[agent-manager] task settled handler threw for task ${task.id}:`, err);
+        }
+      }
     };
+
+    // ── Containerized execution path ──────────────────────────────────
+    // When container mode is configured, run the Claude agent inside an
+    // ephemeral Docker container against an isolated per-task workspace, then
+    // hand off to the auto-PR + review pipeline. Bypasses the local provider,
+    // availability check, and /tmp worktree setup below.
+    if (this.shouldUseContainer(task)) {
+      const runner = this.containerRunner!;
+      this.sessions.set(task.id, { startTime: sessionStartTime, agentType });
+      void (async () => {
+        let workspace: { containerPath: string; hostPath: string };
+        try {
+          workspace = runner.prepareWorkspace(task);
+          task.worktreePath = workspace.containerPath;
+          // The container always runs Claude — reflect that as the task's agent
+          // so the review pipeline picks a DIFFERENT agent as the reviewer.
+          if (task.agentType !== 'claude') {
+            task.agentType = 'claude';
+            try { await this.eventRepo?.update(task.id, { agentType: 'claude' }); } catch { /* non-fatal */ }
+          }
+          this.emitEvent(task.id, {
+            id: uuid(), taskId: task.id, type: 'output',
+            content: `Launching containerized Claude agent.\nWorkspace: ${workspace.containerPath}\nBranch: ${task.branchName} from ${task.baseBranch || 'main'}`,
+            timestamp: Date.now(), metadata: { phase: 'container' },
+          });
+        } catch (err: unknown) {
+          this.emitEvent(task.id, {
+            id: uuid(), taskId: task.id, type: 'error',
+            content: `Container workspace setup failed: ${errorMessage(err)}`,
+            timestamp: Date.now(),
+          });
+          terminateOnce('failed', `Container workspace setup failed: ${errorMessage(err)}`);
+          return;
+        }
+
+        onStatusChange('executing');
+        const safeTitle = task.title.replace(/[<>]/g, '');
+        const safeDescription = (task.description || '').replace(/[<>]/g, '');
+        const prompt = `${safeTitle}\n\n${safeDescription}`;
+        const systemPrompt =
+          'You are a coding agent working in the repository mounted at /repo. Complete the task in the user prompt: read relevant files, make precise edits, and verify your changes when applicable. When finished, end your last message with a <task-summary>…</task-summary> block describing what you accomplished.';
+
+        let summaryBuffer = '';
+        const result = await runner.run(task, {
+          prompt,
+          systemPrompt,
+          hostWorkspacePath: workspace.hostPath,
+          onEvent: (type, content) => {
+            if (type === 'output') {
+              summaryBuffer += content + '\n';
+              if (summaryBuffer.length > MAX_SUMMARY_BUFFER) summaryBuffer = summaryBuffer.slice(-MAX_SUMMARY_BUFFER);
+            }
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type, content,
+              timestamp: Date.now(), metadata: { phase: 'container', agentType: 'claude' },
+            });
+          },
+        });
+
+        if (this.sessions.has(task.id)) {
+          this.sessions.delete(task.id);
+          if (result.status === 'complete') {
+            try {
+              const summary = extractTaskSummary(summaryBuffer);
+              await this.eventRepo?.update(task.id, { summary });
+            } catch (err) {
+              console.error(`[agent-manager] failed to persist summary for task ${task.id}:`, errorMessage(err));
+            }
+            // The container commits its own work; this catches anything left over.
+            this.commitAgentWork(task);
+          }
+          terminateOnce(result.status, result.error);
+        }
+      })().catch((err: unknown) => terminateOnce('failed', errorMessage(err)));
+      return;
+    }
+
+    // Resolve which agent actually picks up the task. If the requested agent is
+    // unavailable (uninstalled, unauthenticated, or out of credits), fall back
+    // to another available agent — preferring a free/local model (e.g. OpenCode
+    // driving a local Ollama model) so the work still gets done instead of the
+    // task failing outright.
+    const selection = resolveAgentSelection({
+      requested: agentType,
+      agents: this.availableAgents,
+      preferredFallback: getConfiguredFallbackAgent(),
+    });
+    if (!selection.agentType) {
+      void terminateOnce('failed', selection.reason || `Agent "${agentType}" is not available.`);
+      return;
+    }
+    if (selection.fellBack) {
+      agentType = selection.agentType;
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'output',
+        content: selection.reason || `Selected agent unavailable — falling back to ${agentType}.`,
+        timestamp: Date.now(), metadata: { phase: 'fallback', agentType },
+      });
+      // Persist + broadcast the swap so the board, follow-up messages, and the
+      // review pipeline all use the agent that actually ran.
+      if (task.agentType !== agentType) {
+        task.agentType = agentType;
+        void this.eventRepo?.update(task.id, { agentType }).catch(() => {});
+        broadcast({ type: 'task_updated', payload: task });
+      }
+    }
 
     const provider = this.providers.get(agentType);
     if (!provider) {
@@ -504,50 +1097,34 @@ export class AgentManager {
       return;
     }
 
-    // Check if agent is available
-    const agentInfo = this.availableAgents.find(a => a.name === agentType);
-    if (!agentInfo?.available) {
-      void terminateOnce('failed', `Agent ${provider.displayName} is not available: ${agentInfo?.reason || 'unknown reason'}`);
-      return;
-    }
-
     // Synchronous placeholder to prevent duplicate starts during async session creation
     this.sessions.set(task.id, { startTime: sessionStartTime, agentType });
 
-    // Set up worktree if configured
-    let worktreePath: string | undefined;
-    if (task.useWorktree) {
-      const priorWorktree = task.worktreePath;
+    // For repo-backed tasks, create a fresh branch based on the latest state
+    // of the base branch instead of using a git worktree. This prevents stale
+    // base branches that cause merge conflicts in PRs.
+    if (task.repoPath) {
+      const priorBranch = task.branchName;
       try {
-        worktreePath = this.setupWorktree(task);
-        if (worktreePath) {
-          task.worktreePath = worktreePath;
-          if (onWorktreeCreated) onWorktreeCreated(worktreePath);
-          const reused = priorWorktree != null && path.resolve(priorWorktree) === path.resolve(worktreePath);
-          let dirtyHint = '';
-          if (reused) {
-            try {
-              const status = execFileSync('git', ['status', '--porcelain'], {
-                cwd: worktreePath, stdio: 'pipe',
-              }).toString().trim();
-              dirtyHint = status ? '\nNote: worktree has uncommitted changes from a prior run.' : '';
-            } catch {
-              /* ignore status probe failures */
-            }
-          }
-          this.emitEvent(task.id, {
-            id: uuid(), taskId: task.id, type: 'output',
-            content: `${reused ? 'Reusing existing git worktree at' : 'Git worktree created at'} ${worktreePath}\nBranch: ${task.branchName}\nBase: ${task.baseBranch || 'main'}${dirtyHint}`,
-            timestamp: Date.now(),
-          });
+        this.setupBranch(task);
+        // setupBranch may have generated or de-collided the branch name on a
+        // re-run — persist + broadcast it so PR/merge/UI use the branch that ran.
+        if (task.branchName && task.branchName !== priorBranch) {
+          void this.eventRepo?.update(task.id, { branchName: task.branchName }).catch(() => {});
+          broadcast({ type: 'task_updated', payload: task });
         }
+        this.emitEvent(task.id, {
+          id: uuid(), taskId: task.id, type: 'output',
+          content: `Branch created: ${task.branchName}\nBase: ${task.baseBranch || 'main'} (pulled latest)`,
+          timestamp: Date.now(),
+        });
       } catch (err: unknown) {
         this.emitEvent(task.id, {
           id: uuid(), taskId: task.id, type: 'error',
-          content: `Worktree setup failed: ${errorMessage(err)}`,
+          content: `Branch setup failed: ${errorMessage(err)}`,
           timestamp: Date.now(),
         });
-        terminateOnce('failed', `Worktree setup failed: ${errorMessage(err)}`);
+        terminateOnce('failed', `Branch setup failed: ${errorMessage(err)}`);
         return;
       }
     }
@@ -555,18 +1132,29 @@ export class AgentManager {
     // Launch the agent session asynchronously
     (async () => {
       try {
-        const workingDirectory = worktreePath || task.repoPath || process.cwd();
+        const workingDirectory = task.repoPath || process.cwd();
         const hasGit = fs.existsSync(path.join(workingDirectory, '.git'));
         // Sanitize task content to prevent prompt injection via </context> breakout
         const safeTitle = task.title.replace(/[<>]/g, '');
+        // Non-Claude agents skip repo understanding and produce off-convention
+        // changes; inject a Claude-native repo-scan skill so they build context
+        // first. No-ops (empty string) for Claude or when disabled via env.
+        const repoScanSection = buildRepoScanPromptSection(agentType, workingDirectory);
+        if (repoScanSection) {
+          this.emitEvent(task.id, {
+            id: uuid(), taskId: task.id, type: 'output',
+            content: `Repo-scan skill enabled for ${agentType}: the agent will scan the repository for context before implementing.`,
+            timestamp: Date.now(), metadata: { phase: 'repo-scan', agentType },
+          });
+        }
         const systemPrompt = `
 <context>
 You are a coding agent working on a task in the project directory: ${workingDirectory}
 Task: ${safeTitle}
-${worktreePath ? `\nIMPORTANT: All file paths MUST be under ${worktreePath}. Do NOT reference or edit files at ${task.repoPath} directly.` : ''}
 ${!hasGit ? `\nIMPORTANT: This directory is not a git repository. Run \`git init\` first before making any changes, so all work is tracked.` : ''}
 Complete the task described in the user prompt. Be thorough — read relevant files,
 make precise edits, and verify your changes compile/pass tests when applicable.
+${repoScanSection}
 
 When you have finished, end your VERY LAST message with a task summary in EXACTLY this format (keep the tags on their own lines):
 <task-summary>
@@ -669,27 +1257,32 @@ Optional list of any work you did not complete or that should be followed up. Om
         this.sessions.set(task.id, { session, startTime: sessionStartTime, agentType });
         onStatusChange('executing');
 
-        // Timeout guard
-        const timeoutId = setTimeout(() => {
-          if (!this.sessions.has(task.id)) return;
-          const timeoutMsg = `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`;
-          console.warn(`[agent-manager] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
-          this.emitEvent(task.id, {
-            id: uuid(), taskId: task.id, type: 'error',
-            content: timeoutMsg,
-            timestamp: Date.now(),
-          });
-          const entry = this.sessions.get(task.id);
-          if (entry) {
-            this.sessions.delete(task.id);
-            entry.session?.abort().catch(() => {});
-            entry.session?.destroy().catch(() => {});
-          }
-          terminateOnce('failed', timeoutMsg);
-        }, AGENT_TIMEOUT_MS);
+        // Optional timeout guard — armed only when a positive AGENT_TIMEOUT_MS
+        // is configured. Default (0) lets the agent run until it finishes or is
+        // stopped.
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        if (AGENT_TIMEOUT_MS > 0) {
+          timeoutId = setTimeout(() => {
+            if (!this.sessions.has(task.id)) return;
+            const timeoutMsg = `Agent timed out after ${Math.round(AGENT_TIMEOUT_MS / 60000)} minutes`;
+            console.warn(`[agent-manager] task ${task.id} timed out after ${AGENT_TIMEOUT_MS}ms`);
+            this.emitEvent(task.id, {
+              id: uuid(), taskId: task.id, type: 'error',
+              content: timeoutMsg,
+              timestamp: Date.now(),
+            });
+            const entry = this.sessions.get(task.id);
+            if (entry) {
+              this.sessions.delete(task.id);
+              entry.session?.abort().catch(() => {});
+              entry.session?.destroy().catch(() => {});
+            }
+            terminateOnce('failed', timeoutMsg);
+          }, AGENT_TIMEOUT_MS);
 
-        const entry = this.sessions.get(task.id);
-        if (entry) entry.timeoutId = timeoutId;
+          const entry = this.sessions.get(task.id);
+          if (entry) entry.timeoutId = timeoutId;
+        }
 
         // Build prompt and execute — each provider returns a typed AgentResult
         const safeDescription = (task.description || '').replace(/[<>]/g, '');
@@ -719,47 +1312,49 @@ Optional list of any work you did not complete or that should be followed up. Om
         // Primary completion path — status comes from the provider
         if (this.sessions.has(task.id)) {
           this.sessions.delete(task.id);
-          // On success, persist the agent-authored summary BEFORE the status
-          // transition so the task-update broadcast carries it to clients.
-          // Always write (extracted value or null) so a rerun can't leave a
-          // stale summary from a previous run. Never let this block completion.
-          if (result.status === 'complete') {
-            try {
-              const summary = extractTaskSummary(summaryBuffer);
-              await this.eventRepo?.update(task.id, { summary });
-            } catch (err) {
-              console.error(`[agent-manager] failed to persist summary for task ${task.id}:`, errorMessage(err));
-            }
+        // On success, persist the agent-authored summary BEFORE the status
+        // transition so the task-update broadcast carries it to clients.
+        // Always write (extracted value or null) so a rerun can't leave a
+        // stale summary from a previous run. Never let this block completion.
+        if (result.status === 'complete') {
+          try {
+            const summary = extractTaskSummary(summaryBuffer);
+            await this.eventRepo?.update(task.id, { summary });
+          } catch (err) {
+            console.error(`[agent-manager] failed to persist summary for task ${task.id}:`, errorMessage(err));
           }
-          terminateOnce(result.status, result.error);
-          session.destroy().catch(() => {});
+          // Commit the agent's work so the task branch has something to PR/merge.
+          if (task.repoPath) this.commitAgentWork(task);
         }
-      } catch (err: unknown) {
-        const message = errorMessage(err);
-        const isCliMissing =
-          message.includes('ENOENT') ||
-          message.includes('not found') ||
-          message.includes('spawn');
-
-        const errorContent = isCliMissing
-          ? `${provider.displayName} CLI is not installed or not found in PATH.`
-          : `Failed to start ${provider.displayName} session: ${message}`;
-
-        this.emitEvent(task.id, {
-          id: uuid(), taskId: task.id, type: 'error',
-          content: errorContent,
-          timestamp: Date.now(),
-        });
-
-        const entry = this.sessions.get(task.id);
-        if (entry) this.sessions.delete(task.id);
-        terminateOnce('failed', errorContent);
+        terminateOnce(result.status, result.error);
+        session.destroy().catch(() => {});
       }
-    })().catch((err: unknown) => {
-      console.error(`[agent-manager] unhandled error for task ${task.id}:`, err);
-      terminateOnce('failed');
-    });
-  }
+    } catch (err: unknown) {
+      const message = errorMessage(err);
+      const isCliMissing =
+        message.includes('ENOENT') ||
+        message.includes('not found') ||
+        message.includes('spawn');
+
+      const errorContent = isCliMissing
+        ? `${provider.displayName} CLI is not installed or not found in PATH.`
+        : `Failed to start ${provider.displayName} session: ${message}`;
+
+      this.emitEvent(task.id, {
+        id: uuid(), taskId: task.id, type: 'error',
+        content: errorContent,
+        timestamp: Date.now(),
+      });
+
+      const entry = this.sessions.get(task.id);
+      if (entry) this.sessions.delete(task.id);
+      terminateOnce('failed', errorContent);
+    }
+  })().catch((err: unknown) => {
+    console.error(`[agent-manager] unhandled error for task ${task.id}:`, err);
+    terminateOnce('failed');
+  });
+}
 
   async sendMessage(taskId: string, message: string, attachmentIds?: string[]): Promise<boolean> {
     const entry = this.sessions.get(taskId);
@@ -810,6 +1405,8 @@ Optional list of any work you did not complete or that should be followed up. Om
       try { await entry.session?.abort(); } catch { /* ignore */ }
       try { await entry.session?.destroy(); } catch { /* ignore */ }
     })();
+    // Stop a running per-task container, if this task was executing in one.
+    this.containerRunner?.kill(taskId);
 
     this.emitEvent(taskId, {
       id: uuid(), taskId, type: 'error',
@@ -880,7 +1477,6 @@ Optional list of any work you did not complete or that should be followed up. Om
     group: TaskGroup,
     children: Task[],
     makeStatusCb: (task: Task) => (status: Task['agentStatus']) => void | Promise<void>,
-    makeWorktreeCb: (task: Task) => (worktreePath: string) => void | Promise<void>,
     onChildComplete: (taskId: string) => void | Promise<void>,
   ): void {
     if (this.groupQueues.has(group.id)) return;
@@ -894,7 +1490,6 @@ Optional list of any work you did not complete or that should be followed up. Om
       failedTaskIds: new Set(),
       tasks: new Map(children.map((c) => [c.id, c])),
       makeStatusCallback: makeStatusCb,
-      makeWorktreeCallback: makeWorktreeCb,
       onChildComplete,
     };
 
@@ -946,7 +1541,7 @@ Optional list of any work you did not complete or that should be followed up. Om
         }
       };
 
-      this.startAgent(task, wrappedStatusCb, q.makeWorktreeCallback(task));
+      this.startAgent(task, wrappedStatusCb);
 
       // Start more if we haven't hit concurrency limit
       startNext();

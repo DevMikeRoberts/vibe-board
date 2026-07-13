@@ -12,7 +12,8 @@ import type { AgentManager } from '../services/agent-manager.js';
 import { broadcast } from '../websocket.js';
 import { MAX_TITLE_LENGTH, isValidAgentType, isValidPriority } from '@ai-agent-board/shared/constants.js';
 import { errorMessage } from '../utils.js';
-import { getConfig, getCloneRoot, setCloneRoot } from '../config.js';
+import { getConfig, getCloneRoot, updateSettings } from '../config.js';
+import type { TaskScheduler } from '../services/task-scheduler.js';
 import {
   asyncHandler,
   broadcastProjectDelete,
@@ -189,6 +190,7 @@ export function createProjectsRouter(
   taskRepo: TaskRepository,
   groupRepo: TaskGroupRepository,
   agentManager: AgentManager,
+  scheduler?: TaskScheduler,
 ): Router {
   const router = Router();
 
@@ -223,18 +225,60 @@ export function createProjectsRouter(
     res.json(getConfig());
   }));
 
-  // PATCH /api/projects/config — update the clone root.
+  // PATCH /api/projects/config — update the clone root and/or behavior settings
+  // (auto-pickup, token-limit retry). Every field is optional; only the provided
+  // ones change.
   router.patch('/config', asyncHandler(async (req: Request, res: Response) => {
-    const { cloneRoot } = req.body;
-    if (typeof cloneRoot !== 'string' || !cloneRoot.trim()) {
-      res.status(400).json({ error: 'cloneRoot must be a non-empty string' }); return;
+    const { cloneRoot, autoPickupEnabled, tokenLimitRetryEnabled, tokenLimitFallbackMinutes, autoPrEnabled } = req.body;
+    const patch: Partial<{
+      cloneRoot: string;
+      autoPickupEnabled: boolean;
+      tokenLimitRetryEnabled: boolean;
+      tokenLimitFallbackMinutes: number;
+      autoPrEnabled: boolean;
+    }> = {};
+
+    if (cloneRoot !== undefined) {
+      if (typeof cloneRoot !== 'string' || !cloneRoot.trim()) {
+        res.status(400).json({ error: 'cloneRoot must be a non-empty string' }); return;
+      }
+      const expanded = expandTilde(cloneRoot.trim());
+      if (!path.isAbsolute(expanded)) {
+        res.status(400).json({ error: 'cloneRoot must be an absolute path' }); return;
+      }
+      patch.cloneRoot = expanded;
     }
-    const expanded = expandTilde(cloneRoot.trim());
-    if (!path.isAbsolute(expanded)) {
-      res.status(400).json({ error: 'cloneRoot must be an absolute path' }); return;
+    if (autoPickupEnabled !== undefined) {
+      if (typeof autoPickupEnabled !== 'boolean') {
+        res.status(400).json({ error: 'autoPickupEnabled must be a boolean' }); return;
+      }
+      patch.autoPickupEnabled = autoPickupEnabled;
     }
+    if (tokenLimitRetryEnabled !== undefined) {
+      if (typeof tokenLimitRetryEnabled !== 'boolean') {
+        res.status(400).json({ error: 'tokenLimitRetryEnabled must be a boolean' }); return;
+      }
+      patch.tokenLimitRetryEnabled = tokenLimitRetryEnabled;
+    }
+    if (tokenLimitFallbackMinutes !== undefined) {
+      if (typeof tokenLimitFallbackMinutes !== 'number' || !Number.isFinite(tokenLimitFallbackMinutes) || tokenLimitFallbackMinutes <= 0) {
+        res.status(400).json({ error: 'tokenLimitFallbackMinutes must be a positive number' }); return;
+      }
+      patch.tokenLimitFallbackMinutes = tokenLimitFallbackMinutes;
+    }
+    if (autoPrEnabled !== undefined) {
+      if (typeof autoPrEnabled !== 'boolean') {
+        res.status(400).json({ error: 'autoPrEnabled must be a boolean' }); return;
+      }
+      patch.autoPrEnabled = autoPrEnabled;
+    }
+
     try {
-      res.json(setCloneRoot(expanded));
+      const next = updateSettings(patch);
+      // Turning auto-pickup on (or any settings change) should immediately
+      // re-evaluate which backlog tasks can start.
+      scheduler?.onSettingsChanged();
+      res.json(next);
     } catch (err: unknown) {
       res.status(400).json({ error: errorMessage(err) });
     }
@@ -422,13 +466,10 @@ export function createProjectsRouter(
     const childTasks = (await Promise.all(groups.map((g) => groupRepo.getChildTasks(g.id)))).flat();
     const tasks = [...standaloneTasks, ...childTasks];
 
-    // Stop agents, drop cached events, and clean up worktrees (best effort).
+    // Stop agents and drop cached events (best effort).
     for (const task of tasks) {
       await agentManager.stopAgent(task.id);
       agentManager.clearEvents(task.id);
-      if (task.worktreePath) {
-        try { agentManager.removeWorktree(task); } catch { /* best effort */ }
-      }
     }
 
     const deleted = await projectRepo.delete(id);

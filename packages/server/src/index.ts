@@ -4,7 +4,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { createWSS } from './websocket.js';
 import { initDatabase, initPostgresDatabase, isPostgresUrl } from './db.js';
-import { loadConfig } from './config.js';
+import { loadConfig, getConfig, getGithubToken } from './config.js';
 import { SqliteTaskRepository } from './repositories/sqlite.js';
 import { PostgresTaskRepository } from './repositories/postgres.js';
 import { createTaskRouter } from './routes/tasks.js';
@@ -14,8 +14,12 @@ import { createTemplateRouter } from './routes/templates.js';
 import { createGroupsRouter } from './routes/groups.js';
 import { createAttachmentsRouter } from './routes/attachments.js';
 import { createProjectsRouter } from './routes/projects.js';
+import { createSystemRouter } from './routes/system.js';
 import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
+import { TaskScheduler } from './services/task-scheduler.js';
+import { PrWatcher } from './services/pr-watcher.js';
+import { autoLoadPersonalRepos } from './services/repo-loader.js';
 import { authMiddleware } from './middleware/auth.js';
 import type { TaskRepository } from './repositories/types.js';
 import type { TemplateRepository } from './repositories/template-types.js';
@@ -25,7 +29,8 @@ import type { ProjectRepository } from './repositories/project-types.js';
 const app = express();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:8081,http://localhost:4175,http://localhost:4176').split(',');
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:8081,http://localhost:4175,http://localhost:4176')
+  .split(',').map((o) => o.trim()).filter(Boolean);
 app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '100kb' }));
 
@@ -44,6 +49,8 @@ let cleanupDb: () => void;
 
 // Initialize AgentManager
 const agentManager = new AgentManager();
+let scheduler: TaskScheduler;
+let prWatcher: PrWatcher;
 
 (async () => {
   // Load (and create on first run) the Agent Board config + clone root directory.
@@ -85,13 +92,22 @@ const agentManager = new AgentManager();
   agentManager.initEventPersistence(taskRepo);
   agentManager.initAttachmentStore(attachmentStore);
 
-  app.use('/api/projects', createProjectsRouter(projectRepo, taskRepo, groupRepo, agentManager));
-  app.use('/api/tasks', createTaskRouter(taskRepo, agentManager, projectRepo));
-  app.use('/api/tasks', createAgentRouter(taskRepo, agentManager, groupRepo, projectRepo));
+  // Owns token-limit retry scheduling + backlog auto-pickup ("staggering").
+  // Reads behavior settings live from the persisted config.
+  scheduler = new TaskScheduler(taskRepo, agentManager, projectRepo, getConfig);
+
+  // Watches PRs auto-opened for completed tasks; moves them to "done" and
+  // cleans up the worktree/branch once the PR is merged.
+  prWatcher = new PrWatcher(taskRepo, agentManager, projectRepo);
+
+  app.use('/api/projects', createProjectsRouter(projectRepo, taskRepo, groupRepo, agentManager, scheduler));
+  app.use('/api/tasks', createTaskRouter(taskRepo, agentManager, projectRepo, scheduler));
+  app.use('/api/tasks', createAgentRouter(taskRepo, agentManager, groupRepo, projectRepo, scheduler));
   app.use('/api/tasks', createGitRouter(taskRepo, agentManager));
   app.use('/api/templates', createTemplateRouter(templateRepo));
   app.use('/api/groups', createGroupsRouter(groupRepo, taskRepo, agentManager, projectRepo));
   app.use('/api', createAttachmentsRouter(taskRepo, attachmentStore));
+  app.use('/api/system', createSystemRouter(projectRepo));
 
   // GET /api/agents — list available agents
   app.get('/api/agents', (_req, res) => {
@@ -165,6 +181,26 @@ const agentManager = new AgentManager();
     console.warn(`[server] recovered orphaned task ${task.id} "${task.title}" (was ${task.agentStatus})`);
   }
 
+  // Auto-load personal GitHub repositories as projects (if a GitHub token is available
+  // via GITHUB_TOKEN env var or stored in the config file).
+  try {
+    const githubToken = getGithubToken();
+    if (githubToken) {
+      await autoLoadPersonalRepos(projectRepo, githubToken);
+    } else {
+      console.log('[server] no GitHub token configured — skipping auto-load (configure via Settings)');
+    }
+  } catch (err) {
+    console.error('[server] failed to auto-load repos:', err);
+  }
+
+  // Start automation (token-limit retries + backlog auto-pickup) only after
+  // orphan recovery above, so re-armed retries see settled task state.
+  await scheduler.start();
+
+  // Start watching auto-opened PRs for merges (review → done + cleanup).
+  prWatcher.start();
+
   server.listen(PORT, () => {
     console.log(`[server] listening on http://localhost:${PORT}`);
     console.log(`[server] WebSocket at ws://localhost:${PORT}/ws`);
@@ -179,6 +215,8 @@ const agentManager = new AgentManager();
   // Graceful shutdown
   function shutdown() {
     console.log('[server] shutting down...');
+    scheduler?.stop();
+    prWatcher?.stop();
     agentManager.shutdownAll();
     try { cleanupDb(); } catch (err) { console.error('[server] db cleanup error:', err); }
     server.close(() => process.exit(0));

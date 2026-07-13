@@ -4,6 +4,7 @@ export type {
   ColumnId,
   AgentStatus,
   AgentType,
+  ReviewStatus,
   Task,
   TaskGroup,
   TaskTemplate,
