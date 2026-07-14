@@ -11,6 +11,8 @@ interface ProjectsSidebarProps {
   onEditProject: (project: Project) => void;
   onDeleteProject: (project: Project) => void;
   onOpenSettings: () => void;
+  onGoHome: () => void;
+  isHome: boolean;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
 }
@@ -23,6 +25,8 @@ export function ProjectsSidebar({
   onEditProject,
   onDeleteProject,
   onOpenSettings,
+  onGoHome,
+  isHome,
   theme,
   toggleTheme,
 }: ProjectsSidebarProps) {
@@ -99,6 +103,26 @@ export function ProjectsSidebar({
 
       {/* ── Project list ── */}
       <nav className="relative flex-1 overflow-y-auto px-2 py-3 space-y-1" aria-label="Projects">
+        {/* Home button */}
+        <button
+          onClick={onGoHome}
+          className={`group flex w-full items-center gap-2.5 rounded-xl border-l-4 py-2.5 pl-3 pr-1 text-left transition-all duration-200 ${
+            isHome
+              ? 'border-l-neon-yellow bg-primary/15 text-foreground'
+              : 'border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          }`}
+        >
+          <PixelIcon
+            name="home-2"
+            className={`h-4 w-4 shrink-0 ${
+              isHome ? 'text-neon-yellow' : 'text-muted-foreground group-hover:text-neon-yellow'
+            }`}
+          />
+          {!collapsed && (
+            <span className="truncate font-sans text-sm font-semibold">home</span>
+          )}
+        </button>
+
         {projects.length === 0 && !collapsed && (
           <p className="px-3 py-4 text-center font-pixel text-[11px] text-muted-foreground [text-transform:lowercase]">
             no projects yet

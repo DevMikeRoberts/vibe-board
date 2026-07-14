@@ -39,6 +39,7 @@ import { ProjectsSidebar } from '@/components/ProjectsSidebar';
 import { GitHubSetupModal } from '@/components/GitHubSetupModal';
 import { BoardCompanion } from '@/components/BoardCompanion';
 import { useCompanion } from '@/hooks/useCompanion';
+import { HomePage } from '@/components/HomePage';
 
 const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
 
@@ -579,6 +580,7 @@ function BoardPage({
 // ─────────────────────────────────────────────────────────────────────────────
 
 type RouteState =
+  | { view: 'home' }
   | { view: 'projects'; initialCreate?: ProjectDialogInitialValues }
   | { view: 'board'; projectId?: string };
 
@@ -607,13 +609,14 @@ function parseCreateQuery(search: string): ProjectDialogInitialValues {
 
 function readRoute(): RouteState {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/') return { view: 'home' };
   if (path === '/projects/new') {
     return { view: 'projects', initialCreate: parseCreateQuery(window.location.search) };
   }
   if (path === '/projects') return { view: 'projects' };
   const match = path.match(/^\/projects\/([^/]+)$/);
   if (match) return { view: 'board', projectId: decodeURIComponent(match[1]) };
-  return { view: 'board' };
+  return { view: 'home' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -667,7 +670,7 @@ export function App() {
   }, []);
 
   const openProject = useCallback((project: Project) => {
-    navigate(project.isDefault ? '/' : `/projects/${encodeURIComponent(project.id)}`);
+    navigate(`/projects/${encodeURIComponent(project.id)}`);
   }, [navigate]);
 
   const defaultProject = useMemo(
@@ -676,6 +679,7 @@ export function App() {
   );
 
   const selectedProject = useMemo(() => {
+    if (route.view === 'home') return null;
     // /projects or /projects/new → default to the default project (board stays visible)
     if (route.view === 'projects') return defaultProject;
     if (route.view === 'board' && route.projectId) return projects.find((p) => p.id === route.projectId);
@@ -728,6 +732,8 @@ export function App() {
         onEditProject={openEditDialog}
         onDeleteProject={(p) => setDeletingProject(p)}
         onOpenSettings={() => setConfigOpen(true)}
+        onGoHome={() => navigate('/')}
+        isHome={route.view === 'home'}
         theme={theme}
         toggleTheme={toggleTheme}
       />
@@ -744,6 +750,8 @@ export function App() {
               loading projects…
             </span>
           </div>
+        ) : route.view === 'home' ? (
+          <HomePage key="home" />
         ) : selectedProject ? (
           /* key ensures fresh local state when switching projects */
           <BoardPage
