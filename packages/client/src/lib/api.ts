@@ -219,6 +219,10 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ token }) },
     ),
 
+  // --- Companion ---
+  createCompanionTask: (message: string) =>
+    request<{ taskId: string }>('/companion/chat', { method: 'POST', body: JSON.stringify({ message }) }),
+
 };
 
 // --- WebSocket (shared singleton) ---

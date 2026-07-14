@@ -4,11 +4,12 @@ interface ShortcutHandlers {
   onNewTask: () => void;
   onNewGroup?: () => void;
   onCloseAll: () => void;
+  onToggleCompanion?: () => void;
   /** Return true if any dialog or panel is currently open */
   isAnyOpen: () => boolean;
 }
 
-export function useKeyboardShortcuts({ onNewTask, onNewGroup, onCloseAll, isAnyOpen }: ShortcutHandlers) {
+export function useKeyboardShortcuts({ onNewTask, onNewGroup, onCloseAll, onToggleCompanion, isAnyOpen }: ShortcutHandlers) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore when typing in inputs/textareas/contenteditable
@@ -37,9 +38,16 @@ export function useKeyboardShortcuts({ onNewTask, onNewGroup, onCloseAll, isAnyO
           onNewGroup();
         }
       }
+
+      if ((e.key === 'b' || e.key === 'B') && onToggleCompanion) {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && !isAnyOpen()) {
+          e.preventDefault();
+          onToggleCompanion();
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onNewTask, onNewGroup, onCloseAll, isAnyOpen]);
+  }, [onNewTask, onNewGroup, onCloseAll, onToggleCompanion, isAnyOpen]);
 }

@@ -35,6 +35,8 @@ import type { ProjectDialogInitialValues } from '@/components/ProjectDialog';
 import { ConfigDialog } from '@/components/ConfigDialog';
 import { ProjectsSidebar } from '@/components/ProjectsSidebar';
 import { GitHubSetupModal } from '@/components/GitHubSetupModal';
+import { BoardCompanion } from '@/components/BoardCompanion';
+import { useCompanion } from '@/hooks/useCompanion';
 
 const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
 
@@ -95,6 +97,8 @@ function BoardPage({
   const [activeStatuses, setActiveStatuses] = useState<StatusFilter[]>(
     () => { try { return JSON.parse(localStorage.getItem(SK_FILTER_STATUSES) || '[]'); } catch { return []; } }
   );
+
+  const companion = useCompanion();
 
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -398,6 +402,7 @@ function BoardPage({
     onNewTask: handleOpenDialog,
     onNewGroup: handleOpenGroupDialog,
     onCloseAll: handleCloseAll,
+    onToggleCompanion: companion.toggle,
     isAnyOpen,
   });
 
@@ -530,6 +535,15 @@ function BoardPage({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Board Companion */}
+      <BoardCompanion
+        open={companion.open}
+        onToggle={companion.toggle}
+        messages={companion.messages}
+        onSend={companion.sendMessage}
+        streaming={companion.streaming}
+      />
     </div>
   );
 }
