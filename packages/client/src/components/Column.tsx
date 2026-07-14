@@ -71,7 +71,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
 
   return (
     <div
-      className="flex h-full w-full shrink-0 flex-col md:w-[21rem] lg:w-[23rem] xl:w-[25rem] max-md:h-auto max-md:min-h-64"
+      className="flex h-full min-w-0 flex-1 flex-col max-w-[25rem] max-md:h-auto max-md:min-h-64 max-md:w-full max-md:flex-none"
       data-column={column.id}
       style={{ '--panel': hue } as React.CSSProperties}
     >
@@ -82,7 +82,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
         )}
       >
         {/* Column header — fat sticker pill */}
-        <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
+        <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3 md:px-4 md:pt-4">
           <div
             className="sticker-sm flex min-w-0 items-center gap-2.5 rounded-full py-2 pl-3.5 pr-2"
             style={{ backgroundColor: hue, color: pillText }}
@@ -117,7 +117,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
           <div
             ref={(node) => { setNodeRef(node); (scrollRef as React.MutableRefObject<HTMLDivElement | null>).current = node; }}
             className={cn(
-              'flex h-full flex-col gap-3.5 overflow-y-auto px-4 pb-4 pt-2 transition-[background-color] duration-200',
+              'flex h-full flex-col gap-3.5 overflow-y-auto px-2.5 pb-4 pt-2 transition-[background-color] duration-200 md:px-4',
               isOver && 'bg-[color-mix(in_oklab,var(--panel)_10%,transparent)]'
             )}
           >
