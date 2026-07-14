@@ -105,7 +105,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       data-fc-state={fcState}
       className={cn(
         'fc-card',
-        'group relative cursor-grab active:cursor-grabbing rounded-2xl p-4',
+        'group relative cursor-grab active:cursor-grabbing rounded-2xl max-md:p-3 md:p-3 lg:p-4',
         isDragging && 'z-50 rotate-2 scale-105 opacity-90',
         task.archived && 'opacity-60 saturate-50'
       )}

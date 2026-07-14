@@ -150,7 +150,7 @@ export function Board({
       onDragCancel={handleDragCancel}
     >
       {/* Board area */}
-      <div className="flex h-full gap-5 overflow-x-auto p-5 pb-5 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto md:gap-6 md:p-7">
+      <div className="flex h-full gap-5 overflow-hidden p-5 pb-5 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto md:gap-6 md:p-7">
         {columns.map((column, index) => (
           <motion.div
             key={column.id}

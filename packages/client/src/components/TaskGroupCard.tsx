@@ -35,7 +35,7 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
   return (
     <div
       className={cn(
-        'sticker sticker-peel group relative cursor-pointer rounded-2xl border-2 border-ink bg-card p-4',
+        'sticker sticker-peel group relative cursor-pointer rounded-2xl border-2 border-ink bg-card max-md:p-3 md:p-3 lg:p-4',
         isRunning && 'border-b-[6px] border-b-neon-blue',
       )}
       onClick={() => onClickGroup(group)}
