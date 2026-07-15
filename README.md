@@ -19,14 +19,18 @@ A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub
 
 ![AI Agent Board in action](images/agent-board-in-action.gif)
 
+<!-- TODO: Replace the GIF above or add a second screenshot of the current UI (HomePage, Projects, Sprint Planner) -->
+<!-- ![New UI screenshot](images/screenshot.png) -->
+
 ## How It Works
 
-1. **Create a task** in the Backlog column
-2. **Drag it to In Progress** — the agent panel opens automatically
-3. **Configure the run** — set the repo path, branch name, and agent type (every task always runs in its own git worktree)
-4. **Click Start Agent** — the selected agent begins working, streaming progress in real-time
-5. **Review the results** — commands executed, files modified, output produced
-6. **Merge or create a PR** — merge the branch to main locally, or create a PR if the repo has a GitHub remote
+1. **Create a project** — link a git repo or clone one from GitHub
+2. **Create a task** in the Backlog column (or use the Sprint Planner to batch-create from a description)
+3. **Drag it to In Progress** — the agent panel opens automatically
+4. **Configure the run** — set the repo path, branch name, and agent type
+5. **Click Start Agent** — the selected agent begins working, streaming progress in real-time
+6. **Review the results** — commands executed, files modified, output produced
+7. **Merge or create a PR** — merge the branch to main locally, or create a PR if the repo has a GitHub remote
 
 ### Multi-Agent Architecture
 
@@ -70,12 +74,12 @@ the task ([`autoOpenPrOnComplete`](packages/server/src/routes/helpers.ts)).
 
 From there the [`PrWatcher`](packages/server/src/services/pr-watcher.ts) service
 polls each open PR and, the moment it is merged, moves the task to **Done** and
-cleans up after it — removing the worktree (if it outlived PR creation) and
-deleting the local branch. Polling (rather than a GitHub webhook) keeps the flow
-self-contained and restart-safe: the watch state lives on the task row, so a
-restarted server simply resumes watching on its next tick. Repos without a
-remote are untouched and keep the manual **Create PR** / **Merge to main**
-buttons. Group children are excluded — they continue to roll up to their group.
+cleans up after it — removing the worktree and deleting the local branch. Polling
+(rather than a GitHub webhook) keeps the flow self-contained and restart-safe:
+the watch state lives on the task row, so a restarted server simply resumes
+watching on its next tick. Repos without a remote are untouched and keep the
+manual **Create PR** / **Merge to main** buttons. Group children are excluded —
+they continue to roll up to their group.
 
 ### Token-limit retry
 
@@ -88,13 +92,11 @@ parses the limit's reset time from the error
 automatically re-runs the task shortly after it resets.
 
 The reset time is detected (best-effort, provider-agnostic) from common forms:
-an explicit epoch (e.g. Claude Code's `usage limit reached|<epoch>`), an ISO
-timestamp, a relative delay (`retry-after: 30`, `try again in 20s`), or a
-wall-clock time (`resets at 3pm`). When no time can be parsed, a configurable
-**fallback delay** (default 60 min) is used. The task card shows a
-"Retry HH:MM" badge while a retry is pending, and the scheduled retry survives a
-server restart (it is persisted on the task and re-armed on boot). Manually
-running, moving, or deleting the task cancels the pending retry.
+an explicit epoch, an ISO timestamp, a relative delay (`retry-after: 30`),
+or a wall-clock time. When no time can be parsed, a configurable **fallback
+delay** (default 60 min) is used. The task card shows a "Retry HH:MM" badge
+while a retry is pending, and the scheduled retry survives a server restart.
+Manually running, moving, or deleting the task cancels the pending retry.
 
 ### Auto-pickup (staggering the backlog)
 
@@ -102,10 +104,8 @@ Enable **Auto-pickup backlog** (Settings ⚙️) to have the board work through 
 backlog on its own: it automatically starts the next idle backlog task — **one
 at a time per project** — as soon as the project has nothing running (and no
 pending token-limit retry). Tasks are picked highest-priority first, then
-oldest first. A task whose agent is waiting on a token-limit reset keeps the
-project's single slot reserved, so the board won't pile up parallel work against
-an exhausted account. Turning the setting on immediately evaluates the backlog;
-a periodic safety tick also keeps it moving if any completion signal is missed.
+oldest first. Turning the setting on immediately evaluates the backlog; a
+periodic safety tick also keeps it moving if any completion signal is missed.
 
 ### Task Groups
 
@@ -113,30 +113,47 @@ For projects needing multiple parallel changes, **Task Groups** let you define a
 
 1. Click **New Group** (or press `G`) to open the group creation dialog
 2. Set group-level config: title, repo path, base branch, priority
-3. Add child tasks (2–20), each with its own title, description, and agent type (each runs in its own git worktree)
+3. Add child tasks (2–20), each with its own title, description, and agent type
 4. Set **parallelism** with a slider (1 to N) — controls how many agents run concurrently
 5. Click **Create & Run** to launch immediately, or **Create Group** to add to backlog
 
 Groups appear as a single card on the board showing aggregate progress. Click to expand the **Group Panel** with per-child status, retry buttons for failures, and drill-through to individual agent panels. Groups auto-advance to "review" when all children complete successfully.
 
+### Sprint Planner
+
+The **Sprint Planner** lets you describe a sprint in natural language and have an AI agent break it into individual task tickets on the board. Open it from the board header, provide a sprint name and description, pick an agent and project, and the planner will create a batch of well-structured tasks ordered by dependency — ready to run.
+
+### Companion AI
+
+The **Board Companion** is a built-in chat assistant that lives on the home page. Ask it to plan tasks, open projects, check on PRs, or help with general coding questions. It streams responses in real-time using the same agent infrastructure as task execution.
+
+### Projects
+
+**Projects** let you organize tasks by repository. Create a project by linking a local path or cloning a GitHub repo. The board tracks per-project task counts, supports project-level settings (base branch, default agent, auto-pickup), and auto-loads your personal GitHub repos when a token is configured.
+
 ## Features
 
 - Kanban board with Backlog, In Progress, Review, Done columns
+- **Home dashboard** with project stats, dithered tree visualization, and companion chat
+- **Multi-project management** — link local repos or clone from GitHub, per-project settings
 - **Multi-agent support** — choose GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, Hermes, or OpenClaw per task
 - Auto-detection of available agents at startup
 - Drag-and-drop task management with transition validation
 - Real-time agent activity streaming via WebSocket
 - Terminal-style event viewer (xterm.js) with ANSI color support
 - Agent panel with event coalescing (thinking, commands, output)
-- Git worktree isolation on every task (always on — each run gets its own branch + worktree; re-runs auto-pick a fresh non-colliding branch)
-- **Local merge or PR** — merge worktree branch to main locally, or create a PR if a GitHub remote exists (auto-detected)
-- **Auto-PR + merge watcher** — completed tasks auto-open a PR (when a remote exists) and move to Done automatically once that PR is merged, cleaning up the branch/worktree
+- Git worktree isolation on every task (always on — each run gets its own branch + worktree)
+- **Local merge or PR** — merge worktree branch to main locally, or create a PR if a GitHub remote exists
+- **Auto-PR + merge watcher** — completed tasks auto-open a PR and move to Done automatically once that PR is merged
 - Worktree auto-cleanup after merge, PR creation, watched-PR merge, or archival
 - **Dual database backends** — SQLite (zero-config default) or PostgreSQL
 - Task templates for reusable task configurations
-- **Task Groups** — define multiple related tasks in one form, launch with configurable parallelism (slider 1..N), monitor aggregate progress
-- **Token-limit retry** — auto re-run a task around the time its agent's token/usage limit resets (parsed from the error; configurable fallback delay)
-- **Auto-pickup (staggering)** — automatically start the next backlog task, one at a time per project, as slots free up
+- **Task Groups** — define multiple related tasks in one form, launch with configurable parallelism
+- **Sprint Planner** — describe a sprint in natural language, AI breaks it into tickets
+- **Board Companion** — built-in chat assistant for planning, PR help, and coding questions
+- **Image attachments** — upload screenshots/diagrams to tasks (PNG, JPEG, GIF, WebP; up to 10 MB)
+- **Token-limit retry** — auto re-run a task around the time its agent's limit resets
+- **Auto-pickup (staggering)** — automatically start the next backlog task, one at a time per project
 - Auto-run option to start agent immediately on task creation
 - Priority levels (critical, high, medium, low) with emoji indicators and color-coded borders
 - Filter and sort tasks by agent type, status, and priority
@@ -145,6 +162,7 @@ Groups appear as a single card on the board showing aggregate progress. Click to
 - Dark/light theme toggle
 - Task search and filtering
 - Keyboard shortcuts (N: new task, G: new group, Esc: close panels)
+- Connection status indicator with automatic reconnection
 
 ## Getting Started
 
@@ -224,8 +242,7 @@ docker compose up -d --build server
 ```
 
 The backend listens on `:8080`. Expose it over HTTPS (a reverse proxy or a
-tunnel such as `cloudflared`) and point your Vercel frontend at that URL. The
-mounted Docker socket lets the backend launch per-task agent containers.
+tunnel such as `cloudflared`) and point your Vercel frontend at that URL.
 
 **2. Deploy the frontend (Vercel):**
 
@@ -238,47 +255,6 @@ these **Environment Variables** in the Vercel project, then deploy:
 | `VITE_API_BASE` | `https://your-backend-host` (no trailing `/api`) |
 | `VITE_API_KEY` | the same value as the backend `API_KEY` |
 
-In local dev `VITE_API_BASE` is unset and the client talks to the backend
-through the Vite proxy as before.
-
-### Per-task agent containers (autonomous execution)
-
-When enabled, the backend runs **each task in its own ephemeral Docker
-container** (Claude agent) against an isolated per-task workspace and commits the
-work. Because the always-on host orchestrates everything, tasks run to completion
-even when your laptop is off.
-
-**1. Build the agent-runner image** (on the backend host, context = repo root):
-
-```bash
-docker build -f packages/server/agent-runner/Dockerfile -t agentboard-agent-runner .
-```
-
-**2. Enable it on the backend** (in addition to the variables above):
-
-```bash
-export AGENTBOARD_CONTAINER_MODE=1
-export ANTHROPIC_API_KEY="sk-ant-..."   # used by the Claude agent in each container
-export GH_TOKEN="ghp_..."               # used by the backend to push + open PRs
-docker compose up -d --build server
-```
-
-How it composes: task starts → backend creates an isolated workspace (a
-self-contained clone of the project repo on a new branch, under the `/data`
-bind mount) → launches `agentboard-agent-runner` against it via the mounted
-Docker socket → the agent edits + commits → the backend pushes the branch and
-the task lands in **review** for you to open a PR and merge from the board. Falls
-back to local execution if Docker / `ANTHROPIC_API_KEY` are unavailable, for group
-child tasks, or when the repo has no GitHub remote.
-
-> Notes / current limitations: the project repo must have a GitHub `origin`
-> (so the PR can be pushed); the agent runs with `--dangerously-skip-permissions`
-> inside the container sandbox; agent output streams as plain log lines (not yet
-> structured tool/file events); and the mounted Docker socket grants the backend
-> control of the host daemon — keep the backend behind `API_KEY` and don't expose
-> it publicly without one. This path needs runtime validation on your host
-> (Docker + an Anthropic key + a GitHub repo).
-
 ### Required Gate
 
 Use the deterministic gate before pushing changes. It runs the client build, server build, and required Playwright E2E suite; if E2E cannot run, the command fails.
@@ -288,6 +264,37 @@ npm run gate:required
 
 # Enable the committed pre-push hook for this clone
 npm run hooks:install
+```
+
+## Project Structure
+
+```
+ai-agent-board/
+├── packages/
+│   ├── client/                # React 19 + Vite + Tailwind 4 + Framer Motion
+│   │   └── src/
+│   │       ├── components/    # Board, Column, TaskCard, TaskGroupCard, GroupPanel,
+│   │       │                  # AgentPanel, TerminalView, HomePage, ProjectsPage,
+│   │       │                  # ProjectsSidebar, BoardCompanion, SprintPlannerDialog,
+│   │       │                  # ImageUpload, TaskFullView, FilterChips, Header, dialogs
+│   │       ├── hooks/         # useTasks, useTaskGroups, useProjects, useCompanion,
+│   │       │                  # useTheme, useConnectionStatus, useDebounce, useKeyboardShortcuts
+│   │       └── lib/           # api.ts (REST + WebSocket), agent-config.ts, columns.ts,
+│   │                          # priority-config.ts, group-utils.tsx, utils.ts
+│   ├── server/                # Express + agent-sdk-core + better-sqlite3/pg + ws
+│   │   └── src/
+│   │       ├── middleware/     # auth.ts (Bearer token auth)
+│   │       ├── routes/        # tasks, agent, git, templates, groups, projects,
+│   │       │                  # attachments, system, companion, sprint
+│   │       ├── services/      # agent-manager, task-scheduler, pr-watcher,
+│   │       │                  # agent-fallback, token-limit, repo-loader
+│   │       ├── repositories/  # SQLite + PostgreSQL (tasks, templates, groups,
+│   │       │                  # projects, attachments)
+│   │       ├── db.ts          # Database init + migrations
+│   │       └── websocket.ts   # Real-time event broadcast
+│   └── e2e/                   # Playwright end-to-end tests
+├── shared/                    # Shared types + validation constants
+└── scripts/                   # Required gate, hook install, E2E process helpers
 ```
 
 ## Environment Variables
@@ -303,47 +310,26 @@ npm run hooks:install
 | `COPILOT_MODEL` | `claude-opus-4-20250514` | Model for Copilot SDK sessions |
 | `CLAUDE_MODEL` | `claude-opus-4-20250514` | Model for Claude Code sessions |
 | `CODEX_MODEL` | `gpt-5.2-codex` | Model for OpenAI Codex sessions |
-| `HERMES_COMMAND` | `hermes` | Hermes CLI command or absolute path used to start the ACP server |
-| `HERMES_MODEL` | `configured default` | Display/configured model label for Hermes sessions; Hermes ACP uses its own active config |
-| `HERMES_ACCEPT_HOOKS` | _(unset)_ | Set to `true` to auto-approve Hermes startup hook prompts in headless ACP sessions |
-| `OPENCLAW_COMMAND` | `openclaw` | OpenClaw CLI command or absolute path used to start the ACP bridge |
-| `OPENCLAW_GATEWAY_URL` | _(SDK default)_ | Optional OpenClaw Gateway WebSocket URL forwarded to `openclaw acp` |
-| `OPENCLAW_GATEWAY_TOKEN` / `OPENCLAW_GATEWAY_PASSWORD` | _(unset)_ | Optional OpenClaw Gateway credentials passed through environment variables |
+| `HERMES_COMMAND` | `hermes` | Hermes CLI command or absolute path |
+| `HERMES_MODEL` | `configured default` | Display/configured model label for Hermes sessions |
+| `HERMES_ACCEPT_HOOKS` | _(unset)_ | Set to `true` to auto-approve Hermes startup hook prompts |
+| `OPENCLAW_COMMAND` | `openclaw` | OpenClaw CLI command or absolute path |
+| `OPENCLAW_GATEWAY_URL` | _(SDK default)_ | Optional OpenClaw Gateway WebSocket URL |
+| `OPENCLAW_GATEWAY_TOKEN` / `OPENCLAW_GATEWAY_PASSWORD` | _(unset)_ | Optional OpenClaw Gateway credentials |
 | `COPILOT_DENIED_TOOLS` | _(unset)_ | Comma-separated tool names to deny in Copilot sessions |
-| `AGENTBOARD_FALLBACK_AGENT` | _(unset)_ | Pin the agent used when a task's requested agent is unavailable (out of credits / not installed). Unset = prefer a free/local model by tier ranking |
+| `AGENTBOARD_FALLBACK_AGENT` | _(unset)_ | Pin the fallback agent when the requested one is unavailable |
 | `ALLOWED_REPO_ROOTS` | `$HOME`, temp, current workspace | Allowed repo root paths (comma-separated) |
 | `ALLOWED_ORIGINS` | `http://localhost:8081,http://localhost:4175,http://localhost:4176` | CORS origins |
-| `AGENT_TIMEOUT_MS` | _(unset)_ | Max agent execution time (ms); also the per-task container timeout. Unset or `0` = **no timeout** (agents run until they finish or are stopped). Set a positive value to enforce a hard cap |
+| `AGENT_TIMEOUT_MS` | _(unset)_ | Max agent execution time (ms); `0` or unset = no timeout |
+| `AGENTBOARD_REPO_SCAN` | `1` (on) | Inject repo-scan skill into non-Claude agents; `0` to disable |
 | `API_URL` | `http://localhost:8080` | Vite proxy target |
 | `PROJECTS_DIR` | `~/projects` | Host projects path |
 | `AGENTBOARD_CONTAINER_MODE` | _(unset)_ | Set to `1` to run each task in an ephemeral Docker container |
-| `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key for the Claude agent in per-task containers |
-| `GH_TOKEN` | _(unset)_ | GitHub token the backend uses to push branches and open PRs |
-| `AGENT_RUNNER_IMAGE` | `agentboard-agent-runner:latest` | Image used for per-task agent containers |
-| `AGENTBOARD_DATA_HOST` | _(unset)_ | **Absolute** host path backing the `/data` bind mount (required for sibling-container mounts; container mode won't enable if relative) |
+| `ANTHROPIC_API_KEY` | _(unset)_ | Anthropic key for per-task containers |
+| `GH_TOKEN` | _(unset)_ | GitHub token for pushing branches and opening PRs |
+| `AGENT_RUNNER_IMAGE` | `agentboard-agent-runner:latest` | Image for per-task agent containers |
+| `AGENTBOARD_DATA_HOST` | _(unset)_ | Absolute host path for Docker bind mounts |
 | `AGENTBOARD_DATA_DIR` | `/data` | In-container mount point of the shared data dir |
-
-## Project Structure
-
-```
-ai-agent-board/
-├── packages/
-│   ├── client/                # React frontend
-│   │   └── src/
-│   │       ├── components/    # Board, Column, TaskCard, TaskGroupCard, GroupPanel, AgentPanel, TerminalView, ParallelismSlider, FilterChips, dialogs
-│   │       ├── hooks/         # useTasks, useTaskGroups, useTheme, useDebounce, useKeyboardShortcuts
-│   │       └── lib/           # API client, WebSocket, agent-config, priority-config, utilities
-│   ├── server/                # Express backend
-│   │   └── src/
-│   │       ├── middleware/     # Bearer token auth
-│   │       ├── routes/        # REST API split: tasks, agent, git (merge/PR/worktree), templates, groups
-│   │       ├── services/      # Agent session orchestration via agent-sdk-core
-│   │       ├── repositories/  # SQLite + PostgreSQL data access (tasks + templates + groups)
-│   │       ├── db.ts          # Database init + migrations
-│   │       └── websocket.ts   # Real-time event broadcast
-│   └── e2e/                   # Playwright end-to-end tests
-└── shared/                    # Shared types (Task, TaskGroup, TaskTemplate, AgentEvent, etc.) + validation
-```
 
 ## Tests
 
@@ -367,7 +353,7 @@ The local pre-push hook in `.githooks/pre-push` runs `npm run gate:required`. Ru
 | `board.spec.ts` | 14 | Task CRUD, drag & drop, theme, priority, sorting, filters, retry |
 | `api-improvements.spec.ts` | 20 | Auto-run, batch create, status endpoint, WebSocket events, follow-up messages |
 | `agent-selector.spec.ts` | 7 | Agent selection UI, badges, worktree dialog |
-| `groups.spec.ts` | 28 | Group CRUD, validation, archive, edge cases (E3/E12), UI |
+| `groups.spec.ts` | 28 | Group CRUD, validation, archive, edge cases, UI |
 | `git-operations.spec.ts` | 8 | Local merge, conflict handling, PR creation, worktree cleanup |
 | `group-integration.spec.ts` | 2 | Full agent execution with real agents, stop & cleanup |
 | `agent-sdk.spec.ts` | 2 | Real Copilot SDK execution (skipped without test repo) |
@@ -376,10 +362,10 @@ The local pre-push hook in `.githooks/pre-push` runs `npm run gate:required`. Ru
 
 | Layer | Technology |
 |-------|------------|
-| Frontend | React 19, Vite, Tailwind CSS 4, Framer Motion |
+| Frontend | React 19, Vite 8, Tailwind CSS 4, Framer Motion |
 | Drag & Drop | @dnd-kit |
 | Backend | Express, better-sqlite3 / PostgreSQL, ws (WebSocket) |
-| AI Agents | [@codewithdan/agent-sdk-core](https://github.com/DanWahlin/agent-sdk-core) (wraps Copilot, Claude Code, Codex, OpenCode, Hermes, and OpenClaw providers) |
+| AI Agents | [@codewithdan/agent-sdk-core](https://github.com/DanWahlin/agent-sdk-core) (Copilot, Claude Code, Codex, OpenCode, Hermes, OpenClaw) |
 | Terminal UI | @xterm/xterm |
 | Monorepo | npm workspaces |
 | Dev Environment | Direct install (Linux, macOS, Windows) |
