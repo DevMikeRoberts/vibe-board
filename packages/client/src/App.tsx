@@ -439,7 +439,7 @@ function BoardPage({
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <Header
-        title={project.name === 'Default' ? 'AI Agent Board' : project.name}
+        title={project.name === 'Default' ? 'Vibe Board' : project.name}
         theme={theme}
         toggleTheme={toggleTheme}
         searchQuery={searchQuery}

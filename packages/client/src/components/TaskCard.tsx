@@ -74,13 +74,22 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
   const needsInput = useNeedsInput(task.id);
   const fcState = taskToFcState(task, needsInput);
 
+  const cardRef = useRef<HTMLDivElement>(null);
   const finished = task.agentStatus === 'complete' || task.columnId === 'done';
   const prevFinishedRef = useRef(finished);
   const [celebrate, setCelebrate] = useState(false);
+  const [confettiPos, setConfettiPos] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (finished && !prevFinishedRef.current) {
       setCelebrate(true);
-      const id = setTimeout(() => setCelebrate(false), 2600);
+      if (cardRef.current) {
+        const rect = cardRef.current.getBoundingClientRect();
+        setConfettiPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      }
+      const id = setTimeout(() => {
+        setCelebrate(false);
+        setConfettiPos(null);
+      }, 2600);
       prevFinishedRef.current = finished;
       return () => clearTimeout(id);
     }
@@ -98,7 +107,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
   return (
     <div
-      ref={setNodeRef}
+      ref={(node) => { setNodeRef(node); (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = node; }}
       style={style}
       {...attributes}
       {...listeners}
@@ -259,6 +268,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       )}
 
       {celebrate && <FcCelebration />}
+      {confettiPos && <ConfettiOverlay x={confettiPos.x} y={confettiPos.y} />}
     </div>
   );
 }
