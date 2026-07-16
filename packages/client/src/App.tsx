@@ -40,7 +40,6 @@ import { GitHubSetupModal } from '@/components/GitHubSetupModal';
 import { BoardCompanion } from '@/components/BoardCompanion';
 import { useCompanion } from '@/hooks/useCompanion';
 import { useRadio } from '@/hooks/useRadio';
-import { RetroRadio } from '@/components/RetroRadio';
 import { DitherBackground } from '@/components/DitherBackground';
 import { SakuraLeaves } from '@/components/SakuraLeaves';
 import { HomePage } from '@/components/HomePage';
@@ -734,18 +733,6 @@ export function App() {
       {/* ── Global visual effects ── */}
       <DitherBackground />
       <SakuraLeaves />
-
-      {/* ── Floating radio widget — fixed bottom-right ── */}
-      <div className="fixed bottom-4 right-4 z-[60]">
-        <div className="sticker-sm flex items-center gap-2 rounded-2xl border-2 border-neon-pink/30 bg-card px-3 py-2 shadow-[0_0_12px_-4px_var(--color-neon-pink)]">
-          <RetroRadio
-            on={radio.on}
-            volume={radio.volume}
-            onToggle={radio.toggle}
-            onVolumeChange={radio.setVolume}
-          />
-        </div>
-      </div>
 
       {/* ── Left sidebar: project list ── */}
       {route.view !== 'home' && (
