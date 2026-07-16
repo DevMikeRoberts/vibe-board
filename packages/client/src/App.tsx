@@ -40,6 +40,7 @@ import { GitHubSetupModal } from '@/components/GitHubSetupModal';
 import { BoardCompanion } from '@/components/BoardCompanion';
 import { useCompanion } from '@/hooks/useCompanion';
 import { useRadio } from '@/hooks/useRadio';
+import { RetroRadio } from '@/components/RetroRadio';
 import { DitherBackground } from '@/components/DitherBackground';
 import { SakuraLeaves } from '@/components/SakuraLeaves';
 import { HomePage } from '@/components/HomePage';
@@ -67,13 +68,11 @@ function BoardPage({
   project,
   theme,
   toggleTheme,
-  onGoHome,
   radio,
 }: {
   project: Project;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
-  onGoHome: () => void;
   radio: { on: boolean; volume: number; toggle: () => void; setVolume: (v: number) => void };
 }) {
   const lockedRepoPath = project.repoPath;
@@ -459,7 +458,6 @@ function BoardPage({
         onClearFilters={handleClearFilters}
         onNewTask={handleOpenDialog}
         onSprintPlanner={handleOpenSprintDialog}
-        onGoHome={onGoHome}
         radio={radio}
       />
 
@@ -737,6 +735,31 @@ export function App() {
       <DitherBackground />
       <SakuraLeaves />
 
+      {/* ── Global home button — fixed top-left corner ── */}
+      {route.view !== 'home' && (
+        <button
+          onClick={() => navigate('/')}
+          className="sticker sticker-press fixed left-4 top-4 z-[60] flex h-12 items-center gap-2 rounded-2xl bg-neon-purple px-4 font-display text-sm text-ink [text-transform:lowercase]"
+          aria-label="Go home"
+          title="Go home"
+        >
+          <PixelIcon name="home-2" className="h-5 w-5" />
+          <span className="hidden sm:inline">home</span>
+        </button>
+      )}
+
+      {/* ── Floating radio widget — fixed bottom-right ── */}
+      <div className="fixed bottom-4 right-4 z-[60]">
+        <div className="sticker-sm flex items-center gap-2 rounded-2xl border-2 border-neon-pink/30 bg-card px-3 py-2 shadow-[0_0_12px_-4px_var(--color-neon-pink)]">
+          <RetroRadio
+            on={radio.on}
+            volume={radio.volume}
+            onToggle={radio.toggle}
+            onVolumeChange={radio.setVolume}
+          />
+        </div>
+      </div>
+
       {/* ── Left sidebar: project list ── */}
       <ProjectsSidebar
         projects={projects}
@@ -771,7 +794,6 @@ export function App() {
             project={selectedProject}
             theme={theme}
             toggleTheme={toggleTheme}
-            onGoHome={() => navigate('/')}
             radio={radio}
           />
         ) : (

@@ -28,7 +28,6 @@ interface HeaderProps {
   onClearFilters: () => void;
   onNewTask: () => void;
   onSprintPlanner: () => void;
-  onGoHome?: () => void;
   radio?: { on: boolean; volume: number; toggle: () => void; setVolume: (v: number) => void };
   title?: string;
   onBackToProjects?: () => void;
@@ -46,7 +45,7 @@ export function Header({
   showArchived, onToggleArchived, sortBy, sortDir,
   onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses,
   onToggleAgentType, onToggleStatus, onClearFilters,
-  onNewTask, onSprintPlanner, onGoHome, radio, title = 'AI Agent Board', onBackToProjects,
+  onNewTask, onSprintPlanner, radio, title = 'AI Agent Board', onBackToProjects,
 }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -138,19 +137,6 @@ export function Header({
               </span>
             )}
           </div>
-
-          {/* Home button */}
-          {onGoHome && (
-            <button
-              onClick={onGoHome}
-              className="flex h-9 items-center gap-1.5 rounded-full border-2 border-border bg-card px-3 font-pixel text-[11px] lowercase text-muted-foreground transition-colors hover:border-neon-yellow hover:text-neon-yellow"
-              aria-label="Go home"
-              title="Go home"
-            >
-              <PixelIcon name="home-2" className="h-3.5 w-3.5" />
-              <span className="hidden lg:inline">home</span>
-            </button>
-          )}
         </div>
 
         {/* Action buttons */}
@@ -265,12 +251,12 @@ export function Header({
             </button>
           </div>
 
-          {/* Divider */}
-          <div className="hidden md:block mx-3 h-6 w-0.5 bg-border" />
-
           {/* Retro Radio */}
           {radio && (
-            <div className="hidden md:block">
+            <div className="hidden md:block mx-3 h-6 w-0.5 bg-border" />
+          )}
+          {radio && (
+            <div className="hidden md:flex items-center">
               <RetroRadio
                 on={radio.on}
                 volume={radio.volume}
@@ -349,25 +335,16 @@ export function Header({
             />
           </div>
 
-          <div className="flex gap-2">
-            {onGoHome && (
-              <button
-                onClick={() => { onGoHome(); setMobileMenuOpen(false); }}
-                className="flex items-center justify-center gap-1.5 h-11 px-3 rounded-full border-2 border-border bg-card font-pixel text-[11px] lowercase text-muted-foreground"
-              >
-                <PixelIcon name="home-2" className="h-3.5 w-3.5" />
-                home
-              </button>
-            )}
-            {radio && (
+          {radio && (
+            <div className="flex gap-2">
               <RetroRadio
                 on={radio.on}
                 volume={radio.volume}
                 onToggle={radio.toggle}
                 onVolumeChange={radio.setVolume}
               />
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button

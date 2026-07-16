@@ -1325,8 +1325,20 @@ Optional list of any work you did not complete or that should be followed up. Om
           }
           // Commit the agent's work so the task branch has something to PR/merge.
           if (task.repoPath) this.commitAgentWork(task);
+          terminateOnce('complete');
+        } else {
+          // ── Concierge: try to fix failures automatically ─────────────
+          // Before giving up, launch an OpenCode subagent that diagnoses the
+          // error and attempts to fix the codebase. If it succeeds, the task
+          // completes normally instead of failing.
+          const conciergeFixed = await this.tryConciergeFix(task, summaryBuffer, result.error);
+          if (conciergeFixed) {
+            if (task.repoPath) this.commitAgentWork(task);
+            terminateOnce('complete');
+          } else {
+            terminateOnce('failed', result.error);
+          }
         }
-        terminateOnce(result.status, result.error);
         session.destroy().catch(() => {});
       }
     } catch (err: unknown) {
@@ -1355,6 +1367,98 @@ Optional list of any work you did not complete or that should be followed up. Om
     terminateOnce('failed');
   });
 }
+
+  /**
+   * Launch an OpenCode concierge subagent to diagnose and fix a failed task.
+   * Returns true if the concierge resolved the issue, false otherwise.
+   * The concierge receives the task context, agent output, and error details,
+   * then investigates and attempts to fix the root cause in the codebase.
+   */
+  private async tryConciergeFix(
+    task: Task,
+    summaryBuffer: string,
+    error: string | undefined,
+  ): Promise<boolean> {
+    const provider = this.providers.get('opencode');
+    if (!provider) return false;
+
+    this.emitEvent(task.id, {
+      id: uuid(), taskId: task.id, type: 'output',
+      content: '🤖 Concierge activated — diagnosing and fixing issue…',
+      timestamp: Date.now(),
+      metadata: { phase: 'concierge' },
+    });
+
+    const workingDirectory = task.repoPath || process.cwd();
+    const safeTitle = task.title.replace(/[<>]/g, '');
+    const safeDescription = (task.description || '(none)').replace(/[<>]/g, '');
+    let conciergeBuffer = '';
+
+    const conciergePrompt = `A coding task failed and needs fixing.
+
+## Task
+- Title: ${safeTitle}
+- Description: ${safeDescription}
+- Working directory: ${workingDirectory}
+- Error: ${error || 'Unknown error'}
+
+## Agent Output (last part)
+${summaryBuffer.slice(-8000)}
+
+## Instructions
+Investigate what went wrong by checking files, code, and configuration.
+Identify the root cause — not just symptoms — and fix ALL issues.
+Run git status to verify state changes.
+
+When done, end with EXACTLY:
+<concierge-result>fixed</concierge-result>
+
+If you CANNOT fix it, end with:
+<concierge-result>unable-to-fix</concierge-result>`;
+
+    try {
+      const conciergeSession = await provider.createSession({
+        contextId: `concierge-${task.id}-${Date.now()}`,
+        workingDirectory,
+        repoPath: task.repoPath,
+        systemPrompt: 'You are a concierge agent that diagnoses and fixes issues in coding tasks. Be thorough, fix the root cause, and verify your changes.',
+        onEvent: (coreEvent: CoreAgentEvent) => {
+          conciergeBuffer += coreEvent.content + '\n';
+          this.emitEvent(task.id, {
+            id: coreEvent.id,
+            taskId: task.id,
+            type: coreEvent.type as AgentEvent['type'],
+            content: coreEvent.content,
+            timestamp: coreEvent.timestamp,
+            metadata: { ...coreEvent.metadata, phase: 'concierge' },
+          });
+        },
+      });
+
+      const result = await conciergeSession.execute(conciergePrompt);
+      conciergeSession.destroy().catch(() => {});
+
+      if (result.status === 'complete' && conciergeBuffer.includes('<concierge-result>fixed</concierge-result>')) {
+        this.emitEvent(task.id, {
+          id: uuid(), taskId: task.id, type: 'output',
+          content: '✅ Concierge resolved the issue.',
+          timestamp: Date.now(),
+          metadata: { phase: 'concierge' },
+        });
+        return true;
+      }
+    } catch (err) {
+      console.error(`[concierge] error for task ${task.id}:`, errorMessage(err));
+    }
+
+    this.emitEvent(task.id, {
+      id: uuid(), taskId: task.id, type: 'output',
+      content: '❌ Concierge could not resolve the issue.',
+      timestamp: Date.now(),
+      metadata: { phase: 'concierge' },
+    });
+    return false;
+  }
 
   async sendMessage(taskId: string, message: string, attachmentIds?: string[]): Promise<boolean> {
     const entry = this.sessions.get(taskId);
