@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="images/logo.png" alt="AI Agent Board logo" width="300">
-</p>
-
-<p align="center">
   <a href="#how-it-works">How It Works</a> •
   <a href="#features">Features</a> •
   <a href="#getting-started">Getting Started</a> •
@@ -13,11 +9,11 @@
 
 [![CI](https://github.com/DanWahlin/ai-agent-board/actions/workflows/ci.yml/badge.svg)](https://github.com/DanWahlin/ai-agent-board/actions/workflows/ci.yml)
 
-# AI Agent Board
+# Vibe Board
 
 A drag-and-drop Kanban board that delegates coding tasks to AI agents — GitHub Copilot, Claude Code, OpenAI Codex, OpenCode, Hermes, or OpenClaw. Drop a task into "In Progress," pick an agent, and it will plan, execute, and complete the work, streaming live progress back to the board.
 
-![AI Agent Board in action](images/agent-board-in-action.gif)
+<img width="800" height="436" alt="ezgif-8a261d500678a2f3" src="https://github.com/user-attachments/assets/7dd1c708-35cc-42f3-9378-c79130081870" />
 
 <!-- TODO: Replace the GIF above or add a second screenshot of the current UI (HomePage, Projects, Sprint Planner) -->
 <!-- ![New UI screenshot](images/screenshot.png) -->
