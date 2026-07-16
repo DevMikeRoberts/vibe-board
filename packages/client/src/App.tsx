@@ -748,20 +748,22 @@ export function App() {
       </div>
 
       {/* ── Left sidebar: project list ── */}
-      <div className="relative z-10">
-        <ProjectsSidebar
-          projects={projects}
-          selectedProjectId={selectedProject?.id}
-          onSelectProject={openProject}
-          onNewProject={openCreateDialog}
-          onEditProject={openEditDialog}
-          onDeleteProject={(p) => setDeletingProject(p)}
-          onOpenSettings={() => setConfigOpen(true)}
-          theme={theme}
-          toggleTheme={toggleTheme}
-          onGoHome={() => navigate('/')}
-        />
-      </div>
+      {route.view !== 'home' && (
+        <div className="relative z-10">
+          <ProjectsSidebar
+            projects={projects}
+            selectedProjectId={selectedProject?.id}
+            onSelectProject={openProject}
+            onNewProject={openCreateDialog}
+            onEditProject={openEditDialog}
+            onDeleteProject={(p) => setDeletingProject(p)}
+            onOpenSettings={() => setConfigOpen(true)}
+            theme={theme}
+            toggleTheme={toggleTheme}
+            onGoHome={() => navigate('/')}
+          />
+        </div>
+      )}
 
       {/* ── Right: board or empty state ── */}
       <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
