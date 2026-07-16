@@ -42,6 +42,7 @@ import { useCompanion } from '@/hooks/useCompanion';
 import { useRadio } from '@/hooks/useRadio';
 import { DitherBackground } from '@/components/DitherBackground';
 import { SakuraLeaves } from '@/components/SakuraLeaves';
+import { RainAnimation } from '@/components/RainAnimation';
 import { HomePage } from '@/components/HomePage';
 
 const STATUS_WEIGHT: Record<string, number> = { executing: 0, planning: 1, failed: 2, idle: 3, complete: 4 };
@@ -733,6 +734,7 @@ export function App() {
       {/* ── Global visual effects ── */}
       <DitherBackground />
       <SakuraLeaves />
+      <RainAnimation />
 
       {/* ── Left sidebar: project list ── */}
       {route.view !== 'home' && (

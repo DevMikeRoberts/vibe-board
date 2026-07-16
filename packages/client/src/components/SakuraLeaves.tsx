@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTheme } from '@/hooks/useTheme';
 
 interface Petal {
   x: number;
@@ -20,8 +21,10 @@ interface Petal {
  */
 export function SakuraLeaves() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { theme } = useTheme();
 
   useEffect(() => {
+    if (theme !== 'light') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
