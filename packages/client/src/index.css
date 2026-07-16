@@ -231,6 +231,17 @@ body {
   75% { transform: rotate(2deg); }
 }
 
+/* roaming gradient for the vibe board title */
+@keyframes px-gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-px-gradient {
+  background-size: 200% 200%;
+  animation: px-gradient 4s ease infinite;
+}
+
 /* pixel blink for the live dot */
 @keyframes px-blink {
   0%, 100% { opacity: 1; }

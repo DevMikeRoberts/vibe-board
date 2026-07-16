@@ -71,8 +71,8 @@ export function HomePage() {
           >
             <PixelIcon name="home-2" className="h-12 w-12 animate-px-bob" />
           </div>
-          <h1 className="font-display text-4xl lowercase text-foreground md:text-5xl">
-            ai agent board
+          <h1 className="font-display text-4xl lowercase md:text-5xl bg-gradient-to-r from-neon-pink via-neon-purple to-neon-blue bg-clip-text text-transparent animate-px-gradient drop-shadow-[0_0_12px_rgba(232,54,143,0.3)]">
+            vibe board
           </h1>
           <p className="font-pixel text-[11px] lowercase text-muted-foreground">
             your AI-powered coding workspace

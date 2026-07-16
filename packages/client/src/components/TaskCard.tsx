@@ -76,6 +76,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
   const needsInput = useNeedsInput(task.id);
   const fcState = taskToFcState(task, needsInput);
 
+  const cardRef = useRef<HTMLDivElement>(null);
   const finished = task.agentStatus === 'complete' || task.columnId === 'done';
   const prevFinishedRef = useRef(finished);
   const [celebrate, setCelebrate] = useState(false);

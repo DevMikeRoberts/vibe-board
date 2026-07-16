@@ -45,7 +45,7 @@ export function Header({
   showArchived, onToggleArchived, sortBy, sortDir,
   onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses,
   onToggleAgentType, onToggleStatus, onClearFilters,
-  onNewTask, onSprintPlanner, radio, title = 'AI Agent Board', onBackToProjects,
+  onNewTask, onSprintPlanner, radio, title = 'Vibe Board', onBackToProjects,
 }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
