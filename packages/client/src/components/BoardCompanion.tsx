@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { CompanionMessage } from '@/hooks/useCompanion';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,8 @@ interface BoardCompanionProps {
   messages: CompanionMessage[];
   onSend: (text: string) => void;
   streaming: boolean;
+  quipToast?: string | null;
+  onDismissQuip?: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -136,6 +138,45 @@ function getSpritePixels(mood: 'idle' | 'happy' | 'thinking' | 'talking'): Pixel
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Typewriter text effect — types out companion messages character by character
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TypewriterText({ text, onDone }: { text: string; onDone?: () => void }) {
+  const [displayed, setDisplayed] = useState('');
+  const [cursor, setCursor] = useState(true);
+  const doneRef = useRef(false);
+
+  useEffect(() => {
+    setDisplayed('');
+    doneRef.current = false;
+    let i = 0;
+    const charsPerTick = 3;
+    const timer = setInterval(() => {
+      i += charsPerTick;
+      if (i >= text.length) {
+        setDisplayed(text);
+        clearInterval(timer);
+        if (!doneRef.current) {
+          doneRef.current = true;
+          setCursor(false);
+          onDone?.();
+        }
+      } else {
+        setDisplayed(text.slice(0, i));
+      }
+    }, 35);
+    return () => clearInterval(timer);
+  }, [text, onDone]);
+
+  return (
+    <span>
+      {displayed}
+      {cursor && <span className="animate-pulse text-neon-green">▌</span>}
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Typing indicator animation
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -165,10 +206,15 @@ function TypingIndicator() {
 // Main BoardCompanion Component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: BoardCompanionProps) {
+export function BoardCompanion({ open, onToggle, messages, onSend, streaming, quipToast, onDismissQuip }: BoardCompanionProps) {
   const [input, setInput] = useState('');
+  const [typedIds, setTypedIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleTypeDone = useCallback((id: string) => {
+    setTypedIds(prev => new Set(prev).add(id));
+  }, []);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -183,6 +229,13 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [open]);
+
+  // Auto-dismiss quip toast after 6s
+  useEffect(() => {
+    if (!quipToast) return;
+    const id = setTimeout(() => onDismissQuip?.(), 6000);
+    return () => clearTimeout(id);
+  }, [quipToast, onDismissQuip]);
 
   const handleSend = () => {
     if (!input.trim() || streaming) return;
@@ -204,6 +257,25 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
 
   return (
     <>
+      {/* Floating quip toast — shown when panel is closed */}
+      <AnimatePresence>
+        {!open && quipToast && (
+          <motion.button
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            onClick={() => { onToggle(); onDismissQuip?.(); }}
+            className="fixed bottom-20 right-5 z-[62] max-w-xs rounded-2xl border-2 border-neon-green/40 bg-card px-4 py-2.5 font-pixel text-[10px] leading-relaxed text-foreground shadow-xl cursor-pointer hover:border-neon-green transition-colors text-left"
+            style={{ boxShadow: '0 0 20px -4px color-mix(in srgb, var(--color-neon-green) 40%, transparent)' }}
+          >
+            <span className="block text-[9px] text-neon-green [text-transform:lowercase] mb-0.5">
+              companion says
+            </span>
+            {quipToast}
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       {/* Toggle button — always visible at bottom-right */}
       <motion.button
         onClick={onToggle}
@@ -277,34 +349,45 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
 
               {/* Messages area */}
               <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-                {messages.map((msg) => (
-                  <motion.div
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.2 }}
-                    className={cn(
-                      'flex',
-                      msg.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}
-                  >
-                    <div
+                {messages.map((msg) => {
+                  const isLatest = msg === messages[messages.length - 1];
+                  const isCompanion = msg.role === 'companion';
+                  const shouldType = isCompanion && isLatest && !typedIds.has(msg.id) && !streaming;
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ duration: 0.2 }}
                       className={cn(
-                        'max-w-[85%] rounded-xl px-3 py-2 font-pixel text-[11px] leading-relaxed',
-                        msg.role === 'user'
-                          ? 'bg-neon-pink/15 text-foreground border-2 border-neon-pink/30'
-                          : 'bg-card border-2 border-border text-foreground'
+                        'flex',
+                        msg.role === 'user' ? 'justify-end' : 'justify-start'
                       )}
                     >
-                      {msg.role === 'companion' && (
-                        <span className="mb-1 block text-[10px] text-neon-purple [text-transform:lowercase]">
-                          companion
+                      <div
+                        className={cn(
+                          'max-w-[85%] rounded-xl px-3 py-2 font-pixel text-[11px] leading-relaxed',
+                          msg.role === 'user'
+                            ? 'bg-neon-pink/15 text-foreground border-2 border-neon-pink/30'
+                            : 'bg-card border-2 border-border text-foreground'
+                        )}
+                      >
+                        {msg.role === 'companion' && (
+                          <span className="mb-1 block text-[10px] text-neon-purple [text-transform:lowercase]">
+                            companion
+                          </span>
+                        )}
+                        <span className="whitespace-pre-wrap break-words">
+                          {shouldType ? (
+                            <TypewriterText text={msg.content} onDone={() => handleTypeDone(msg.id)} />
+                          ) : (
+                            msg.content
+                          )}
                         </span>
-                      )}
-                      <span className="whitespace-pre-wrap break-words">{msg.content}</span>
-                    </div>
-                  </motion.div>
-                ))}
+                      </div>
+                    </motion.div>
+                  );
+                })}
 
                 {/* Streaming indicator */}
                 {streaming && (

@@ -576,6 +576,8 @@ function BoardPage({
         messages={companion.messages}
         onSend={companion.sendMessage}
         streaming={companion.streaming}
+        quipToast={companion.quipToast}
+        onDismissQuip={companion.dismissQuip}
       />
     </div>
   );
@@ -734,11 +736,11 @@ export function App() {
       <DitherBackground />
       <SakuraLeaves />
 
-      {/* ── Left sidebar: project list ── */}
+      {/* ── Left sidebar: project list (default project excluded) ── */}
       {route.view !== 'home' && (
         <div className="relative z-10">
           <ProjectsSidebar
-            projects={projects}
+            projects={projects.filter((p) => !p.isDefault)}
             selectedProjectId={selectedProject?.id}
             onSelectProject={openProject}
             onNewProject={openCreateDialog}

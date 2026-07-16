@@ -272,7 +272,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                 className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
                 aria-label="Close"
               >
-                â
+                ✕
               </button>
             </div>
 

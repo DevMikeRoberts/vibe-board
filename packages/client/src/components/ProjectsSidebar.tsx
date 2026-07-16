@@ -71,12 +71,17 @@ export function ProjectsSidebar({
         )}
       </div>
 
-      {/* ── New Project button ── */}
+      {/* ── New Project button (prominent gradient + glow) ── */}
       <div className="relative shrink-0 px-2 pt-3">
         {collapsed ? (
           <button
             onClick={onNewProject}
-            className="sticker-sm sticker-press flex h-9 w-full items-center justify-center rounded-full bg-primary text-primary-foreground"
+            className="sticker-sm sticker-press flex h-9 w-full items-center justify-center rounded-full"
+            style={{
+              background: 'linear-gradient(135deg, var(--color-neon-pink), var(--color-neon-purple))',
+              color: 'var(--color-ink)',
+              boxShadow: '0 0 16px var(--color-neon-pink)',
+            }}
             title="New Project"
             aria-label="New Project"
           >
@@ -85,11 +90,17 @@ export function ProjectsSidebar({
         ) : (
           <button
             onClick={onNewProject}
-            className="sticker-sm sticker-press flex w-full items-center gap-2 rounded-full bg-primary px-4 py-2 font-display text-sm text-primary-foreground [text-transform:lowercase]"
+            className="sticker-sm sticker-press flex w-full items-center gap-2 rounded-full px-5 py-2.5 font-display text-sm [text-transform:lowercase] transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+            style={{
+              background: 'linear-gradient(135deg, var(--color-neon-pink), var(--color-neon-purple))',
+              color: 'var(--color-ink)',
+              boxShadow: '0 0 20px color-mix(in srgb, var(--color-neon-pink) 50%, transparent), inset 0 1px 0 rgba(255,255,255,0.2)',
+            }}
             aria-label="New Project"
           >
             <PixelIcon name="flash" className="h-4 w-4 shrink-0" />
-            <span>new project</span>
+            <span className="font-bold tracking-wide">new project</span>
+            <PixelIcon name="cursor-click-point" className="h-3.5 w-3.5 ml-auto opacity-80" />
           </button>
         )}
       </div>

@@ -41,7 +41,7 @@ export function DeleteConfirmDialog({
             onClick={onCancel}
           />
 
-          {/* Dialog — small scary-cute sticker */}
+          {/* Dialog — small scary-cute sticker with shake + red glow */}
           <motion.div
             role="dialog"
             aria-modal="true"
@@ -51,8 +51,22 @@ export function DeleteConfirmDialog({
             animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 24, rotate: -1 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="sticker fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] bg-popover p-6"
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] bg-popover p-6"
+            style={{
+              border: '2px solid var(--color-destructive)',
+              boxShadow: '4px 4px 0 0 var(--color-ink), 0 0 28px -4px color-mix(in srgb, var(--color-destructive) 60%, transparent)',
+            }}
           >
+            <motion.div
+              aria-hidden="true"
+              animate={{ x: [0, -3, 3, -2, 2, -1, 1, 0] }}
+              transition={{ duration: 0.4, ease: 'easeInOut' }}
+              className="absolute inset-0 rounded-[1.75rem] pointer-events-none"
+              style={{
+                border: '2px solid var(--color-destructive)',
+                boxShadow: 'inset 0 0 24px -4px color-mix(in srgb, var(--color-destructive) 40%, transparent)',
+              }}
+            />
             {/* Header */}
             <div className="mb-5 flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">

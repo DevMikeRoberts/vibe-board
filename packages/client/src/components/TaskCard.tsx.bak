@@ -11,7 +11,6 @@ import { taskToFcState } from '@/components/fc/taskToFcState';
 import { FC_STATE_META } from '@/components/fc/fcState';
 import { useNeedsInput } from '@/components/fc/useNeedsInput';
 import { FcCelebration } from '@/components/fc/FcCelebration';
-import { ConfettiOverlay } from '@/components/ConfettiOverlay';
 
 
 const agentStatusConfig: Record<
@@ -65,7 +64,6 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
     ? { transform: CSS.Translate.toString(transform) }
     : undefined;
 
-  const cardRef = useRef<HTMLDivElement>(null);
   const agentStatus = agentStatusConfig[task.agentStatus];
   const isActive = task.agentStatus === 'executing' || task.agentStatus === 'planning';
   const retryPending = typeof task.retryAt === 'number' && task.retryAt > Date.now();
@@ -79,18 +77,10 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
   const finished = task.agentStatus === 'complete' || task.columnId === 'done';
   const prevFinishedRef = useRef(finished);
   const [celebrate, setCelebrate] = useState(false);
-  const [confettiPos, setConfettiPos] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     if (finished && !prevFinishedRef.current) {
       setCelebrate(true);
-      if (cardRef.current) {
-        const rect = cardRef.current.getBoundingClientRect();
-        setConfettiPos({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
-      }
-      const id = setTimeout(() => {
-        setCelebrate(false);
-        setConfettiPos(null);
-      }, 2600);
+      const id = setTimeout(() => setCelebrate(false), 2600);
       prevFinishedRef.current = finished;
       return () => clearTimeout(id);
     }
@@ -108,7 +98,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
 
   return (
     <div
-      ref={(node) => { setNodeRef(node); if (node) cardRef.current = node; }}
+      ref={setNodeRef}
       style={style}
       {...attributes}
       {...listeners}
@@ -269,7 +259,6 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       )}
 
       {celebrate && <FcCelebration />}
-      {confettiPos && <ConfettiOverlay x={confettiPos.x} y={confettiPos.y} />}
     </div>
   );
 }

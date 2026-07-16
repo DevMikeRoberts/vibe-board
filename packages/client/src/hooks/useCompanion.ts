@@ -24,6 +24,8 @@ export interface UseCompanionReturn {
   sendMessage: (text: string) => void;
   streaming: boolean;
   companionEvent: AgentEvent | null;
+  quipToast: string | null;
+  dismissQuip: () => void;
 }
 
 export function useCompanion(): UseCompanionReturn {
@@ -38,8 +40,11 @@ export function useCompanion(): UseCompanionReturn {
   ]);
   const [streaming, setStreaming] = useState(false);
   const [companionEvent, setCompanionEvent] = useState<AgentEvent | null>(null);
+  const [quipToast, setQuipToast] = useState<string | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const hasOpenedRef = useRef(false);
+
+  const dismissQuip = useCallback(() => setQuipToast(null), []);
 
   const toggle = useCallback(() => {
     setOpen((prev) => !prev);
@@ -54,23 +59,24 @@ export function useCompanion(): UseCompanionReturn {
     setOpen(false);
   }, []);
 
-  // Send idle quip after 30s of inactivity when panel is open
+  // Send idle quip after 30s of inactivity — works even when panel is closed (shows as toast)
   useEffect(() => {
-    if (!open) {
-      clearTimeout(idleTimerRef.current);
-      return;
-    }
     idleTimerRef.current = setTimeout(() => {
       if (!streaming) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nextId(),
-            role: 'companion',
-            content: getIdleMessage(),
-            timestamp: Date.now(),
-          },
-        ]);
+        const quip = getIdleMessage();
+        if (open) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextId(),
+              role: 'companion',
+              content: quip,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          setQuipToast(quip);
+        }
       }
     }, 30_000);
     return () => clearTimeout(idleTimerRef.current);
@@ -171,5 +177,7 @@ export function useCompanion(): UseCompanionReturn {
     sendMessage,
     streaming,
     companionEvent,
+    quipToast,
+    dismissQuip,
   };
 }
