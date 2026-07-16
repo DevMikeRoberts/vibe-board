@@ -87,7 +87,7 @@ export function DitherBackground() {
           data[idx]     = clamp(q(r));
           data[idx + 1] = clamp(q(g));
           data[idx + 2] = clamp(q(b));
-          data[idx + 3] = dark ? 80 : 50; // very subtle opacity
+          data[idx + 3] = dark ? 26 : 14; // faint grain over the scene
         }
       }
 
@@ -103,7 +103,7 @@ export function DitherBackground() {
     <canvas
       ref={canvasRef}
       aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-0 h-full w-full"
+      className="pointer-events-none fixed inset-0 z-[2] h-full w-full"
       style={{
         imageRendering: 'pixelated',
         mixBlendMode: 'screen',
