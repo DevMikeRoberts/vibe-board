@@ -207,7 +207,11 @@ export function RainAnimation() {
       ref={canvasRef}
       aria-hidden="true"
       className="pointer-events-none fixed inset-0 z-[1] h-full w-full"
-      style={{ imageRendering: 'pixelated' }}
+      style={{
+        imageRendering: 'pixelated',
+        opacity: theme === 'dark' ? 0.7 : 0,
+        transition: 'opacity 700ms ease',
+      }}
     />
   );
 }

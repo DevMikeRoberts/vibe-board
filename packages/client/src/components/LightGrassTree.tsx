@@ -342,7 +342,11 @@ export function LightGrassTree() {
       ref={canvasRef}
       aria-hidden="true"
       className="pointer-events-none fixed inset-0 z-0 h-full w-full"
-      style={{ imageRendering: 'pixelated' }}
+      style={{
+        imageRendering: 'pixelated',
+        opacity: theme === 'light' ? 0.6 : 0,
+        transition: 'opacity 700ms ease',
+      }}
     />
   );
 }
