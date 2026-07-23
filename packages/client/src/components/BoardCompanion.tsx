@@ -223,11 +223,11 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
         )}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        title="Toggle companion (B)"
+        title="Toggle Libby (B)"
       >
         <CompanionSprite mood={open ? 'happy' : 'idle'} />
         <span className="hidden sm:inline text-foreground">
-          {open ? 'hide' : 'companion'}
+          {open ? 'hide' : 'libby'}
         </span>
       </motion.button>
 
@@ -267,7 +267,7 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
                 <CompanionSprite mood={mood} />
                 <div className="flex-1 min-w-0">
                   <h3 className="font-display text-sm [text-transform:lowercase]">
-                    board companion
+                    libby
                   </h3>
                   <p className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
                     {streaming ? 'thinking...' : 'ready to help'}
@@ -276,8 +276,8 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
                 <button
                   onClick={onToggle}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-sm text-foreground/80 hover:border-destructive hover:text-destructive transition-colors"
-                  title="Close companion (Esc)"
-                  aria-label="Close companion"
+                  title="Close Libby (Esc)"
+                  aria-label="Close Libby"
                 >
                   ✕
                 </button>
@@ -306,8 +306,8 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
                     >
                       {msg.role === 'companion' && (
                         <span className="mb-1 block text-[10px] text-neon-purple [text-transform:lowercase]">
-                          companion
-                        </span>
+                           libby
+                         </span>
                       )}
                       <span className="whitespace-pre-wrap break-words">
                         {msg.role === 'companion' && !msg.id.startsWith('streaming-') && !typedIds.has(msg.id) ? (
@@ -345,7 +345,7 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder={streaming ? 'companion is thinking...' : 'ask me anything...'}
+                    placeholder={streaming ? 'libby is thinking...' : 'ask me anything...'}
                     disabled={streaming}
                     className="h-10 flex-1 rounded-xl border-2 border-border bg-background px-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground/50 focus:border-neon-purple focus:outline-none transition-colors disabled:opacity-50 [text-transform:lowercase]"
                   />

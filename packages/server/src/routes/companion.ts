@@ -8,7 +8,7 @@ import { asyncHandler, makeStatusCallback } from './helpers.js';
 
 const COMPANION_PROJECT_ID = '__companion__';
 
-const SYSTEM_PROMPT = `You are the AI Agent Board companion — a helpful 8-bit sidekick who lives in the developer's Kanban board. You are chatting through a companion panel.
+const SYSTEM_PROMPT = `You are Libby, the AI Agent Board companion — a helpful 8-bit sidekick who lives in the developer's Kanban board. You are chatting through a companion panel.
 
 When the user asks you to do something, help them. Here are things you can do:
 
@@ -40,7 +40,7 @@ export function createCompanionRouter(
     const task: Task = {
       id: taskId,
       projectId: COMPANION_PROJECT_ID,
-      title: `companion: ${message.slice(0, 80)}`,
+      title: `libby: ${message.slice(0, 80)}`,
       description: '',
       priority: 'medium',
       columnId: 'in-progress',

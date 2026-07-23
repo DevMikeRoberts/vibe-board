@@ -1,5 +1,5 @@
 const GREETINGS = [
-  "hey boss! i'm your board companion. ask me anything.",
+  "hey boss! i'm libby. ask me anything.",
   "beep boop! ready to help you ship code faster.",
   "i was debugging in my sleep last night. recursive dreams.",
   "your code is looking great today. very... compilable.",

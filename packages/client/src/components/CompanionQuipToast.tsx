@@ -71,10 +71,10 @@ export function CompanionQuipToast({ open, onOpen }: CompanionQuipToastProps) {
               'shadow-lg shadow-neon-purple/10',
               'hover:border-neon-purple/60 transition-colors cursor-pointer'
             )}
-            title="Click to open companion"
+            title="Click to open Libby"
           >
             <span className="mb-1 block text-[9px] text-neon-purple/60 [text-transform:lowercase]">
-              companion says:
+              libby says:
             </span>
             <span className="whitespace-pre-wrap break-words">{quip}</span>
           </motion.button>
