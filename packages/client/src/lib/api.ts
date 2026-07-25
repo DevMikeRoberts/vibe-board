@@ -219,6 +219,10 @@ export const api = {
       { method: 'POST', body: JSON.stringify({ token }) },
     ),
 
+  // --- AI utilities ---
+  improveDescription: (description: string, title?: string) =>
+    request<{ improved: string }>('/ai/improve-description', { method: 'POST', body: JSON.stringify({ description, title }) }),
+
   // --- Companion ---
   createCompanionTask: (message: string) =>
     request<{ taskId: string }>('/companion/chat', { method: 'POST', body: JSON.stringify({ message }) }),

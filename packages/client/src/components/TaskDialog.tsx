@@ -49,6 +49,8 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
   const [pendingImages, setPendingImages] = useState<File[]>([]);
   const [existingAttachments, setExistingAttachments] = useState<TaskAttachment[]>([]);
   const [availableAgents, setAvailableAgents] = useState<AgentInfo[]>([]);
+  const [improvingPrompt, setImprovingPrompt] = useState(false);
+  const [improveError, setImproveError] = useState('');
 
   const isEditMode = !!editTask;
   const hasLockedRepoPath = !!lockedRepoPath;
@@ -97,6 +99,8 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       setPathError('');
       setPendingImages([]);
       setExistingAttachments([]);
+      setImprovingPrompt(false);
+      setImproveError('');
     }
   }, [editTask, open, highlightRequired, lockedRepoPath, defaultAgent, defaultPriority, defaultBaseBranch]);
 
@@ -131,6 +135,20 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
       cancelled = true;
     };
   }, [open, editTask, agentType, projectDefaults?.defaultAgentType]);
+
+  const handleImprovePrompt = async () => {
+    if (!description.trim() || improvingPrompt) return;
+    setImprovingPrompt(true);
+    setImproveError('');
+    try {
+      const { improved } = await api.improveDescription(description, title || undefined);
+      setDescription(improved);
+    } catch (err) {
+      setImproveError(err instanceof Error ? err.message : 'Failed to improve description');
+    } finally {
+      setImprovingPrompt(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -305,16 +323,45 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
 
               {/* Description */}
               <div>
-                <label className="mb-1.5 block font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
-                  Description
-                </label>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
+                    Description
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleImprovePrompt}
+                    disabled={!description.trim() || improvingPrompt}
+                    title="Improve description for agent comprehension"
+                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 font-pixel text-[9px] text-muted-foreground transition-colors hover:border-neon-pink hover:text-neon-pink disabled:cursor-not-allowed disabled:opacity-40 [text-transform:lowercase]"
+                  >
+                    {improvingPrompt ? (
+                      <>
+                        <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-current border-t-transparent" />
+                        improving…
+                      </>
+                    ) : (
+                      <>
+                        ✦ improve prompt
+                      </>
+                    )}
+                  </button>
+                </div>
                 <textarea
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescription(e.target.value);
+                    if (improveError) setImproveError('');
+                  }}
                   placeholder="Describe the task for the selected agent..."
                   rows={4}
-                  className="w-full resize-none h-11 rounded-xl border-2 border-border bg-card px-3 text-sm placeholder:text-muted-foreground/50 focus:border-neon-pink focus:outline-none transition-colors"
+                  className={cn(
+                    'w-full resize-none rounded-xl border-2 bg-card px-3 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none transition-colors',
+                    improvingPrompt ? 'border-neon-pink/50 opacity-60' : 'border-border focus:border-neon-pink',
+                  )}
                 />
+                {improveError && (
+                  <p className="mt-1 text-xs text-destructive">{improveError}</p>
+                )}
               </div>
 
               {/* Image attachments */}

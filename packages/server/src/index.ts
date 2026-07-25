@@ -17,6 +17,7 @@ import { createProjectsRouter } from './routes/projects.js';
 import { createSystemRouter } from './routes/system.js';
 import { createCompanionRouter } from './routes/companion.js';
 import { createSprintRouter } from './routes/sprint.js';
+import { createAiRouter } from './routes/ai.js';
 import { createGroomRouter } from './routes/groom.js';
 import type { AttachmentStore } from './repositories/attachment-types.js';
 import { AgentManager } from './services/agent-manager.js';
@@ -114,6 +115,7 @@ let prWatcher: PrWatcher;
   app.use('/api/companion', createCompanionRouter(taskRepo, agentManager));
   app.use('/api/sprint', createSprintRouter(taskRepo, agentManager, projectRepo));
   app.use('/api/backlog', createGroomRouter(taskRepo, agentManager, projectRepo));
+  app.use('/api/ai', createAiRouter());
 
   // GET /api/agents — list available agents
   app.get('/api/agents', (_req, res) => {
