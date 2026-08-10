@@ -1,0 +1,101 @@
+# Production stack for the AI Agent Board on a single EC2 host.
+#
+#   internet -> caddy (TLS + login gate) -> web  (static React bundle)
+#                                        \-> server (Express API + WebSocket)
+#
+# Only caddy publishes ports to the world. The server is bound to loopback so
+# deploy.sh can health-check it without exposing an unauthenticated backend.
+#
+# Synced to /opt/agentboard on the instance by CI; `docker compose` is invoked
+# from that directory, so ./ paths and .env resolve there.
+
+name: agentboard
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: agentboard-caddy
+    restart: unless-stopped
+    # Login credentials + domain only — the proxy has no use for the agent keys.
+    env_file: [.env]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates and the ACME account key live on the persistent volume, so
+      # replacing the instance does not re-issue (and risk rate-limiting) certs.
+      - /data/caddy/data:/data
+      - /data/caddy/config:/config
+      - /data/logs:/var/log/caddy
+    depends_on:
+      - web
+      - server
+    logging: *default-logging
+
+  web:
+    image: ${ECR_REGISTRY}/${WEB_REPOSITORY}:${IMAGE_TAG}
+    container_name: agentboard-web
+    restart: unless-stopped
+    expose:
+      - "80"
+    logging: *default-logging
+
+  server:
+    image: ${ECR_REGISTRY}/${SERVER_REPOSITORY}:${IMAGE_TAG}
+    container_name: agentboard-server
+    restart: unless-stopped
+    # Backend secrets, rendered from SSM Parameter Store by deploy.sh.
+    env_file: [.env.app]
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      # /data here is the host's /data/agentboard subtree (see volumes below).
+      DB_PATH: /data/agentboard.db
+      AGENTBOARD_HOME: /data/agentboard
+      ALLOWED_REPO_ROOTS: /data
+      AGENTBOARD_DATA_DIR: /data
+      AGENTBOARD_DATA_HOST: /data/agentboard
+    ports:
+      # Loopback only — the public entrypoint is caddy.
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - /data/agentboard:/data
+    healthcheck:
+      # The health route is behind the bearer-token middleware like every other
+      # /api path, so the probe authenticates. $$ is Compose's literal dollar.
+      test: ["CMD-SHELL", "curl -fsS -H \"Authorization: Bearer $$API_KEY\" http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    logging: *default-logging
+
+  # Only started when AUTH_MODE=oauth (deploy.sh sets COMPOSE_PROFILES).
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
+    container_name: agentboard-oauth2-proxy
+    restart: unless-stopped
+    profiles: ["oauth"]
+    env_file: [.env.oauth]
+    environment:
+      OAUTH2_PROXY_PROVIDER: github
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_EXPIRE: 168h
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      # OAUTH2_PROXY_GITHUB_USER (allowlist), CLIENT_ID, CLIENT_SECRET,
+      # COOKIE_SECRET and REDIRECT_URL come from .env.
+    expose:
+      - "4180"
+    logging: *default-logging

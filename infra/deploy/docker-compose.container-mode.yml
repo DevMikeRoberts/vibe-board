@@ -1,0 +1,13 @@
+# Overlay enabled when CONTAINER_MODE=1 (Terraform: enable_container_mode).
+#
+# Mounting the Docker socket lets the server launch a sibling container per
+# task. It also gives the server root-equivalent control of the host, so it is
+# opt-in and only reasonable because the edge requires a login before any
+# request reaches the API.
+
+services:
+  server:
+    environment:
+      AGENTBOARD_CONTAINER_MODE: "1"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

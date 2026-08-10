@@ -1,0 +1,182 @@
+#!/usr/bin/env bash
+# Bootstrap for the AI Agent Board host, rendered by Terraform's templatefile().
+# In the source template, shell brace expansions carry a doubled dollar so they
+# survive interpolation; Terraform inputs use a single one.
+#
+# This runs once, at first boot. It is deliberately thin: it prepares the host
+# (Docker, swap, the persistent data volume) and installs the deploy entrypoint.
+# Everything about *the application* — compose file, proxy config, image tag —
+# comes from S3 at deploy time, so shipping a config change never requires
+# replacing the instance.
+set -euo pipefail
+exec > >(tee -a /var/log/agentboard-bootstrap.log) 2>&1
+echo "[bootstrap] starting at $(date -Is)"
+
+hostnamectl set-hostname "${project_name}-${environment}" || true
+
+# ---------------------------------------------------------------------------
+# Packages
+# ---------------------------------------------------------------------------
+dnf update -y
+dnf install -y docker jq
+
+# Amazon Linux 2023 ships the AWS CLI v2, but do not assume it.
+command -v aws >/dev/null 2>&1 || dnf install -y awscli-2
+
+# Amazon Linux has no docker-compose package; install the v2 CLI plugin.
+COMPOSE_DIR=/usr/libexec/docker/cli-plugins
+mkdir -p "$COMPOSE_DIR"
+case "$(uname -m)" in
+  aarch64) COMPOSE_ARCH=aarch64 ;;
+  *)       COMPOSE_ARCH=x86_64 ;;
+esac
+curl -fsSL --retry 5 --retry-delay 3 \
+  "https://github.com/docker/compose/releases/download/${compose_plugin_version}/docker-compose-linux-$COMPOSE_ARCH" \
+  -o "$COMPOSE_DIR/docker-compose"
+chmod +x "$COMPOSE_DIR/docker-compose"
+
+# Cap container logs: this host has a small root volume and no log shipping.
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" },
+  "live-restore": true
+}
+JSON
+
+systemctl enable --now docker
+usermod -aG docker ec2-user || true
+
+# ---------------------------------------------------------------------------
+# Persistent data volume -> /data
+# ---------------------------------------------------------------------------
+# Find the attachment by volume ID rather than device name: on Nitro instances
+# /dev/xvdf is a courtesy symlink that does not always appear, while the
+# by-id path is derived deterministically from the EBS volume ID.
+VOL_SUFFIX="$(echo "${data_volume_id}" | tr -d '-')"
+DEVICE=""
+for _ in $(seq 1 60); do
+  for candidate in \
+    "/dev/disk/by-id/nvme-Amazon_Elastic_Block_Store_$VOL_SUFFIX" \
+    /dev/xvdf /dev/sdf; do
+    if [ -b "$candidate" ]; then DEVICE="$(readlink -f "$candidate")"; break; fi
+  done
+  [ -n "$DEVICE" ] && break
+  sleep 2
+done
+
+if [ -z "$DEVICE" ]; then
+  echo "[bootstrap] FATAL: data volume ${data_volume_id} never appeared" >&2
+  exit 1
+fi
+echo "[bootstrap] data volume at $DEVICE"
+
+# Only format a genuinely blank device — a reattached volume already holds the
+# database and must never be wiped.
+if ! blkid "$DEVICE" >/dev/null 2>&1; then
+  echo "[bootstrap] no filesystem found, creating xfs"
+  mkfs.xfs -L agentboard "$DEVICE"
+fi
+
+mkdir -p /data
+DATA_UUID="$(blkid -s UUID -o value "$DEVICE")"
+if ! grep -q "$DATA_UUID" /etc/fstab; then
+  echo "UUID=$DATA_UUID /data xfs defaults,nofail,noatime 0 2" >> /etc/fstab
+fi
+mount -a
+mountpoint -q /data || { echo "[bootstrap] FATAL: /data not mounted" >&2; exit 1; }
+
+# Application state layout on the persistent volume.
+mkdir -p /data/agentboard /data/caddy/data /data/caddy/config /data/logs
+chmod 755 /data
+
+# ---------------------------------------------------------------------------
+# Swap — a 1 GB free-tier instance will OOM under an agent run without it.
+# Lives on the root volume so it is recreated with the instance, not the data.
+# ---------------------------------------------------------------------------
+if [ "${swap_size_gb}" -gt 0 ] && [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=1M count=$(( ${swap_size_gb} * 1024 )) status=none
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  grep -q '^/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  # Prefer RAM, but do not let the kernel refuse to swap when it matters.
+  sysctl -w vm.swappiness=20
+  echo 'vm.swappiness=20' > /etc/sysctl.d/99-agentboard.conf
+fi
+
+# ---------------------------------------------------------------------------
+# Deploy entrypoint
+# ---------------------------------------------------------------------------
+mkdir -p /etc/agentboard /opt/agentboard
+
+cat > /etc/agentboard/instance.env <<ENVEOF
+AWS_REGION=${aws_region}
+PROJECT_NAME=${project_name}
+ENVIRONMENT=${environment}
+SSM_PREFIX=${ssm_prefix}
+DEPLOY_BUCKET=${deploy_bucket}
+ECR_REGISTRY=${ecr_registry}
+SERVER_REPOSITORY=${server_repository}
+WEB_REPOSITORY=${web_repository}
+BOARD_DOMAIN=${board_domain}
+ACME_EMAIL=${acme_email}
+AUTH_MODE=${auth_mode}
+CONTAINER_MODE=${container_mode}
+APP_DIR=/opt/agentboard
+DATA_DIR=/data
+ENVEOF
+chmod 600 /etc/agentboard/instance.env
+
+# Thin wrapper: refresh the deploy bundle from S3, then hand off to the version
+# of deploy.sh that ships with the application revision being deployed.
+cat > /usr/local/bin/agentboard-deploy <<'DEPLOYEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck disable=SC1091
+. /etc/agentboard/instance.env
+
+mkdir -p "$APP_DIR"
+aws s3 sync "s3://$DEPLOY_BUCKET/deploy/" "$APP_DIR/" \
+  --region "$AWS_REGION" --delete \
+  --exclude '.env*' --exclude '.image_tag*'
+
+if [ ! -f "$APP_DIR/deploy.sh" ]; then
+  echo "[agentboard-deploy] no deploy bundle in s3://$DEPLOY_BUCKET/deploy/ yet."
+  echo "[agentboard-deploy] Run the 'Deploy to AWS' GitHub Actions workflow to publish one."
+  exit 0
+fi
+
+chmod +x "$APP_DIR/deploy.sh"
+exec "$APP_DIR/deploy.sh" "$@"
+DEPLOYEOF
+chmod +x /usr/local/bin/agentboard-deploy
+
+# Re-runs the current release on boot, so a reboot or instance replacement
+# converges without waiting for CI. Containers also carry restart policies.
+cat > /etc/systemd/system/agentboard.service <<'UNITEOF'
+[Unit]
+Description=AI Agent Board application stack
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/agentboard-deploy
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target
+UNITEOF
+
+systemctl daemon-reload
+systemctl enable agentboard.service
+
+# First boot usually precedes the first CI deploy; a missing bundle is not a
+# bootstrap failure, so do not let it mark the instance broken.
+systemctl start agentboard.service || true
+
+echo "[bootstrap] finished at $(date -Is)"

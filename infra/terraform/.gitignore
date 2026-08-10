@@ -1,0 +1,14 @@
+# Terraform working files
+.terraform/
+.terraform.tfstate.lock.info
+*.tfstate
+*.tfstate.*
+tfplan
+plan.txt
+
+# Local variable values (environment-specific; use terraform.tfvars.example)
+terraform.tfvars
+*.auto.tfvars
+
+# .terraform.lock.hcl is intentionally NOT ignored — commit the lock file your
+# first `terraform init` produces so CI resolves the same provider versions.

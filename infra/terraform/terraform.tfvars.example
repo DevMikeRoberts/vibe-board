@@ -1,0 +1,48 @@
+# Copy to terraform.tfvars and edit. Nothing secret belongs in this file —
+# runtime secrets live in SSM Parameter Store (see docs/AWS_DEPLOYMENT.md).
+
+# --- Required ---------------------------------------------------------------
+domain_name      = "board.example.com"
+hosted_zone_name = "example.com"
+acme_email       = "you@example.com"
+
+# --- Region / naming --------------------------------------------------------
+aws_region   = "us-east-1"
+project_name = "agentboard"
+environment  = "prod"
+
+# --- Compute ----------------------------------------------------------------
+# t3.micro is the free-tier size (1 GB RAM). Agent runs are memory-hungry:
+# if tasks get OOM-killed, move to t3.small / t4g.small and accept the cost.
+instance_type         = "t3.micro"
+instance_architecture = "x86_64" # switch to arm64 for t4g.* (CI must build linux/arm64)
+root_volume_size      = 20
+data_volume_size      = 10       # 20 + 10 = the 30 GiB free-tier EBS allowance
+swap_size_gb          = 2
+
+# --- DNS --------------------------------------------------------------------
+# false reuses an existing hosted zone. Only set true if example.com has no
+# zone in this account yet — a second zone for the same domain costs another
+# $0.50/month and serves nothing.
+create_hosted_zone = false
+
+# --- Access -----------------------------------------------------------------
+# "basic": Caddy HTTP basic auth, one username + bcrypt hash, no external setup.
+# "oauth": oauth2-proxy in front of everything, GitHub login, user allowlist.
+auth_mode       = "basic"
+basic_auth_user = "admin"
+
+# Port 80 is always open (ACME). Narrow 443 to known egress IPs if you have them.
+allowed_web_cidrs = ["0.0.0.0/0"]
+# Shell access is SSM Session Manager — leave SSH closed.
+allowed_ssh_cidrs = []
+# ssh_key_name    = "my-keypair"
+
+# --- Application ------------------------------------------------------------
+# Per-task agent containers. Needs the host Docker socket and >= 2 GB RAM.
+enable_container_mode = false
+
+# --- CI ---------------------------------------------------------------------
+github_repository = "DevMikeRoberts/vibe-board"
+# Set false if this AWS account already has the GitHub OIDC provider.
+create_github_oidc_provider = true

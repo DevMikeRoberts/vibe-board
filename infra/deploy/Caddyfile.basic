@@ -1,0 +1,62 @@
+# Edge proxy — auth_mode = "basic".
+#
+# Caddy terminates TLS (certificate obtained from Let's Encrypt on first start,
+# renewed automatically) and gates the entire site behind HTTP basic auth. No
+# request reaches the board without valid credentials.
+#
+# The board's own bearer token is injected here rather than baked into the
+# JavaScript bundle: the browser never sees API_KEY, and rotating it is a
+# restart of this container instead of a rebuild of the frontend.
+#
+# {$VAR} values come from /opt/agentboard/.env, rendered from SSM by deploy.sh.
+{
+	email {$ACME_EMAIL}
+	admin off
+}
+
+{$BOARD_DOMAIN} {
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 3
+		}
+	}
+
+	# Everything lives in one `route` so it executes top to bottom as written,
+	# instead of Caddy's default directive ordering.
+	route {
+		header {
+			Strict-Transport-Security "max-age=31536000; includeSubDomains"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "strict-origin-when-cross-origin"
+			-Server
+		}
+
+		encode zstd gzip
+
+		basic_auth {
+			{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+		}
+
+		# WebSocket. The server reads its token from the query string, so the
+		# key is appended here — the browser opens a plain wss://host/ws.
+		handle /ws* {
+			rewrite * /ws?token={$API_KEY}
+			reverse_proxy server:8080
+		}
+
+		handle /api/* {
+			reverse_proxy server:8080 {
+				header_up Authorization "Bearer {$API_KEY}"
+				# Stream responses through instead of buffering them.
+				flush_interval -1
+			}
+		}
+
+		# Static React bundle (SPA fallback handled by nginx in the web image).
+		handle {
+			reverse_proxy web:80
+		}
+	}
+}
