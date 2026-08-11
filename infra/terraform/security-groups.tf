@@ -60,9 +60,11 @@ resource "aws_vpc_security_group_ingress_rule" "ssh" {
   ip_protocol       = "tcp"
 }
 
+# EC2 only accepts rule descriptions built from a-zA-Z0-9 and ". _-:/()#,@[]+=&;{}!$*".
+# An apostrophe is rejected at apply time, so this says ACME rather than Let's Encrypt.
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.web.id
-  description       = "Outbound to SSM, ECR, S3, Let's Encrypt, GitHub"
+  description       = "Outbound to SSM, ECR, S3, ACME, GitHub"
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
