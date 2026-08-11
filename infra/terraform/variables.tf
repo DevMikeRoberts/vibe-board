@@ -95,9 +95,9 @@ variable "instance_architecture" {
 }
 
 variable "root_volume_size" {
-  description = "Root EBS volume size in GiB (holds the OS and the Docker image cache)."
+  description = "Root EBS volume size in GiB (holds the OS and the Docker image cache). The server image carries the agent CLIs, so it is large; 30 leaves room for the running image plus the previous one for rollback."
   type        = number
-  default     = 20
+  default     = 30
 }
 
 variable "data_volume_size" {
@@ -183,6 +183,12 @@ variable "enable_container_mode" {
   description = "Mount the host Docker socket into the server so each task runs in its own agent container. Needs >= 2 GB RAM and grants the server control of the host daemon — off by default."
   type        = bool
   default     = false
+}
+
+variable "enable_brew" {
+  description = "Bootstrap Homebrew inside the server container on first start, at its standard prefix backed by /data so agent-installed tools persist. Adds a few minutes to the first boot and a few hundred MB to the data volume."
+  type        = bool
+  default     = true
 }
 
 variable "claude_model" {

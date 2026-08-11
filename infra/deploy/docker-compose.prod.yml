@@ -63,11 +63,18 @@ services:
       ALLOWED_REPO_ROOTS: /data
       AGENTBOARD_DATA_DIR: /data
       AGENTBOARD_DATA_HOST: /data/agentboard
+      # Bootstraps Homebrew on first start when enabled (see install-brew.sh).
+      AGENTBOARD_ENABLE_BREW: "${AGENTBOARD_ENABLE_BREW:-0}"
     ports:
       # Loopback only — the public entrypoint is caddy.
       - "127.0.0.1:8080:8080"
     volumes:
       - /data/agentboard:/data
+      # Homebrew at its standard prefix, backed by the persistent volume: tools
+      # an agent installs with `brew install` survive redeploys and instance
+      # replacement, and the prefix stays standard so formulae use bottles
+      # instead of compiling from source on a 1 GB box.
+      - /data/homebrew:/home/linuxbrew
     healthcheck:
       # The health route is behind the bearer-token middleware like every other
       # /api path, so the probe authenticates. $$ is Compose's literal dollar.

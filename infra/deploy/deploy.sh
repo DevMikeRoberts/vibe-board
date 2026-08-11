@@ -152,6 +152,7 @@ render_env() {
   emit_env "$proxy_env" WEB_REPOSITORY "$WEB_REPOSITORY"
   emit_env "$proxy_env" BOARD_DOMAIN "$BOARD_DOMAIN"
   emit_env "$proxy_env" ACME_EMAIL "$ACME_EMAIL"
+  emit_env "$proxy_env" AGENTBOARD_ENABLE_BREW "${ENABLE_BREW:-0}"
 
   # Same-origin deployment, but the server still enforces CORS.
   emit_env "$app_env" ALLOWED_ORIGINS "https://$BOARD_DOMAIN"

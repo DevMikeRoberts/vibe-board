@@ -12,4 +12,5 @@ packages/e2e/playwright-report
 **/.DS_Store
 images
 *.md
-infra
+infra/terraform
+infra/scripts

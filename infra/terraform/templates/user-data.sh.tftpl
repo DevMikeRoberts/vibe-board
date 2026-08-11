@@ -88,7 +88,7 @@ mount -a
 mountpoint -q /data || { echo "[bootstrap] FATAL: /data not mounted" >&2; exit 1; }
 
 # Application state layout on the persistent volume.
-mkdir -p /data/agentboard /data/caddy/data /data/caddy/config /data/logs
+mkdir -p /data/agentboard /data/caddy/data /data/caddy/config /data/logs /data/homebrew
 chmod 755 /data
 
 # ---------------------------------------------------------------------------
@@ -124,6 +124,7 @@ BOARD_DOMAIN=${board_domain}
 ACME_EMAIL=${acme_email}
 AUTH_MODE=${auth_mode}
 CONTAINER_MODE=${container_mode}
+ENABLE_BREW=${enable_brew}
 APP_DIR=/opt/agentboard
 DATA_DIR=/data
 ENVEOF
@@ -141,6 +142,11 @@ mkdir -p "$APP_DIR"
 aws s3 sync "s3://$DEPLOY_BUCKET/deploy/" "$APP_DIR/" \
   --region "$AWS_REGION" --delete \
   --exclude '.env*' --exclude '.image_tag*'
+
+# Out-of-band secret management, available the moment you get a shell.
+if [ -f "$APP_DIR/agentboard-secret.sh" ]; then
+  install -m 0755 "$APP_DIR/agentboard-secret.sh" /usr/local/bin/agentboard-secret
+fi
 
 if [ ! -f "$APP_DIR/deploy.sh" ]; then
   echo "[agentboard-deploy] no deploy bundle in s3://$DEPLOY_BUCKET/deploy/ yet."

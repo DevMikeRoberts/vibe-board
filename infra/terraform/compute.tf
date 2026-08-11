@@ -91,6 +91,7 @@ locals {
     acme_email             = var.acme_email
     auth_mode              = var.auth_mode
     container_mode         = var.enable_container_mode ? "1" : "0"
+    enable_brew            = var.enable_brew ? "1" : "0"
     data_volume_id         = aws_ebs_volume.data.id
     swap_size_gb           = var.swap_size_gb
     compose_plugin_version = var.compose_plugin_version

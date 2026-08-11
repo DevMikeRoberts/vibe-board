@@ -130,14 +130,21 @@ before assuming** — the shape below is what to expect, not a guarantee:
 | Item | Under the 12-month free tier | After it expires |
 |------|------------------------------|------------------|
 | EC2 `t3.micro` | 750 h/month — covers one always-on instance | ~$7.60/month on-demand |
-| EBS gp3 30 GiB | included (20 root + 10 data) | ~$2.40/month |
+| EBS gp3 40 GiB | 30 GiB included; **10 GiB over** | ~$3.20/month |
 | Public IPv4 address | 750 h/month | ~$3.60/month |
 | ECR storage | 500 MB | ~$0.10–0.50/month at 5 retained images |
 | S3 deploy bundle | included | pennies |
 | SSM, Parameter Store (Standard), IAM, VPC, security groups | always free | always free |
 | Data transfer out | 100 GB/month free | 100 GB/month free |
 
-**Roughly: $0.50/month for the first year, then $14–15/month.** A one-year
+The default volumes are now 30 GiB root + 10 GiB data = **40 GiB**, which is
+10 GiB past the 30 GiB free-tier allowance — about **$0.80/month**. The server
+image carries the agent CLIs and is large, and the root volume has to hold the
+running image plus the previous one for rollback. To stay strictly inside the
+free tier, set `enable_brew = false` and `root_volume_size = 20`, and expect
+less headroom during deploys.
+
+**Roughly: $0.80/month for the first year, then $15–16/month.** A one-year
 Compute Savings Plan takes about a third off the instance line. If you want to
 stay closer to free after year one, the levers are instance size and whether you
 need a public IPv4 at all — not this architecture.
@@ -349,6 +356,113 @@ https://board.example.com   →   login   →   the board
 ```
 
 ---
+
+## The agent toolbox
+
+The board works by spawning agent CLIs as subprocesses, and it probes `PATH` for
+them at startup (`checkCLI` in `agent-sdk-core`'s detection). Those processes run
+**inside the server container**, so that is where the CLIs have to be — not on
+the host.
+
+Everything installed is declared in one list,
+[`infra/deploy/toolbox.manifest`](../infra/deploy/toolbox.manifest):
+
+```
+<channel>  <package>                    [binary]
+```
+
+| Channel | Installed | Where |
+|---------|-----------|-------|
+| `apt` | at image build | Debian packages — `ripgrep`, `jq`, `fd-find`, `less`, `tree`, `unzip`, `openssh-client` |
+| `npm` | at image build | the agent CLIs, globally |
+| `brew` | at first container start | Homebrew formulae, onto the persistent volume |
+
+Adding a tool is a one-line change to that file; the next deploy picks it up.
+The optional third column is the binary the package should put on `PATH`, and
+the installer verifies it — a package that installs without producing its binary
+is the failure mode that silently disables an agent, so it is reported loudly at
+build time instead of showing up as a puzzling "unavailable" in the UI.
+
+Installation is **best-effort**: a package that fails is logged and the run
+continues, because one renamed CLI should not break the image build. The
+entrypoint then prints exactly which agent CLIs it can see at boot:
+
+```
+[entrypoint] agent CLI present: claude -> /usr/local/bin/claude
+[entrypoint] agent CLI missing: hermes
+```
+
+### Agents installed
+
+| Agent | Package | Binary |
+|-------|---------|--------|
+| Claude Code | `@anthropic-ai/claude-code` | `claude` |
+| GitHub Copilot | `@github/copilot` | `copilot` |
+| OpenAI Codex | `@openai/codex` | `codex` |
+| OpenCode | `opencode-ai` | `opencode` |
+| OpenClaw | `openclaw` | `openclaw` |
+
+**Hermes is deliberately absent.** The board probes for a `hermes` binary, but
+the npm package of that name is segmentio's "Messenger of the gods" and
+`hermes-cli` is a Brazilian travel-agency search tool. Installing either would
+put a bogus `hermes` on `PATH` and make the board report Hermes as *available*
+when it is not — worse than absent. Add the real install line to the manifest
+once you know it; the README's check is `hermes acp --check`.
+
+Most agents also need credentials before they will do anything — see
+[out-of-band secrets](#secrets-out-of-band) below. Codex additionally checks for
+`~/.codex/auth.json` and reports "installed but not logged in" until you run
+`codex` interactively inside the container.
+
+### Homebrew
+
+Set `enable_brew = true` (the default) and the server container bootstraps
+Homebrew on first start, so agents can install more tools themselves.
+
+Two deliberate choices:
+
+- **Not baked into the image.** It installs at runtime into `/home/linuxbrew`,
+  which is bind-mounted from `/data/homebrew` on the persistent EBS volume. So
+  anything an agent installs with `brew install` survives a redeploy *and* an
+  instance replacement, and the image stays small enough to pull comfortably.
+- **At the standard prefix.** Homebrew only uses prebuilt bottles at
+  `/home/linuxbrew/.linuxbrew`; at any other prefix it compiles every formula
+  from source, which on a 1 GB instance means an OOM rather than an install.
+
+Homebrew refuses to run as root, so the image creates a `linuxbrew` user and the
+bootstrap runs as it. The first start takes a few extra minutes; later ones find
+it already there. Failure is never fatal — a package manager that would not
+install is not a reason to refuse to serve the board.
+
+## Secrets, out of band
+
+`agentboard-secret` sets or rotates any runtime secret from a shell on the
+instance, without it passing through git, CI logs, or Terraform state. This is
+how the Anthropic key gets onto the box:
+
+```bash
+aws ssm start-session --target "$(terraform -chdir=infra/terraform output -raw instance_id)"
+sudo -i
+
+agentboard-secret list                     # names and whether set — never values
+agentboard-secret set ANTHROPIC_API_KEY    # hidden prompt
+agentboard-secret apply                    # re-render env + restart
+```
+
+The value is read from a hidden prompt or stdin, never from the command line, so
+it stays out of shell history, `ps` output, and the SSM command log. It is
+written to Parameter Store as a `SecureString`; `apply` re-renders the
+per-service env files from there and restarts the containers without pulling a
+new image, so it cannot change the deployed version.
+
+`--stdin` is there for scripted rotation:
+
+```bash
+agentboard-secret set ANTHROPIC_API_KEY --stdin < key.txt
+```
+
+Unknown names are rejected rather than written, because a typo'd parameter is
+silently ignored at deploy time and the resulting failure is hard to trace back.
 
 ## Operating it
 
