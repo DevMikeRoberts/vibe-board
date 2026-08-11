@@ -430,9 +430,20 @@ Two deliberate choices:
   from source, which on a 1 GB instance means an OOM rather than an install.
 
 Homebrew refuses to run as root, so the image creates a `linuxbrew` user and the
-bootstrap runs as it. The first start takes a few extra minutes; later ones find
-it already there. Failure is never fatal — a package manager that would not
+bootstrap runs as it. Failure is never fatal — a package manager that would not
 install is not a reason to refuse to serve the board.
+
+The bootstrap runs **in the background**, and that is load-bearing rather than
+tidiness: a first install takes minutes, and running it inline would delay the
+server from listening past the deploy's health-check window, so a perfectly good
+deploy would time out and roll itself back. Watch its progress with:
+
+```bash
+docker compose exec server tail -f /data/brew-bootstrap.log
+```
+
+Until it finishes, `brew` simply is not on `PATH` yet; the board is up and
+serving throughout.
 
 ## Secrets, out of band
 
