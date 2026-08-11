@@ -1,0 +1,50 @@
+# Toolbox — everything the agents get on the box, in one editable list.
+#
+#   <channel>  <package>                    [binary]
+#
+# channel  where it comes from
+#   apt    Debian package, installed into the image at build time
+#   npm    global npm package, installed into the image at build time
+#   brew   Homebrew formula, installed at runtime into the persistent volume
+#          (requires AGENTBOARD_ENABLE_BREW=1 — see install-brew.sh)
+#
+# binary   optional; when given, the installer verifies it landed on PATH and
+#          warns if it did not. For agents this MUST match the name the board
+#          probes for, or the agent shows as unavailable.
+#
+# Lines starting with # are ignored. Add to this file and redeploy — nothing
+# else needs to change.
+
+# --- Agent CLIs -------------------------------------------------------------
+# The board probes PATH for exactly these binaries (agent-sdk-core
+# providers/detection.js calls checkCLI on each name).
+npm   @anthropic-ai/claude-code   claude
+npm   @github/copilot             copilot
+npm   @openai/codex               codex
+npm   opencode-ai                 opencode
+npm   openclaw                    openclaw
+
+# Hermes is deliberately NOT listed. The board probes for a `hermes` binary,
+# but the npm package of that name is segmentio's "Messenger of the gods" and
+# `hermes-cli` searches Brazilian travel agencies — installing either would put
+# a bogus `hermes` on PATH and make the board report Hermes as available when
+# it is not. Add the real install line here once you know it; the README says
+# the check is `hermes acp --check`.
+# npm  <real-hermes-package>       hermes
+
+# --- Source control and shell tools the agents actually reach for ------------
+apt   ripgrep                     rg
+apt   fd-find
+apt   jq                          jq
+apt   less                        less
+apt   tree                        tree
+apt   unzip                       unzip
+apt   openssh-client              ssh
+apt   ca-certificates
+
+# --- Optional extras, installed via Homebrew at runtime ---------------------
+# These persist on the data volume across deploys and instance replacement.
+# Uncomment what you want; agents can also `brew install` more themselves.
+# brew  gh
+# brew  bat
+# brew  yq

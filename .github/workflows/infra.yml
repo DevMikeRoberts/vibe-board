@@ -1,0 +1,227 @@
+# Terraform for the AWS deployment. Plans on every PR that touches infra, and
+# applies only from a manual dispatch that types "apply" — infrastructure
+# changes here can replace the instance, so they are never automatic.
+#
+# Authentication, in order of preference:
+#   1. secret AWS_TERRAFORM_ROLE_ARN  — OIDC, no standing credentials
+#   2. secrets AWS_ACCESS_KEY (or AWS_ACCESS_KEY_ID) + AWS_SECRET_ACCESS_KEY
+#
+# Access keys are the bootstrap path and exist for a reason: the OIDC role is
+# created *by* this stack, so the very first apply cannot use it. Once the
+# stack exists, set AWS_TERRAFORM_ROLE_ARN from `terraform output` and delete
+# the keys — this workflow prefers the role whenever it is present.
+#
+# Required repository variables for an apply:
+#   BOARD_DOMAIN       board.example.com
+#   ACME_EMAIL         you@example.com
+#   HOSTED_ZONE_NAME   example.com   (only when MANAGE_DNS is not "false")
+# Optional: AWS_REGION, MANAGE_DNS, AUTH_MODE, INSTANCE_TYPE,
+#           CREATE_HOSTED_ZONE, TF_STATE_BUCKET, TF_STATE_KEY
+name: Terraform (infra)
+
+on:
+  pull_request:
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/infra.yml'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Type "apply" to apply the plan; anything else only plans.'
+        required: true
+        default: plan
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-infra
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_IN_AUTOMATION: 'true'
+  # Terraform picks TF_VAR_* straight out of the environment, so the required
+  # inputs come from repository variables rather than a committed tfvars file.
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_VAR_domain_name: ${{ vars.BOARD_DOMAIN }}
+  TF_VAR_hosted_zone_name: ${{ vars.HOSTED_ZONE_NAME }}
+  TF_VAR_acme_email: ${{ vars.ACME_EMAIL }}
+  TF_VAR_manage_dns: ${{ vars.MANAGE_DNS || 'true' }}
+  TF_VAR_auth_mode: ${{ vars.AUTH_MODE || 'basic' }}
+  TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't3.micro' }}
+  TF_VAR_create_hosted_zone: ${{ vars.CREATE_HOSTED_ZONE || 'false' }}
+
+defaults:
+  run:
+    working-directory: infra/terraform
+
+jobs:
+  terraform:
+    name: ${{ inputs.action == 'apply' && 'Apply' || 'Plan' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      # Decides between a real plan/apply and a credential-free syntax check.
+      # A PR missing the required variables degrades to the syntax check rather
+      # than failing: not having configured the stack yet is not a broken PR.
+      # An explicit dispatch fails loudly instead, naming what is missing.
+      - name: Determine mode
+        id: auth
+        env:
+          ROLE_ARN: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID }}
+          SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -n "$ROLE_ARN" ]; then
+            method=oidc
+            echo "::notice::Authenticating with the OIDC role."
+          elif [ -n "$ACCESS_KEY" ] && [ -n "$SECRET_KEY" ]; then
+            method=keys
+            echo "::notice::Authenticating with static access keys. Once this stack exists, set AWS_TERRAFORM_ROLE_ARN from the terraform output and delete the keys."
+          else
+            method=none
+            echo "::notice::No AWS credentials configured — validating syntax only."
+          fi
+
+          missing=""
+          if [ -z "${TF_VAR_domain_name}" ]; then missing="$missing BOARD_DOMAIN"; fi
+          if [ -z "${TF_VAR_acme_email}" ]; then missing="$missing ACME_EMAIL"; fi
+          # Only needed when Terraform manages Route 53; with DNS hosted
+          # elsewhere (MANAGE_DNS=false) there is no zone to look up.
+          if [ "${TF_VAR_manage_dns}" != "false" ] && [ -z "${TF_VAR_hosted_zone_name}" ]; then
+            missing="$missing HOSTED_ZONE_NAME"
+          fi
+
+          if [ "$method" != "none" ] && [ -n "$missing" ]; then
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "::error::Missing required repository variables:$missing — set them under Settings -> Secrets and variables -> Actions -> Variables, then re-run."
+              exit 1
+            fi
+            echo "::notice::Credentials present but required variables are unset ($missing) — validating syntax only."
+            method=none
+          fi
+
+          echo "method=$method" >> "$GITHUB_OUTPUT"
+
+      # Without credentials, `terraform validate` still type-checks the whole
+      # configuration, so a broken PR fails even before AWS is wired up.
+      - name: Validate (no backend)
+        if: steps.auth.outputs.method == 'none'
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Configure AWS credentials (OIDC)
+        if: steps.auth.outputs.method == 'oidc'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-terraform-${{ github.run_id }}
+
+      - name: Configure AWS credentials (access keys)
+        if: steps.auth.outputs.method == 'keys'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # State must be remote for a CI-managed apply: local state would be
+      # discarded with the runner, orphaning every resource it created.
+      - name: Ensure Terraform state bucket
+        if: steps.auth.outputs.method != 'none'
+        id: state
+        run: |
+          set -euo pipefail
+          BUCKET="${{ vars.TF_STATE_BUCKET }}"
+          if [ -z "$BUCKET" ]; then
+            ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+            BUCKET="agentboard-tfstate-${ACCOUNT_ID}"
+          fi
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+
+          if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+            echo "Using existing state bucket $BUCKET"
+            exit 0
+          fi
+
+          echo "Creating state bucket $BUCKET in $AWS_REGION"
+          if [ "$AWS_REGION" = "us-east-1" ]; then
+            aws s3api create-bucket --bucket "$BUCKET" --region "$AWS_REGION"
+          else
+            aws s3api create-bucket --bucket "$BUCKET" --region "$AWS_REGION" \
+              --create-bucket-configuration "LocationConstraint=$AWS_REGION"
+          fi
+          aws s3api put-bucket-versioning --bucket "$BUCKET" \
+            --versioning-configuration Status=Enabled
+          aws s3api put-bucket-encryption --bucket "$BUCKET" \
+            --server-side-encryption-configuration \
+            '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+          aws s3api put-public-access-block --bucket "$BUCKET" \
+            --public-access-block-configuration \
+            'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
+
+      - name: Init
+        if: steps.auth.outputs.method != 'none'
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ steps.state.outputs.bucket }}" \
+            -backend-config="key=${{ vars.TF_STATE_KEY || 'prod/terraform.tfstate' }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Validate
+        if: steps.auth.outputs.method != 'none'
+        run: terraform validate
+
+      - name: Plan
+        if: steps.auth.outputs.method != 'none'
+        run: |
+          terraform plan -input=false -no-color -lock-timeout=5m -out=tfplan | tee plan.txt
+          {
+            echo '### Terraform plan'
+            echo '```'
+            tail -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply
+        if: steps.auth.outputs.method != 'none' && inputs.action == 'apply'
+        run: terraform apply -input=false -no-color -lock-timeout=5m tfplan
+
+      # The values needed to configure the deploy workflow, printed where they
+      # are easy to copy from.
+      - name: Outputs
+        if: steps.auth.outputs.method != 'none' && inputs.action == 'apply'
+        run: |
+          {
+            echo '### Next steps'
+            echo
+            echo 'Set these repository **variables**:'
+            echo '```'
+            terraform output -json github_actions_repo_variables | python3 -m json.tool
+            echo '```'
+            echo 'Then populate the SSM secrets listed below and run **Deploy to AWS**:'
+            echo '```'
+            terraform output -json secret_parameters_to_populate | python3 -m json.tool
+            echo '```'
+            if [ "$(terraform output -json dns_record_to_create)" != "null" ]; then
+              echo 'DNS is not managed here — create this record at your DNS provider first:'
+              echo '```'
+              terraform output -json dns_record_to_create | python3 -m json.tool
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

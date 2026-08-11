@@ -215,6 +215,20 @@ npm run build:server
 npm run build:client
 ```
 
+### Deploying online (AWS EC2, private)
+
+For a self-contained deployment where **both** the frontend and backend run on
+one always-on AWS instance behind a login, see
+**[docs/AWS_DEPLOYMENT.md](docs/AWS_DEPLOYMENT.md)**.
+
+- Terraform for the whole stack (`infra/terraform/`) — EC2 + persistent EBS,
+  ECR, S3, IAM, SSM Parameter Store, Route 53
+- GitHub Actions build → push → deploy over SSM (OIDC; no AWS keys, no open SSH)
+- Caddy at the edge: automatic HTTPS plus a login gate (HTTP basic auth, or
+  GitHub OAuth with a user allowlist) in front of every route
+- Sized for the AWS free tier: ~$0.50/month for the first year (the Route 53
+  hosted zone), ~$14/month after it expires
+
 ### Deploying online (Vercel frontend + self-hosted backend)
 
 The backend is a long-running, stateful server (WebSockets, agent subprocesses,

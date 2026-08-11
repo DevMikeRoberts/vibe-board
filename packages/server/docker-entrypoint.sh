@@ -18,4 +18,30 @@ git config --global user.email "${GIT_AUTHOR_EMAIL:-agent@agentboard.local}" || 
 # Mounted repos/clones may be owned by a different uid — trust them all.
 git config --global --add safe.directory '*' || true
 
+# Optional Homebrew bootstrap onto the persistent volume, so agents can install
+# more tools themselves and keep them across deploys. No-op unless
+# AGENTBOARD_ENABLE_BREW=1; never fatal, because a package manager that failed
+# to install is not a reason to refuse to serve the board.
+# Backgrounded on purpose. A first-run Homebrew install takes minutes, and
+# running it inline would hold up `exec node` below — the server would not be
+# listening when the deploy health check fires, so a perfectly good deploy would
+# time out and roll itself back. Nothing at startup depends on brew being ready.
+if [ -x /opt/agentboard-toolbox/install-brew.sh ]; then
+  (
+    /opt/agentboard-toolbox/install-brew.sh \
+      || echo "[entrypoint] brew bootstrap failed, continuing without it"
+  ) >>/data/brew-bootstrap.log 2>&1 &
+  echo "[entrypoint] brew bootstrap running in the background (/data/brew-bootstrap.log)"
+fi
+
+# Report what the agents will actually find, so a missing CLI is visible in the
+# logs at boot rather than as a puzzling "unavailable" in the UI.
+for cli in claude copilot codex opencode openclaw hermes; do
+  if command -v "$cli" >/dev/null 2>&1; then
+    echo "[entrypoint] agent CLI present: $cli -> $(command -v "$cli")"
+  else
+    echo "[entrypoint] agent CLI missing: $cli"
+  fi
+done
+
 exec node packages/server/dist/index.js

@@ -26,6 +26,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   && apt-get update && apt-get install -y --no-install-recommends gh docker-ce-cli \
   && rm -rf /var/lib/apt/lists/*
 
+# The agent toolbox: the CLIs the board spawns (claude, copilot, codex,
+# opencode, openclaw) plus the shell tools they reach for. Driven by a single
+# editable list — infra/deploy/toolbox.manifest — so adding a tool is a one-line
+# change, not a Dockerfile edit. Copied before the app sources so a change to
+# application code does not invalidate this (slow) layer.
+COPY infra/deploy/toolbox.manifest infra/deploy/install-toolbox.sh /opt/agentboard-toolbox/
+RUN chmod +x /opt/agentboard-toolbox/install-toolbox.sh \
+  && /opt/agentboard-toolbox/install-toolbox.sh --channel apt \
+  && /opt/agentboard-toolbox/install-toolbox.sh --channel npm
+
+# Homebrew is deliberately not installed here — it is bootstrapped at runtime
+# onto the persistent volume so agent-installed tools survive redeploys, and so
+# this image stays small enough for a free-tier root volume. See
+# infra/deploy/install-brew.sh.
+COPY infra/deploy/install-brew.sh /opt/agentboard-toolbox/
+RUN chmod +x /opt/agentboard-toolbox/install-brew.sh \
+  && useradd -m -s /bin/bash linuxbrew \
+  && mkdir -p /home/linuxbrew \
+  && chown -R linuxbrew:linuxbrew /home/linuxbrew
+
+# Homebrew's prefix, so anything installed there is reachable by the agents.
+ENV PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:${PATH}"
+
 WORKDIR /app
 
 # Install deps first for better layer caching: copy only workspace manifests.
