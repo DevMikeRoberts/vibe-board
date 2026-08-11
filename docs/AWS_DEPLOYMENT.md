@@ -70,11 +70,17 @@ stack.
 
 ### The four decisions that shape this
 
-**No inbound SSH, no AWS access keys in GitHub.** Deploys arrive over SSM Run
-Command, which the instance dials out to; the security group has no port 22 rule
-and the repository holds no `AWS_ACCESS_KEY_ID`. The blast radius of a leaked
-GitHub token is "can push an image and trigger a deploy", not "has your AWS
-account".
+**No inbound SSH; OIDC over access keys.** Deploys arrive over SSM Run Command,
+which the instance dials out to, so the security group has no port 22 rule. Both
+workflows prefer an IAM role assumed through GitHub's OIDC provider, which means
+no standing credential in the repository — the blast radius of a leaked GitHub
+token is "can push an image and trigger a deploy", not "has your AWS account".
+
+Static access keys are supported as the **bootstrap** path, because the OIDC
+role is created *by* this stack and therefore cannot be used for the first
+apply. Once `terraform apply` has run, set the role ARN and delete the keys; the
+workflows use the role whenever it is present. See
+[Bootstrapping from CI](#step-2b--or-apply-from-ci-with-access-keys).
 
 **ECR instead of a public registry.** A private image needs a credential
 somewhere. With ECR that credential is the instance profile and the CI OIDC
@@ -168,7 +174,7 @@ Local state works for a solo operator, but CI needs shared state:
 # printed values and run: terraform init -migrate-state
 ```
 
-## Step 2 — Apply the infrastructure
+## Step 2 — Apply the infrastructure (locally)
 
 ```bash
 cd infra/terraform
@@ -187,6 +193,42 @@ yet — which is correct at this point.
 If you set `create_hosted_zone = true`, point your registrar at the nameservers
 in the `hosted_zone_nameservers` output and wait for propagation before the
 first deploy, or Caddy's certificate request will fail.
+
+## Step 2b — or, apply from CI with access keys
+
+If you would rather not run Terraform locally, the **Terraform (infra)**
+workflow can do the first apply. It needs credentials and the three required
+inputs, all set under **Settings → Secrets and variables → Actions**:
+
+| Kind | Name | Value |
+|------|------|-------|
+| Secret | `AWS_ACCESS_KEY` (or `AWS_ACCESS_KEY_ID`) | access key id |
+| Secret | `AWS_SECRET_ACCESS_KEY` | secret access key |
+| Variable | `BOARD_DOMAIN` | `board.example.com` |
+| Variable | `HOSTED_ZONE_NAME` | `example.com` |
+| Variable | `ACME_EMAIL` | `you@example.com` |
+| Variable | `AWS_REGION` | e.g. `us-east-1` (optional, defaults to `us-east-1`) |
+
+Optional overrides: `AUTH_MODE`, `INSTANCE_TYPE`, `CREATE_HOSTED_ZONE`,
+`TF_STATE_BUCKET`, `TF_STATE_KEY`.
+
+Then run **Actions → Terraform (infra) → Run workflow** and type `apply`. The
+workflow creates the remote state bucket if it does not exist (versioned,
+encrypted, public access blocked; named `agentboard-tfstate-<account-id>` unless
+`TF_STATE_BUCKET` says otherwise), plans, applies, and prints the repository
+variables for Step 4 in the run summary.
+
+Until those variables are set, a pull request touching `infra/terraform/`
+degrades to a credential-free `terraform validate` rather than failing — but a
+dispatched run fails loudly and names what is missing.
+
+**After the first apply**, switch to OIDC and delete the keys:
+
+```bash
+terraform -chdir=infra/terraform output -raw github_actions_role_arn
+# store as the AWS_DEPLOY_ROLE_ARN secret (and AWS_TERRAFORM_ROLE_ARN for infra),
+# then delete AWS_ACCESS_KEY / AWS_SECRET_ACCESS_KEY
+```
 
 ## Step 3 — Populate the secrets
 

@@ -1,12 +1,15 @@
 # Build the two application images, publish them to ECR, refresh the deploy
 # bundle in S3, and run the deploy on the EC2 host through SSM.
 #
-# There are no AWS access keys in this repository: the job assumes an IAM role
-# via GitHub's OIDC provider, and the instance is reached over SSM rather than
-# SSH, so nothing here needs an inbound port or a stored key.
+# The instance is reached over SSM rather than SSH, so nothing here needs an
+# inbound port. Authentication prefers OIDC and falls back to static keys:
+#   1. secret AWS_DEPLOY_ROLE_ARN  — OIDC, no standing credentials (preferred)
+#   2. secrets AWS_ACCESS_KEY (or AWS_ACCESS_KEY_ID) + AWS_SECRET_ACCESS_KEY
+# The role is created by infra/terraform, so keys are the bootstrap path; once
+# the stack exists, set the role ARN and delete the keys.
 #
 # Required repository configuration (see docs/AWS_DEPLOYMENT.md):
-#   secret   AWS_DEPLOY_ROLE_ARN   role created by infra/terraform
+#   secret   AWS_DEPLOY_ROLE_ARN   role created by infra/terraform (or keys)
 #   variable AWS_REGION, AWS_DEPLOY_BUCKET, ECR_SERVER_REPO, ECR_WEB_REPO,
 #            EC2_NAME_TAG, IMAGE_PLATFORM
 name: Deploy to AWS
@@ -39,6 +42,8 @@ concurrency:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  # Mirrored into env because `secrets` is not a valid context in a step `if:`.
+  AWS_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
 
 jobs:
   # Keeps the workflow green on forks and before the AWS side is configured.
@@ -51,13 +56,24 @@ jobs:
       - id: check
         env:
           ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID }}
+          SECRET_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           DEPLOY_BUCKET: ${{ vars.AWS_DEPLOY_BUCKET }}
         run: |
-          if [ -n "$ROLE_ARN" ] && [ -n "$DEPLOY_BUCKET" ]; then
+          have_creds=false
+          if [ -n "$ROLE_ARN" ]; then
+            have_creds=true
+          elif [ -n "$ACCESS_KEY" ] && [ -n "$SECRET_KEY" ]; then
+            have_creds=true
+          fi
+
+          # AWS_DEPLOY_BUCKET only exists once Terraform has been applied, so it
+          # doubles as the signal that there is anything to deploy *to*.
+          if [ "$have_creds" = true ] && [ -n "$DEPLOY_BUCKET" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::AWS deployment is not configured (missing AWS_DEPLOY_ROLE_ARN secret or AWS_DEPLOY_BUCKET variable) — skipping."
+            echo "::notice::AWS deployment is not configured yet (needs credentials plus the AWS_DEPLOY_BUCKET variable that 'terraform apply' produces) — skipping."
           fi
 
   build:
@@ -70,12 +86,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
+        if: env.AWS_ROLE_ARN != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: gha-build-${{ github.run_id }}
+
+      - name: Configure AWS credentials (access keys)
+        if: env.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Log in to Amazon ECR
         id: ecr
@@ -132,12 +157,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials (OIDC)
+        if: env.AWS_ROLE_ARN != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
           role-session-name: gha-deploy-${{ github.run_id }}
+
+      - name: Configure AWS credentials (access keys)
+        if: env.AWS_ROLE_ARN == ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
       # The compose file, Caddyfiles and deploy.sh are versioned with the app
       # and delivered separately from the images, so a proxy or deploy-logic
