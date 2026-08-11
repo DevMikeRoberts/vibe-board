@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTheme } from '@/hooks/useTheme';
+import { prefersReducedMotion } from '@/lib/pixel-canvas';
 
 /**
  * Animated dithering background using a small canvas that renders
@@ -18,11 +19,28 @@ export function DitherBackground() {
     if (!ctx) return;
 
     const context = ctx;
-    // Small internal resolution — the CSS stretches it pixelated
-    const W = 128;
-    const H = 128;
-    canvas.width = W;
-    canvas.height = H;
+    const reduced = prefersReducedMotion();
+
+    // Small internal resolution — the CSS stretches it pixelated. 128 on the
+    // short axis, long axis scaled by the viewport aspect so the grain stays
+    // square instead of streaking on tall phones / wide desktops.
+    let W = 128;
+    let H = 128;
+
+    function applySize() {
+      const SHORT = 128;
+      const vw = Math.max(1, window.innerWidth);
+      const vh = Math.max(1, window.innerHeight);
+      if (vw >= vh) {
+        H = SHORT;
+        W = Math.max(1, Math.round((SHORT * vw) / vh));
+      } else {
+        W = SHORT;
+        H = Math.max(1, Math.round((SHORT * vh) / vw));
+      }
+      canvas!.width = W;
+      canvas!.height = H;
+    }
 
     // 4×4 Bayer dither matrix
     const bayer = [
@@ -32,13 +50,11 @@ export function DitherBackground() {
       [15, 7, 13,  5],
     ];
 
-    let raf: number;
+    let raf = 0;
+    let resizeTimer: ReturnType<typeof setTimeout>;
     let t = 0;
 
     function draw() {
-      t += 0.003;
-      context.clearRect(0, 0, W, H);
-
       const dark = theme === 'dark';
 
       // Slowly drifting hue offsets for the gradient
@@ -52,7 +68,7 @@ export function DitherBackground() {
         for (let x = 0; x < W; x++) {
           const idx = (y * W + x) * 4;
 
-          // Diagonal gradient混合 two neon hues
+          // Diagonal gradient blends two neon hues
           const nx = x / W;
           const ny = y / H;
           const diag = (nx + ny) / 2;
@@ -92,11 +108,39 @@ export function DitherBackground() {
       }
 
       context.putImageData(imgData, 0, 0);
-      raf = requestAnimationFrame(draw);
     }
 
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    // The drift is glacial — ~10fps is indistinguishable from 60 here, so
+    // skip five of every six rAF ticks to save phone CPU/battery.
+    let tick = 0;
+    function loop() {
+      raf = requestAnimationFrame(loop);
+      if (++tick % 6 !== 0) return;
+      t += 0.018; // 6× the old per-frame step keeps the drift speed
+      draw();
+    }
+
+    applySize();
+    if (reduced) {
+      draw();
+    } else {
+      raf = requestAnimationFrame(loop);
+    }
+
+    const onResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        applySize();
+        draw();
+      }, 150);
+    };
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(resizeTimer);
+      window.removeEventListener('resize', onResize);
+    };
   }, [theme]);
 
   return (

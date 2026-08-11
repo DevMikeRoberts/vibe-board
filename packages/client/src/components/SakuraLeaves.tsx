@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTheme } from '@/hooks/useTheme';
-import { lerpRgb, prefersReducedMotion, sizePixelCanvas } from '@/lib/pixel-canvas';
+import { lerpRgb, measurePixelViewport, prefersReducedMotion, sizePixelCanvas } from '@/lib/pixel-canvas';
 
 type RGB = [number, number, number];
 
@@ -132,7 +132,16 @@ export function SakuraLeaves() {
     const onResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        rebuild();
+        const next = measurePixelViewport(PIXEL);
+        if (Math.abs(next.w - W) < 2 && Math.abs(next.h - H) < 12) {
+          // Height-only delta (mobile URL-bar chrome) — resize the buffer but
+          // keep the petals where they are instead of re-seeding the field.
+          const size = sizePixelCanvas(canvas!, PIXEL);
+          W = size.w;
+          H = size.h;
+        } else {
+          rebuild();
+        }
         if (reduced) for (const p of petals) drawPetal(p, (Math.sin(p.spin) + 1) / 2);
       }, 150);
     };

@@ -2,6 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PixelIcon } from '@/components/PixelIcon';
 import { api } from '@/lib/api';
+import { isCoarsePointer } from '@/lib/utils';
 
 interface GitHubStatus {
   configured: boolean;
@@ -112,7 +113,7 @@ export function GitHubSetupModal({ onImported }: GitHubSetupModalProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[var(--overlay-bg)] backdrop-blur-sm"
+            className="fixed inset-0 z-[85] bg-[var(--overlay-bg)] backdrop-blur-sm"
             onClick={dismiss}
           />
 
@@ -125,7 +126,7 @@ export function GitHubSetupModal({ onImported }: GitHubSetupModalProps) {
             animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
             exit={{ opacity: 0, y: 24, scale: 0.92, rotate: -1 }}
             transition={{ type: 'spring', stiffness: 320, damping: 26 }}
-            className="sticker panel-neon panel-neon-glow fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] bg-popover p-6"
+            className="sticker panel-neon panel-neon-glow fixed left-1/2 top-6 z-[85] max-h-[90dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 translate-y-0 overflow-y-auto rounded-[1.75rem] bg-popover p-6 sm:top-1/2 sm:-translate-y-1/2"
             style={{ '--panel': 'var(--color-neon-green)' } as React.CSSProperties}
           >
             {/* Header */}
@@ -144,7 +145,7 @@ export function GitHubSetupModal({ onImported }: GitHubSetupModalProps) {
               </div>
               <button
                 onClick={dismiss}
-                className="sticker-sm sticker-press flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-border bg-card font-pixel text-sm text-foreground/70 hover:text-foreground"
+                className="sticker-sm sticker-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-border bg-card font-pixel text-sm text-foreground/70 hover:text-foreground pointer-coarse:h-11 pointer-coarse:w-11"
                 aria-label="Skip for now"
               >
                 ✕
@@ -244,7 +245,7 @@ export function GitHubSetupModal({ onImported }: GitHubSetupModalProps) {
                       value={token}
                       onChange={(e) => { setToken(e.target.value); setError(''); }}
                       placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
-                      autoFocus
+                      autoFocus={!isCoarsePointer()}
                       autoComplete="off"
                       className="h-11 w-full rounded-xl border-2 border-border bg-card pl-9 pr-3 font-pixel text-[11px] placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors"
                     />

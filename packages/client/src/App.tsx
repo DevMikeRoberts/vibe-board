@@ -64,6 +64,35 @@ type TaskSubmitData = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ErrorToast — shared by BoardPage (task errors) and App (project errors)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ErrorToast({ error, onDismiss }: { error: string | null; onDismiss: () => void }) {
+  return (
+    <AnimatePresence>
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          className="sticker fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[90] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-2xl bg-card px-4 py-2 font-pixel text-[11px] text-destructive"
+        >
+          <PixelIcon name="alert-triangle-1" className="h-4 w-4 shrink-0 text-destructive" />
+          <span className="min-w-0 [overflow-wrap:anywhere]">{error}</span>
+          <button
+            onClick={onDismiss}
+            className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-destructive hover:text-foreground"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BoardPage
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -72,11 +101,13 @@ function BoardPage({
   theme,
   toggleTheme,
   radio,
+  onOpenSidebar,
 }: {
   project: Project;
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   radio: { on: boolean; volume: number; toggle: () => void; setVolume: (v: number) => void };
+  onOpenSidebar?: () => void;
 }) {
   const lockedRepoPath = project.repoPath;
   const projectDefaults = {
@@ -462,6 +493,7 @@ function BoardPage({
         onNewTask={handleOpenDialog}
         onSprintPlanner={handleOpenSprintDialog}
         radio={radio}
+        onOpenSidebar={onOpenSidebar}
       />
 
       <main className="flex-1 overflow-hidden">
@@ -553,25 +585,7 @@ function BoardPage({
       />
 
       {/* Error toast */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="sticker fixed bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 font-pixel text-[11px] text-destructive"
-          >
-            <PixelIcon name="alert-triangle-1" className="h-4 w-4 shrink-0 text-destructive" />
-            <span>{error}</span>
-            <button
-              onClick={clearError}
-              className="ml-1 shrink-0 font-pixel text-destructive hover:text-foreground"
-            >
-              ✕
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ErrorToast error={error} onDismiss={clearError} />
 
       {/* Board Companion */}
       <BoardCompanion
@@ -656,6 +670,21 @@ export function App() {
   const radio = useRadio();
   const [route, setRoute] = useState<RouteState>(() => readRoute());
 
+  // Below md the projects sidebar is an off-canvas drawer, opened from Header
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+  const openSidebar = useCallback(() => setSidebarOpen(true), []);
+
+  // The drawer lives outside BoardPage's keyboard-shortcut scope, so Escape is handled here
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeSidebar();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [sidebarOpen, closeSidebar]);
+
   // Project-management dialog state (lifted out of ProjectsPage)
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -736,7 +765,7 @@ export function App() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-dvh overflow-hidden bg-background">
       {/* ── Global visual effects ── */}
       <DitherBackground />
       <SakuraLeaves />
@@ -746,7 +775,9 @@ export function App() {
 
       {/* ── Left sidebar: project list ── */}
       {route.view !== 'home' && (
-        <div className="relative z-10">
+        /* max-md:z-auto keeps the fixed drawer's z-[60] in the root stacking
+           context so it can cover the board subtree (itself capped at z-10) */
+        <div className="relative z-10 max-md:z-auto">
           <ProjectsSidebar
             projects={projects}
             selectedProjectId={selectedProject?.id}
@@ -758,6 +789,8 @@ export function App() {
             theme={theme}
             toggleTheme={toggleTheme}
             onGoHome={() => navigate('/')}
+            mobileOpen={sidebarOpen}
+            onCloseMobile={closeSidebar}
           />
         </div>
       )}
@@ -784,6 +817,7 @@ export function App() {
             theme={theme}
             toggleTheme={toggleTheme}
             radio={radio}
+            onOpenSidebar={openSidebar}
           />
         ) : (
           /* No projects at all */
@@ -849,26 +883,7 @@ export function App() {
       <GitHubSetupModal onImported={refreshProjects} />
 
       {/* Global error toast (project-level errors from useProjects) */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="sticker fixed bottom-4 left-1/2 z-[70] flex -translate-x-1/2 items-center gap-2 rounded-full bg-card px-4 py-2 font-pixel text-[11px] text-destructive"
-          >
-            <PixelIcon name="alert-triangle-1" className="h-4 w-4 shrink-0 text-destructive" />
-            <span>{error}</span>
-            <button
-              onClick={clearError}
-              className="ml-1 shrink-0 font-pixel text-destructive hover:text-foreground"
-              aria-label="Dismiss error"
-            >
-              ✕
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ErrorToast error={error} onDismiss={clearError} />
     </div>
   );
 }

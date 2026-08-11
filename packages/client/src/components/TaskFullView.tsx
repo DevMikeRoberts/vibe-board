@@ -20,6 +20,20 @@ import {
   type CoalescedEvent,
 } from '@/lib/agent-events';
 
+// ─── useMinWidth ───────────────────────────────────────────────────────────
+
+function useMinWidth(px: number) {
+  const [matches, setMatches] = useState(() => window.matchMedia(`(min-width: ${px}px)`).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${px}px)`);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [px]);
+  return matches;
+}
+
 // ─── CopyButton ────────────────────────────────────────────────────────────
 
 function CopyButton({ text }: { text: string }) {
@@ -36,7 +50,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors before:absolute before:-inset-2"
     >
       {copied
         ? <PixelIcon name="rating-star-1" className="h-3 w-3 text-neon-green" />
@@ -334,12 +348,14 @@ export function TaskFullView({
   const [sending, setSending] = useState(false);
   const [followUpImages, setFollowUpImages] = useState<File[]>([]);
   const [hasRemote, setHasRemote] = useState<boolean | null>(null);
-  const [activeTab, setActiveTab] = useState<'events' | 'terminal' | 'changes' | 'summary'>(
+  const [activeTab, setActiveTab] = useState<'info' | 'events' | 'terminal' | 'changes' | 'summary'>(
     'events'
   );
   const userSelectedTabRef = useRef(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isMdUp = useMinWidth(768);
+  const isSmUp = useMinWidth(640);
 
   const taskId = task?.id ?? null;
   const agentStatus = task?.agentStatus;
@@ -424,6 +440,13 @@ export function TaskFullView({
       setActiveTab('events');
     }
   }, [taskId, columnId]);
+
+  // The mobile-only info tab disappears at md+ (the aside returns) — fall back to events
+  useEffect(() => {
+    if (isMdUp) {
+      setActiveTab((tab) => (tab === 'info' ? 'events' : tab));
+    }
+  }, [isMdUp]);
 
   // Auto-scroll events
   useEffect(() => {
@@ -538,6 +561,282 @@ export function TaskFullView({
     );
   const activeTabStyle = { backgroundColor: 'var(--color-neon-blue)', color: 'var(--color-ink)' };
 
+  // Info panel content — rendered in the md+ aside AND in the mobile-only "info" tab
+  const infoContent = task && (
+    <div className="p-4">
+
+      {/* Status badge */}
+      <div className="mb-3 flex items-center gap-2">
+        {agentStatus === 'executing' && (
+          <span
+            className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
+            style={{ backgroundColor: 'var(--color-neon-blue)', color: 'var(--color-ink)' }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-ink animate-pulse" />
+            executing
+          </span>
+        )}
+        {agentStatus === 'planning' && (
+          <span
+            className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
+            style={{ backgroundColor: 'var(--color-neon-purple)', color: 'var(--color-ink)' }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-ink animate-pulse" />
+            planning
+          </span>
+        )}
+        {agentStatus === 'complete' && (
+          <span
+            className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
+            style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
+          >
+            <PixelIcon name="rating-star-1" className="h-3 w-3" />
+            complete
+          </span>
+        )}
+        {agentStatus === 'failed' && (
+          <span
+            className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
+            style={{ backgroundColor: 'var(--color-destructive)', color: 'var(--color-ink)' }}
+          >
+            <PixelIcon name="alert-triangle-1" className="h-3 w-3" />
+            failed
+          </span>
+        )}
+        {agentStatus === 'idle' && (
+          <span className="flex items-center gap-1.5 rounded-full border-2 border-border bg-muted/60 px-2.5 py-1 font-pixel text-[10px] lowercase text-muted-foreground">
+            idle
+          </span>
+        )}
+        {priorityDisplay && (
+          <span className="text-sm" title={`Priority: ${task.priority}`}>
+            {priorityDisplay.emoji}
+          </span>
+        )}
+      </div>
+
+      {/* Description */}
+      {task.description && (
+        <div className="mb-3">
+          <div className="font-pixel text-[10px] lowercase tracking-widest text-muted-foreground/60 mb-1.5">
+            description
+          </div>
+          <div className="rounded-xl border-2 border-border/50 bg-muted/30 px-3 py-2.5 text-xs leading-relaxed text-foreground/80 max-h-48 overflow-y-auto prose-sm dark:prose-invert">
+            <Markdown
+              allowedElements={[
+                'p', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li',
+                'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'br',
+              ]}
+            >
+              {task.description}
+            </Markdown>
+          </div>
+        </div>
+      )}
+
+      {/* ── Metadata ── */}
+      <SectionHeader>metadata</SectionHeader>
+      <div className="space-y-0.5">
+        {agentDisplay && (
+          <InfoRow icon="chipset" label="Agent">
+            <span className="flex items-center gap-1">
+              {agentDisplay.emoji} {agentDisplay.label}
+            </span>
+          </InfoRow>
+        )}
+        {priorityDisplay && (
+          <InfoRow icon="alert-triangle-1" label="Priority">
+            <span className="flex items-center gap-1">
+              {priorityDisplay.emoji} {priorityDisplay.label}
+            </span>
+          </InfoRow>
+        )}
+        <InfoRow icon="calendar-date" label="Created">
+          {formatDate(task.createdAt)}
+        </InfoRow>
+        {task.startedAt && (
+          <InfoRow icon="flash" label="Started">
+            {formatDate(task.startedAt)}
+          </InfoRow>
+        )}
+        {task.completedAt && (
+          <InfoRow icon="rating-star-1" label="Finished">
+            {formatDate(task.completedAt)}
+          </InfoRow>
+        )}
+        {duration && (
+          <InfoRow icon="clock" label="Duration">
+            {duration}
+          </InfoRow>
+        )}
+        <InfoRow icon="old-electronics" label="Events">
+          {events.length} recorded
+        </InfoRow>
+      </div>
+
+      {/* ── Repository ── */}
+      {(task.branchName || task.repoPath) && (
+        <>
+          <SectionHeader>repository</SectionHeader>
+          <div className="space-y-0.5">
+            {task.branchName && (
+              <InfoRow icon="hierarchy-2" label="Branch">
+                <span className="font-mono">{task.branchName}</span>
+                <span className="text-muted-foreground/60"> from </span>
+                <span className="font-mono">{task.baseBranch || 'main'}</span>
+              </InfoRow>
+            )}
+            {task.repoPath && (
+              <InfoRow icon="global-public" label="Repo Path">
+                <span className="font-mono break-all text-[10px]">{task.repoPath}</span>
+              </InfoRow>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Pull Request ── */}
+      {(task.agentStatus === 'complete' || task.columnId === 'done') && task.branchName && (
+        <>
+          <SectionHeader>pull request</SectionHeader>
+          <div className="space-y-2">
+            {/* Existing PR link */}
+            {(prUrl ?? task.prUrl) && (
+              <a
+                href={prUrl ?? task.prUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sticker-sm sticker-press flex items-center gap-2 rounded-xl px-3 py-2 font-pixel text-[11px] lowercase"
+                style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
+              >
+                <PixelIcon name="hyperlink" className="h-3.5 w-3.5" />
+                view pull request
+                <PixelIcon name="hyperlink" className="h-3 w-3 ml-auto" />
+              </a>
+            )}
+
+            {/* Create PR */}
+            {!prUrl && !task.prUrl && onCreatePR && hasRemote === true && (
+              <button
+                onClick={async () => {
+                  setPrLoading(true);
+                  setPrError(null);
+                  try {
+                    const url = await onCreatePR(task.id);
+                    if (url) setPrUrl(url);
+                  } catch (err: unknown) {
+                    setPrError((err as Error).message || 'Failed to create PR');
+                  }
+                  setPrLoading(false);
+                }}
+                disabled={prLoading}
+                className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                <PixelIcon name="hyperlink" className="h-3.5 w-3.5" />
+                {prLoading ? 'creating pr…' : 'create pull request'}
+              </button>
+            )}
+
+            {/* Merge */}
+            {!mergeResult && onMergeLocal && (
+              <button
+                onClick={async () => {
+                  setMergeLoading(true);
+                  setMergeError(null);
+                  try {
+                    const branch = await onMergeLocal(task.id);
+                    if (branch) setMergeResult(branch);
+                  } catch (err: unknown) {
+                    setMergeError((err as Error).message || 'Failed to merge');
+                  }
+                  setMergeLoading(false);
+                }}
+                disabled={mergeLoading}
+                className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
+                {mergeLoading ? 'merging…' : `merge to ${task.baseBranch || 'main'}`}
+              </button>
+            )}
+
+            {mergeResult && (
+              <div
+                className="sticker-sm flex items-center gap-2 rounded-xl px-3 py-2 font-pixel text-[11px] lowercase"
+                style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
+              >
+                <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
+                merged to {mergeResult}
+              </div>
+            )}
+
+            {prError && (
+              <div className="rounded-xl border-2 border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive flex items-start justify-between gap-2">
+                <span className="font-mono">{prError}</span>
+                <button onClick={() => setPrError(null)} className="shrink-0 font-pixel hover:text-foreground" aria-label="Dismiss">✕</button>
+              </div>
+            )}
+            {mergeError && (
+              <div className="rounded-xl border-2 border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive flex items-start justify-between gap-2">
+                <span className="font-mono">{mergeError}</span>
+                <button onClick={() => setMergeError(null)} className="shrink-0 font-pixel hover:text-foreground" aria-label="Dismiss">✕</button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Actions ── */}
+      <SectionHeader>actions</SectionHeader>
+      <div className="space-y-1.5">
+        {onEdit && !task.archived && (
+          <button
+            onClick={() => { onClose(); onEdit(task); }}
+            className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors"
+          >
+            <PixelIcon name="quill-ink" className="h-3.5 w-3.5" />
+            edit task
+          </button>
+        )}
+        {!isActive && agentStatus === 'failed' && onReconfigureRetry && (
+          <button
+            onClick={() => { onClose(); onReconfigureRetry(task.id); }}
+            className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-neon-yellow hover:border-neon-yellow/60 hover:text-neon-yellow transition-colors"
+          >
+            <PixelIcon name="cog-browser" className="h-3.5 w-3.5" />
+            reconfigure &amp; retry
+          </button>
+        )}
+        {onArchive && (task.columnId === 'done' || agentStatus === 'failed') && !task.archived && (
+          <button
+            onClick={() => { onArchive(task); onClose(); }}
+            className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
+          >
+            <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
+            archive task
+          </button>
+        )}
+        {onUnarchive && task.archived && (
+          <button
+            onClick={() => { onUnarchive(task); onClose(); }}
+            className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
+          >
+            <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
+            unarchive task
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={() => { onDelete(task); onClose(); }}
+            className="flex w-full items-center gap-2 rounded-xl border-2 border-destructive/30 bg-destructive/10 px-3 py-2 font-pixel text-[11px] lowercase text-destructive hover:border-destructive/60 hover:bg-destructive/15 transition-colors"
+          >
+            <PixelIcon name="bin" className="h-3.5 w-3.5" />
+            delete task
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <AnimatePresence>
     {task && (
@@ -578,7 +877,7 @@ export function TaskFullView({
                 agentStatus === 'idle' && 'bg-muted-foreground/40'
               )}
             />
-            <h1 className="font-display text-sm [text-transform:lowercase] text-foreground truncate max-w-lg">{task.title}</h1>
+            <h1 className="min-w-0 font-display text-sm [text-transform:lowercase] text-foreground truncate max-w-lg">{task.title}</h1>
             {agentDisplay && (
               <span className="hidden sm:inline-flex items-center gap-1 font-pixel text-[10px] text-muted-foreground shrink-0">
                 {agentDisplay.emoji} {agentDisplay.label}
@@ -640,280 +939,9 @@ export function TaskFullView({
 
         {/* ── Body ── */}
         <div className="flex flex-1 overflow-hidden">
-          {/* ── LEFT INFO PANEL ── */}
-          <aside className="w-72 xl:w-80 shrink-0 flex flex-col border-r-2 border-border bg-card/40 overflow-y-auto">
-            <div className="p-4">
-
-              {/* Status badge */}
-              <div className="mb-3 flex items-center gap-2">
-                {agentStatus === 'executing' && (
-                  <span
-                    className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
-                    style={{ backgroundColor: 'var(--color-neon-blue)', color: 'var(--color-ink)' }}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-ink animate-pulse" />
-                    executing
-                  </span>
-                )}
-                {agentStatus === 'planning' && (
-                  <span
-                    className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
-                    style={{ backgroundColor: 'var(--color-neon-purple)', color: 'var(--color-ink)' }}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-ink animate-pulse" />
-                    planning
-                  </span>
-                )}
-                {agentStatus === 'complete' && (
-                  <span
-                    className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
-                    style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
-                  >
-                    <PixelIcon name="rating-star-1" className="h-3 w-3" />
-                    complete
-                  </span>
-                )}
-                {agentStatus === 'failed' && (
-                  <span
-                    className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
-                    style={{ backgroundColor: 'var(--color-destructive)', color: 'var(--color-ink)' }}
-                  >
-                    <PixelIcon name="alert-triangle-1" className="h-3 w-3" />
-                    failed
-                  </span>
-                )}
-                {agentStatus === 'idle' && (
-                  <span className="flex items-center gap-1.5 rounded-full border-2 border-border bg-muted/60 px-2.5 py-1 font-pixel text-[10px] lowercase text-muted-foreground">
-                    idle
-                  </span>
-                )}
-                {priorityDisplay && (
-                  <span className="text-sm" title={`Priority: ${task.priority}`}>
-                    {priorityDisplay.emoji}
-                  </span>
-                )}
-              </div>
-
-              {/* Description */}
-              {task.description && (
-                <div className="mb-3">
-                  <div className="font-pixel text-[10px] lowercase tracking-widest text-muted-foreground/60 mb-1.5">
-                    description
-                  </div>
-                  <div className="rounded-xl border-2 border-border/50 bg-muted/30 px-3 py-2.5 text-xs leading-relaxed text-foreground/80 max-h-48 overflow-y-auto prose-sm dark:prose-invert">
-                    <Markdown
-                      allowedElements={[
-                        'p', 'strong', 'em', 'code', 'pre', 'ul', 'ol', 'li',
-                        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr', 'br',
-                      ]}
-                    >
-                      {task.description}
-                    </Markdown>
-                  </div>
-                </div>
-              )}
-
-              {/* ── Metadata ── */}
-              <SectionHeader>metadata</SectionHeader>
-              <div className="space-y-0.5">
-                {agentDisplay && (
-                  <InfoRow icon="chipset" label="Agent">
-                    <span className="flex items-center gap-1">
-                      {agentDisplay.emoji} {agentDisplay.label}
-                    </span>
-                  </InfoRow>
-                )}
-                {priorityDisplay && (
-                  <InfoRow icon="alert-triangle-1" label="Priority">
-                    <span className="flex items-center gap-1">
-                      {priorityDisplay.emoji} {priorityDisplay.label}
-                    </span>
-                  </InfoRow>
-                )}
-                <InfoRow icon="calendar-date" label="Created">
-                  {formatDate(task.createdAt)}
-                </InfoRow>
-                {task.startedAt && (
-                  <InfoRow icon="flash" label="Started">
-                    {formatDate(task.startedAt)}
-                  </InfoRow>
-                )}
-                {task.completedAt && (
-                  <InfoRow icon="rating-star-1" label="Finished">
-                    {formatDate(task.completedAt)}
-                  </InfoRow>
-                )}
-                {duration && (
-                  <InfoRow icon="clock" label="Duration">
-                    {duration}
-                  </InfoRow>
-                )}
-                <InfoRow icon="old-electronics" label="Events">
-                  {events.length} recorded
-                </InfoRow>
-              </div>
-
-              {/* ── Repository ── */}
-              {(task.branchName || task.repoPath) && (
-                <>
-                  <SectionHeader>repository</SectionHeader>
-                  <div className="space-y-0.5">
-                    {task.branchName && (
-                      <InfoRow icon="hierarchy-2" label="Branch">
-                        <span className="font-mono">{task.branchName}</span>
-                        <span className="text-muted-foreground/60"> from </span>
-                        <span className="font-mono">{task.baseBranch || 'main'}</span>
-                      </InfoRow>
-                    )}
-                    {task.repoPath && (
-                      <InfoRow icon="global-public" label="Repo Path">
-                        <span className="font-mono break-all text-[10px]">{task.repoPath}</span>
-                      </InfoRow>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* ── Pull Request ── */}
-              {(task.agentStatus === 'complete' || task.columnId === 'done') && task.branchName && (
-                <>
-                  <SectionHeader>pull request</SectionHeader>
-                  <div className="space-y-2">
-                    {/* Existing PR link */}
-                    {(prUrl ?? task.prUrl) && (
-                      <a
-                        href={prUrl ?? task.prUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="sticker-sm sticker-press flex items-center gap-2 rounded-xl px-3 py-2 font-pixel text-[11px] lowercase"
-                        style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
-                      >
-                        <PixelIcon name="hyperlink" className="h-3.5 w-3.5" />
-                        view pull request
-                        <PixelIcon name="hyperlink" className="h-3 w-3 ml-auto" />
-                      </a>
-                    )}
-
-                    {/* Create PR */}
-                    {!prUrl && !task.prUrl && onCreatePR && hasRemote === true && (
-                      <button
-                        onClick={async () => {
-                          setPrLoading(true);
-                          setPrError(null);
-                          try {
-                            const url = await onCreatePR(task.id);
-                            if (url) setPrUrl(url);
-                          } catch (err: unknown) {
-                            setPrError((err as Error).message || 'Failed to create PR');
-                          }
-                          setPrLoading(false);
-                        }}
-                        disabled={prLoading}
-                        className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors disabled:opacity-50"
-                      >
-                        <PixelIcon name="hyperlink" className="h-3.5 w-3.5" />
-                        {prLoading ? 'creating pr…' : 'create pull request'}
-                      </button>
-                    )}
-
-                    {/* Merge */}
-                    {!mergeResult && onMergeLocal && (
-                      <button
-                        onClick={async () => {
-                          setMergeLoading(true);
-                          setMergeError(null);
-                          try {
-                            const branch = await onMergeLocal(task.id);
-                            if (branch) setMergeResult(branch);
-                          } catch (err: unknown) {
-                            setMergeError((err as Error).message || 'Failed to merge');
-                          }
-                          setMergeLoading(false);
-                        }}
-                        disabled={mergeLoading}
-                        className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors disabled:opacity-50"
-                      >
-                        <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
-                        {mergeLoading ? 'merging…' : `merge to ${task.baseBranch || 'main'}`}
-                      </button>
-                    )}
-
-                    {mergeResult && (
-                      <div
-                        className="sticker-sm flex items-center gap-2 rounded-xl px-3 py-2 font-pixel text-[11px] lowercase"
-                        style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
-                      >
-                        <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
-                        merged to {mergeResult}
-                      </div>
-                    )}
-
-                    {prError && (
-                      <div className="rounded-xl border-2 border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive flex items-start justify-between gap-2">
-                        <span className="font-mono">{prError}</span>
-                        <button onClick={() => setPrError(null)} className="shrink-0 font-pixel hover:text-foreground" aria-label="Dismiss">✕</button>
-                      </div>
-                    )}
-                    {mergeError && (
-                      <div className="rounded-xl border-2 border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive flex items-start justify-between gap-2">
-                        <span className="font-mono">{mergeError}</span>
-                        <button onClick={() => setMergeError(null)} className="shrink-0 font-pixel hover:text-foreground" aria-label="Dismiss">✕</button>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-
-              {/* ── Actions ── */}
-              <SectionHeader>actions</SectionHeader>
-              <div className="space-y-1.5">
-                {onEdit && !task.archived && (
-                  <button
-                    onClick={() => { onClose(); onEdit(task); }}
-                    className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors"
-                  >
-                    <PixelIcon name="quill-ink" className="h-3.5 w-3.5" />
-                    edit task
-                  </button>
-                )}
-                {!isActive && agentStatus === 'failed' && onReconfigureRetry && (
-                  <button
-                    onClick={() => { onClose(); onReconfigureRetry(task.id); }}
-                    className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-neon-yellow hover:border-neon-yellow/60 hover:text-neon-yellow transition-colors"
-                  >
-                    <PixelIcon name="cog-browser" className="h-3.5 w-3.5" />
-                    reconfigure &amp; retry
-                  </button>
-                )}
-                {onArchive && (task.columnId === 'done' || agentStatus === 'failed') && !task.archived && (
-                  <button
-                    onClick={() => { onArchive(task); onClose(); }}
-                    className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
-                  >
-                    <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
-                    archive task
-                  </button>
-                )}
-                {onUnarchive && task.archived && (
-                  <button
-                    onClick={() => { onUnarchive(task); onClose(); }}
-                    className="flex w-full items-center gap-2 rounded-xl border-2 border-border bg-card px-3 py-2 font-pixel text-[11px] lowercase text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
-                  >
-                    <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
-                    unarchive task
-                  </button>
-                )}
-                {onDelete && (
-                  <button
-                    onClick={() => { onDelete(task); onClose(); }}
-                    className="flex w-full items-center gap-2 rounded-xl border-2 border-destructive/30 bg-destructive/10 px-3 py-2 font-pixel text-[11px] lowercase text-destructive hover:border-destructive/60 hover:bg-destructive/15 transition-colors"
-                  >
-                    <PixelIcon name="bin" className="h-3.5 w-3.5" />
-                    delete task
-                  </button>
-                )}
-              </div>
-            </div>
+          {/* ── LEFT INFO PANEL (md+; below md the same content lives in the "info" tab) ── */}
+          <aside className="hidden md:flex w-72 xl:w-80 shrink-0 flex-col border-r-2 border-border bg-card/40 overflow-y-auto">
+            {infoContent}
           </aside>
 
           {/* ── RIGHT ACTIVITY PANEL ── */}
@@ -942,6 +970,14 @@ export function TaskFullView({
             {/* Tab bar */}
             <div className="shrink-0 flex items-center justify-between border-b-2 border-border px-3 py-2 gap-2">
               <div className="flex gap-2 flex-wrap">
+                <button
+                  onClick={() => selectTab('info')}
+                  className={cn(tabButtonClass(activeTab === 'info'), 'md:hidden')}
+                  style={activeTab === 'info' ? activeTabStyle : undefined}
+                >
+                  <PixelIcon name="information-circle-1" className="h-4 w-4" />
+                  info
+                </button>
                 {showSummaryTab && (
                   <button
                     onClick={() => selectTab('summary')}
@@ -990,7 +1026,7 @@ export function TaskFullView({
               {events.length > 0 && (
                 <button
                   onClick={handleExportLog}
-                  className="flex items-center gap-1 rounded-full px-2 py-1 font-pixel text-[10px] lowercase text-muted-foreground hover:text-foreground transition-colors"
+                  className="flex h-10 shrink-0 items-center gap-1 rounded-full px-3 font-pixel text-[10px] lowercase text-muted-foreground hover:text-foreground transition-colors"
                   title="Download event log as markdown"
                 >
                   <PixelIcon name="clound-download" className="h-3 w-3" />
@@ -998,6 +1034,13 @@ export function TaskFullView({
                 </button>
               )}
             </div>
+
+            {/* ── Info tab (below md — same content as the desktop aside) ── */}
+            {activeTab === 'info' && (
+              <div className="flex-1 overflow-y-auto bg-card/40 md:hidden">
+                {infoContent}
+              </div>
+            )}
 
             {/* ── Summary tab ── */}
             {activeTab === 'summary' && (
@@ -1161,7 +1204,7 @@ export function TaskFullView({
             )}
 
             {/* ── Message composer (bottom) ── */}
-            <div className="shrink-0 border-t-2 border-border bg-card px-4 py-3">
+            <div className="shrink-0 border-t-2 border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {followUpImages.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2.5">
                   {followUpImages.map((f, i) => (
@@ -1170,7 +1213,8 @@ export function TaskFullView({
                       <button
                         type="button"
                         onClick={() => setFollowUpImages((prev) => prev.filter((_, j) => j !== i))}
-                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-primary-foreground text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 pointer-coarse:w-7 pointer-coarse:h-7 rounded-full bg-destructive text-primary-foreground text-[10px] leading-none flex items-center justify-center pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 transition-opacity before:absolute before:-inset-2"
+                        aria-label="Remove image"
                       >
                         ×
                       </button>
@@ -1213,11 +1257,15 @@ export function TaskFullView({
                   }}
                   placeholder={
                     agentStatus === 'executing'
-                      ? 'Send a message to the agent… (Enter to send)'
-                      : 'Messages can only be sent while the agent is running'
+                      ? isSmUp
+                        ? 'Send a message to the agent… (Enter to send)'
+                        : 'Message the agent…'
+                      : isSmUp
+                      ? 'Messages can only be sent while the agent is running'
+                      : 'Agent must be running'
                   }
                   disabled={agentStatus !== 'executing' || sending}
-                  className="h-11 flex-1 rounded-xl border-2 border-border bg-card px-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="h-11 min-w-0 flex-1 rounded-xl border-2 border-border bg-card px-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 />
                 <button
                   onClick={handleSendFollowUp}

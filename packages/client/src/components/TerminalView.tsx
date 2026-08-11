@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import type { AgentEvent } from '@/types';
+import { isCoarsePointer } from '@/lib/utils';
 
 interface TerminalViewProps {
   events: AgentEvent[];
@@ -119,7 +120,7 @@ export function TerminalView({ events, streaming, theme = 'dark' }: TerminalView
       scrollback: 5000,
       disableStdin: true,
       cursorBlink: false,
-      fontSize: 11,
+      fontSize: isCoarsePointer() ? 12 : 11,
       fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", monospace',
       theme: theme === 'light' ? LIGHT_THEME : DARK_THEME,
     });
@@ -133,10 +134,21 @@ export function TerminalView({ events, streaming, theme = 'dark' }: TerminalView
     fitRef.current = fit;
     renderedCountRef.current = 0;
 
-    const ro = new ResizeObserver(() => fit.fit());
+    // Refit once the mono webfont settles — FitAddon caches char width, so a
+    // late font swap would leave clipped/overflowing columns until next resize.
+    document.fonts?.ready.then(() => fitRef.current?.fit());
+
+    // Debounce fits to one per frame; orientation changes / panel resizes can
+    // fire the observer many times per frame otherwise.
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => fit.fit());
+    });
     ro.observe(containerRef.current);
 
     return () => {
+      cancelAnimationFrame(raf);
       ro.disconnect();
       term.dispose();
       termRef.current = null;

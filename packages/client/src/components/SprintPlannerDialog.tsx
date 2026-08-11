@@ -4,7 +4,7 @@ import { PixelIcon } from './PixelIcon';
 import type { AgentType, Priority } from '@/types';
 import { AGENT_OPTIONS } from '@/lib/agent-config';
 import { PRIORITY_OPTIONS } from '@/lib/priority-config';
-import { cn, getRepoPathHelpText, getRepoPathPlaceholder, isAbsoluteRepoPath } from '@/lib/utils';
+import { cn, getRepoPathHelpText, getRepoPathPlaceholder, isAbsoluteRepoPath, isCoarsePointer } from '@/lib/utils';
 import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 
 interface SprintPlannerDialogProps {
@@ -114,21 +114,21 @@ export function SprintPlannerDialog({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[85] flex items-start justify-center bg-black/60 p-4 sm:items-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
         >
           <motion.div
-            className="sticker flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] bg-popover"
+            className="sticker flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-[1.75rem] bg-popover"
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border px-6 py-4">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-6 py-4">
               <div className="flex items-center gap-3">
                 <div
                   className="sticker-sm flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
@@ -141,13 +141,13 @@ export function SprintPlannerDialog({
                   <p className="text-xs text-muted-foreground">describe a sprint and let AI break it into tickets</p>
                 </div>
               </div>
-              <button onClick={onClose} className="rounded-lg p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+              <button onClick={onClose} aria-label="Close" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground">
                 ✕
               </button>
             </div>
 
             {/* Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4 space-y-4">
               {/* Sprint name */}
               <div>
                 <label className="mb-1 block text-sm font-medium text-muted-foreground">Sprint Name</label>
@@ -157,7 +157,7 @@ export function SprintPlannerDialog({
                   onChange={(e) => setSprintName(e.target.value)}
                   placeholder="e.g., Q2 Auth Overhaul"
                   className="h-11 w-full rounded-xl border-2 border-border bg-card px-3 text-sm placeholder:text-muted-foreground/50 focus:border-primary focus:outline-none"
-                  autoFocus
+                  autoFocus={!isCoarsePointer()}
                 />
               </div>
 
@@ -177,7 +177,7 @@ export function SprintPlannerDialog({
               </div>
 
               {/* Priority + Agent + Repo + Branch row */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {/* Priority dropdown */}
                 <div className="relative">
                   <label className="mb-1 block text-sm font-medium text-muted-foreground">Default Priority</label>
@@ -195,7 +195,7 @@ export function SprintPlannerDialog({
                         <button
                           key={p.value}
                           onClick={() => { setPriority(p.value); setShowPriority(false); }}
-                          className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors', priority === p.value && 'bg-accent')}
+                          className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 hover:bg-accent transition-colors', priority === p.value && 'bg-accent')}
                         >
                           <span>{p.emoji}</span> {p.label}
                         </button>
@@ -221,7 +221,7 @@ export function SprintPlannerDialog({
                         <button
                           key={a.value}
                           onClick={() => { setAgentType(a.value); setShowAgent(false); }}
-                          className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors', agentType === a.value && 'bg-accent')}
+                          className={cn('flex w-full items-center gap-2 px-3 py-1.5 text-sm pointer-coarse:min-h-11 hover:bg-accent transition-colors', agentType === a.value && 'bg-accent')}
                         >
                           <span>{a.emoji}</span> {a.label}
                         </button>
@@ -231,7 +231,7 @@ export function SprintPlannerDialog({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {/* Local path */}
                 <div>
                   <label htmlFor="sprint-repo-path" className="mb-1 block text-sm font-medium text-muted-foreground">Local Path</label>
@@ -284,17 +284,17 @@ export function SprintPlannerDialog({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border px-6 py-4 sm:gap-3">
               <button
                 onClick={onClose}
-                className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="h-11 w-full rounded-lg px-4 text-sm text-muted-foreground hover:bg-accent hover:text-foreground sm:w-auto"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={!sprintName.trim() || !description.trim() || submitting}
-                className="sticker-sm sticker-press flex items-center gap-2 rounded-full px-5 py-2.5 font-display text-sm [text-transform:lowercase]"
+                className="sticker-sm sticker-press flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 font-display text-sm sm:w-auto [text-transform:lowercase]"
                 style={{ backgroundColor: 'var(--color-neon-blue)', color: 'var(--color-ink)' }}
               >
                 <PixelIcon name="flag" className="h-4 w-4" />

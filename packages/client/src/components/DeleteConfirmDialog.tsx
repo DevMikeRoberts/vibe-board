@@ -37,7 +37,7 @@ export function DeleteConfirmDialog({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[var(--overlay-bg)] backdrop-blur-sm"
+            className="fixed inset-0 z-[85] bg-[var(--overlay-bg)] backdrop-blur-sm"
             onClick={onCancel}
           />
 
@@ -54,7 +54,7 @@ export function DeleteConfirmDialog({
               default: { type: 'spring', damping: 25, stiffness: 300 },
               x: { duration: 0.45, delay: 0.05, ease: 'easeInOut' },
             }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] p-6"
+            className="fixed left-1/2 top-1/2 z-[85] max-h-[90dvh] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-[1.75rem] p-6"
             style={{
               background: 'color-mix(in srgb, var(--color-destructive) 16%, var(--color-popover))',
               border: '2px solid var(--color-destructive)',
@@ -81,7 +81,7 @@ export function DeleteConfirmDialog({
               </div>
               <button
                 onClick={onCancel}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-destructive/50 bg-card font-pixel text-sm text-destructive/80 transition-colors hover:border-destructive hover:text-destructive"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-destructive/50 bg-card font-pixel text-sm text-destructive/80 transition-colors hover:border-destructive hover:text-destructive"
               >
                 ✕
               </button>
@@ -95,7 +95,7 @@ export function DeleteConfirmDialog({
             )}
 
             {/* Actions */}
-            <div className="flex justify-end gap-2.5">
+            <div className="flex flex-wrap justify-end gap-2.5">
               <button
                 ref={cancelRef}
                 onClick={onCancel}

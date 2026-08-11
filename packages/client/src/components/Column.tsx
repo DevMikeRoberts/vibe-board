@@ -71,7 +71,7 @@ export function Column({ column, tasks, onTaskClick, onEditTask, onDeleteTask, o
 
   return (
     <div
-      className="flex h-full min-w-0 flex-1 flex-col max-w-[25rem] max-md:h-auto max-md:min-h-64 max-md:w-full max-md:flex-none"
+      className="flex h-full min-w-0 flex-1 flex-col max-w-[25rem] max-md:h-auto max-md:min-h-40 max-md:w-full max-md:flex-none md:min-w-64 md:snap-start"
       data-column={column.id}
       style={{ '--panel': hue } as React.CSSProperties}
     >

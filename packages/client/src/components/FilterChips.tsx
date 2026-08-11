@@ -31,7 +31,7 @@ interface FilterChipsProps {
   onClear: () => void;
 }
 
-const chipBase = 'rounded-full border-2 px-3 py-1.5 font-pixel text-[10px] leading-none transition-all';
+const chipBase = 'min-h-8 rounded-full border-2 px-3 py-1.5 font-pixel text-[10px] leading-none transition-all pointer-coarse:min-h-10 pointer-coarse:px-4';
 const chipIdle = 'border-border bg-card text-muted-foreground hover:border-foreground/40 hover:text-foreground';
 
 export function FilterChips({ activeAgentTypes, activeStatuses, onToggleAgentType, onToggleStatus, onClear }: FilterChipsProps) {

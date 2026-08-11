@@ -172,11 +172,11 @@ export default function ImageUpload({ taskId, existing = [], onPendingChange, on
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removeExisting(a); }}
-                className="sticker-sm absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive font-pixel text-cream text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="sticker-sm absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-destructive font-pixel text-cream text-xs transition-opacity before:absolute before:-inset-2 before:rounded-full pointer-coarse:h-8 pointer-coarse:w-8 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 focus-visible:opacity-100"
               >
                 ✕
               </button>
-              <span className="absolute bottom-0 left-0 right-0 bg-ink/70 text-cream font-pixel text-[8px] px-1 truncate rounded-b-xl">
+              <span className="absolute bottom-0 left-0 right-0 bg-ink/70 text-cream font-pixel text-[10px] px-1 truncate rounded-b-xl">
                 {a.originalName}
               </span>
             </div>
@@ -192,11 +192,11 @@ export default function ImageUpload({ taskId, existing = [], onPendingChange, on
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removePending(i); }}
-                className="sticker-sm absolute -top-2 -right-2 w-6 h-6 rounded-full bg-destructive font-pixel text-cream text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="sticker-sm absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-destructive font-pixel text-cream text-xs transition-opacity before:absolute before:-inset-2 before:rounded-full pointer-coarse:h-8 pointer-coarse:w-8 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 focus-visible:opacity-100"
               >
                 ✕
               </button>
-              <span className="absolute bottom-0 left-0 right-0 bg-ink/70 text-cream font-pixel text-[8px] px-1 truncate rounded-b-xl">
+              <span className="absolute bottom-0 left-0 right-0 bg-ink/70 text-cream font-pixel text-[10px] px-1 truncate rounded-b-xl">
                 {p.file.name}
               </span>
             </div>

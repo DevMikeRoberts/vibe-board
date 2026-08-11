@@ -4,7 +4,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Task, AgentStatus } from '@/types';
 import { getAgentDisplay } from '@/lib/agent-config';
 import { getPriorityDisplay } from '@/lib/priority-config';
-import { cn, formatDuration } from '@/lib/utils';
+import { cn, formatDuration, isCoarsePointer } from '@/lib/utils';
 import { PixelIcon } from '@/components/PixelIcon';
 import { FcStateBadge } from '@/components/fc/FcStateBadge';
 import { taskToFcState } from '@/components/fc/taskToFcState';
@@ -95,7 +95,11 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
     // on first sight of an already-finished task (e.g. reloading the board).
     if (finished && wasFinished === false) {
       setCelebrate(true);
-      if (cardRef.current) {
+      // Viewport-coordinate confetti only on fine pointers: the rect is
+      // captured once and held for 2.6s, so on the scrolling touch board it
+      // goes stale mid-scroll and the burst plays at the wrong position. The
+      // card-local FcCelebration still plays there.
+      if (!isCoarsePointer() && cardRef.current) {
         const rect = cardRef.current.getBoundingClientRect();
         setConfettiRect({ x: rect.left, y: rect.top, width: rect.width, height: rect.height });
       }
@@ -126,6 +130,9 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
       className={cn(
         'fc-card',
         'group relative cursor-grab active:cursor-grabbing rounded-2xl max-md:p-3 md:p-3 lg:p-4',
+        // Long-press drag (TouchSensor) must not fight iOS text selection,
+        // the touch callout menu, or double-tap zoom.
+        'select-none touch-manipulation [-webkit-touch-callout:none]',
         isDragging && 'z-50 rotate-2 scale-105 opacity-90',
         task.archived && 'opacity-60 saturate-50'
       )}
@@ -140,75 +147,81 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         />
       )}
 
-      {/* Action buttons */}
-      {(onEdit || onDelete || onArchive || onUnarchive || onRetry || onExpand) && (
-        <div
-          className="absolute right-2.5 top-2.5 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          {onExpand && task.columnId !== 'backlog' && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onExpand(task); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-primary"
-              aria-label="Expand task view"
-              title="Open full view"
+      <div>
+        {/* Header: title + actions. On touch (and no-hover devices) the
+            actions are a static right-aligned row in the flow so they never
+            cover the title; on fine pointers they become the classic
+            absolute hover-reveal overlay. */}
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="min-w-0 line-clamp-2 text-lg font-bold leading-snug tracking-tight text-card-foreground pointer-fine:pr-16">
+            {priorityDisplay && <span className="mr-1.5">{priorityDisplay.emoji}</span>}{task.title}
+          </h3>
+
+          {(onEdit || onDelete || onArchive || onUnarchive || onRetry || onExpand) && (
+            <div
+              className="flex shrink-0 items-center gap-1 transition-opacity pointer-coarse:-mr-1.5 pointer-coarse:-mt-1 pointer-coarse:gap-2 pointer-fine:absolute pointer-fine:right-2.5 pointer-fine:top-2.5 pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onTouchStart={(e) => e.stopPropagation()}
             >
-              <PixelIcon name="expand-1" className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {onRetry && task.agentStatus === 'failed' && !task.archived && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onRetry(task); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-yellow"
-              aria-label="Retry task"
-            >
-              <PixelIcon name="recycle" className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {onEdit && !task.archived && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onEdit(task); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Edit task"
-            >
-              <PixelIcon name="quill-ink" className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {onArchive && (task.columnId === 'done' || task.agentStatus === 'failed') && !task.archived && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onArchive(task); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Archive task"
-            >
-              <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {onUnarchive && task.archived && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onUnarchive(task); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              aria-label="Unarchive task"
-            >
-              <PixelIcon name="floppy-disk" className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onDelete(task); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
-              aria-label="Delete task"
-            >
-              <PixelIcon name="bin" className="h-3.5 w-3.5" />
-            </button>
+              {onExpand && task.columnId !== 'backlog' && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onExpand(task); }}
+                  className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-primary"
+                  aria-label="Expand task view"
+                  title="Open full view"
+                >
+                  <PixelIcon name="expand-1" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
+                </button>
+              )}
+              {onRetry && task.agentStatus === 'failed' && !task.archived && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRetry(task); }}
+                  className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-yellow"
+                  aria-label="Retry task"
+                >
+                  <PixelIcon name="recycle" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
+                </button>
+              )}
+              {onEdit && !task.archived && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onEdit(task); }}
+                  className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Edit task"
+                >
+                  <PixelIcon name="quill-ink" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
+                </button>
+              )}
+              {onArchive && (task.columnId === 'done' || task.agentStatus === 'failed') && !task.archived && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onArchive(task); }}
+                  className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Archive task"
+                >
+                  <PixelIcon name="floppy-disk" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
+                </button>
+              )}
+              {onUnarchive && task.archived && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onUnarchive(task); }}
+                  className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  aria-label="Unarchive task"
+                >
+                  <PixelIcon name="floppy-disk" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(task); }}
+                  className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+                  aria-label="Delete task"
+                >
+                  <PixelIcon name="bin" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
+                </button>
+              )}
+            </div>
           )}
         </div>
-      )}
-
-      <div>
-        {/* Title with priority emoji */}
-        <h3 className="line-clamp-2 pr-16 text-lg font-bold leading-snug tracking-tight text-card-foreground">
-          {priorityDisplay && <span className="mr-1.5">{priorityDisplay.emoji}</span>}{task.title}
-        </h3>
 
         {/* Description */}
         <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
@@ -221,17 +234,17 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         </div>
 
         {/* Footer */}
-        <div className="mt-3.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="mt-3.5 flex flex-wrap items-center justify-between gap-y-1">
+          <div className="flex min-w-0 items-center gap-2">
             {task.agentType && task.columnId !== 'backlog' && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 font-pixel text-[10px] text-accent-foreground">
-                <PixelIcon name="chipset" className="h-3 w-3" />
-                {agentDisplay?.label}
+              <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 font-pixel text-[10px] text-accent-foreground">
+                <PixelIcon name="chipset" className="h-3 w-3 shrink-0" />
+                <span className="truncate">{agentDisplay?.label}</span>
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {retryPending && (
               <span
                 className="flex items-center gap-1 rounded-full border-2 border-neon-yellow/40 bg-neon-yellow/10 px-2 py-0.5 font-pixel text-[10px] text-neon-yellow"

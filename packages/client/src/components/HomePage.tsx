@@ -41,23 +41,26 @@ export function HomePage() {
     fetchStats();
   }, [projects.length]);
 
+  // Full literal class names so Tailwind can see (and generate) them.
   const statItems = useMemo(() => [
-    { label: 'projects', value: stats.projects, icon: 'home-2' as const, color: 'neon-purple' },
-    { label: 'total tasks', value: stats.totalTasks, icon: 'reward-gift' as const, color: 'neon-blue' },
-    { label: 'completed', value: stats.completedTasks, icon: 'heart-like-circle' as const, color: 'neon-green' },
-    { label: 'running', value: stats.activeTasks, icon: 'loading-circle-1' as const, color: 'neon-pink' },
+    { label: 'projects', value: stats.projects, icon: 'home-2' as const, color: 'text-neon-purple' },
+    { label: 'total tasks', value: stats.totalTasks, icon: 'reward-gift' as const, color: 'text-neon-blue' },
+    { label: 'completed', value: stats.completedTasks, icon: 'heart-like-circle' as const, color: 'text-neon-green' },
+    { label: 'running', value: stats.activeTasks, icon: 'loading-circle-1' as const, color: 'text-neon-pink' },
   ], [stats]);
 
   return (
-    <div className="relative flex h-full flex-col items-center justify-center overflow-hidden">
+    <div className="relative h-full overflow-hidden">
       {/* Dithered tree background */}
       <DitheredTree />
 
       {/* Gradient overlay for readability */}
       <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/40 to-background/80" />
 
-      {/* Content */}
-      <div className="relative z-10 flex flex-col items-center gap-8 px-4">
+      {/* Scrollable content layer — m-auto keeps the stack optically centered when it
+          fits and lets it scroll (instead of clipping) on short viewports */}
+      <div className="relative z-10 flex h-full flex-col overflow-y-auto overflow-x-hidden">
+      <div className="m-auto flex flex-col items-center gap-6 px-4 py-10 sm:gap-8">
         {/* Logo and title */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -91,11 +94,11 @@ export function HomePage() {
               key={stat.label}
               className="sticker-sm sticker-peel flex flex-col items-center gap-1 rounded-xl bg-card px-4 py-3"
             >
-              <PixelIcon name={stat.icon} className={`h-5 w-5 text-${stat.color}`} />
+              <PixelIcon name={stat.icon} className={`h-5 w-5 ${stat.color}`} />
               <span className="font-display text-2xl text-foreground">
                 {loading ? '—' : stat.value}
               </span>
-              <span className="font-pixel text-[9px] lowercase text-muted-foreground">
+              <span className="font-pixel text-[10px] lowercase text-muted-foreground">
                 {stat.label}
               </span>
             </div>
@@ -121,22 +124,24 @@ export function HomePage() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.4, delay: 0.6 }}
-          className="flex gap-4"
+          className="flex items-center gap-1"
         >
+          {/* px-3/min-h-11 grow the tap targets to >=44px; -my-2 keeps the row's visual height */}
           <a
             href="/projects"
-            className="font-pixel text-[10px] lowercase text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 items-center px-3 -my-2 font-pixel text-[11px] lowercase text-muted-foreground hover:text-foreground transition-colors"
           >
             [manage projects]
           </a>
           <span className="font-pixel text-[10px] text-muted-foreground/40">·</span>
           <button
             onClick={companion.toggle}
-            className="font-pixel text-[10px] lowercase text-muted-foreground hover:text-foreground transition-colors"
+            className="inline-flex min-h-11 items-center px-3 -my-2 font-pixel text-[11px] lowercase text-muted-foreground hover:text-foreground transition-colors"
           >
             [talk to companion]
           </button>
         </motion.div>
+      </div>
       </div>
 
       {/* Companion */}

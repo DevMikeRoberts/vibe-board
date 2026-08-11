@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, isCoarsePointer } from '@/lib/utils';
 
 interface RetroRadioProps {
   on: boolean;
@@ -9,13 +9,17 @@ interface RetroRadioProps {
 }
 
 export function RetroRadio({ on, volume, onToggle, onVolumeChange }: RetroRadioProps) {
+  // framer-motion animates width inline (beating any pointer-coarse:w-* class),
+  // so the wider touch track has to come from the animation target itself.
+  const trackWidth = isCoarsePointer() ? 112 : 64;
+
   return (
     <div className="flex items-center gap-2">
-      {/* Volume slider */}
+      {/* Volume slider — 4px visual track inside a 44px-tall hit area */}
       {on && (
         <motion.input
           initial={{ width: 0, opacity: 0 }}
-          animate={{ width: 64, opacity: 1 }}
+          animate={{ width: trackWidth, opacity: 1 }}
           exit={{ width: 0, opacity: 0 }}
           transition={{ duration: 0.25 }}
           type="range"
@@ -24,7 +28,7 @@ export function RetroRadio({ on, volume, onToggle, onVolumeChange }: RetroRadioP
           step={0.05}
           value={volume}
           onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-          className="h-1 appearance-none rounded-full bg-neon-green/30 accent-neon-green"
+          className="h-11 cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-1 [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:bg-neon-green/30 [&::-webkit-slider-thumb]:-mt-1.5 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-neon-green [&::-moz-range-track]:h-1 [&::-moz-range-track]:rounded-full [&::-moz-range-track]:bg-neon-green/30 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-neon-green"
           style={{ accentColor: 'var(--color-neon-green)' }}
           title={`Volume: ${Math.round(volume * 100)}%`}
           aria-label="Radio volume"
@@ -37,7 +41,7 @@ export function RetroRadio({ on, volume, onToggle, onVolumeChange }: RetroRadioP
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.92 }}
         className={cn(
-          'sticker-sm sticker-press flex h-8 items-center gap-1.5 rounded-full px-3',
+          'sticker-sm sticker-press flex h-8 pointer-coarse:h-11 items-center gap-1.5 rounded-full px-3',
           'border-2 font-pixel text-[10px] [text-transform:lowercase] transition-colors',
           on
             ? 'border-neon-green bg-neon-green/15 text-neon-green'

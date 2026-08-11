@@ -46,6 +46,19 @@ export function prefersReducedMotion(): boolean {
 }
 
 /**
+ * The low-res buffer size `sizePixelCanvas` would produce for the current
+ * viewport, without touching any canvas. Lets resize handlers compare against
+ * the previous size (e.g. to ignore mobile URL-bar height jitter) before
+ * deciding whether to rebuild a scene.
+ */
+export function measurePixelViewport(pixelSize: number): { w: number; h: number } {
+  return {
+    w: Math.max(1, Math.ceil(window.innerWidth / pixelSize)),
+    h: Math.max(1, Math.ceil(window.innerHeight / pixelSize)),
+  };
+}
+
+/**
  * Size a canvas' internal buffer to the viewport divided by `pixelSize`.
  * Returns the low-res buffer dimensions to draw into.
  */

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTheme } from '@/hooks/useTheme';
-import { bayer, lerpRgb, prefersReducedMotion, sizePixelCanvas } from '@/lib/pixel-canvas';
+import { bayer, lerpRgb, measurePixelViewport, prefersReducedMotion, sizePixelCanvas } from '@/lib/pixel-canvas';
 
 type RGB = [number, number, number];
 
@@ -339,6 +339,11 @@ export function NightCityBackground() {
     const onResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
+        // Height-only deltas (mobile URL-bar chrome) are absorbed by the CSS
+        // stretch — keep the baked skyline instead of re-randomizing the
+        // whole city behind the board mid-scroll.
+        const next = measurePixelViewport(PIXEL);
+        if (Math.abs(next.w - W) < 2 && Math.abs(next.h - H) < 15) return;
         buildScene();
         if (reduced) ctx.drawImage(bg, 0, 0);
       }, 150);

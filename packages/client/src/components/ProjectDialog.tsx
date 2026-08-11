@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PixelIcon } from './PixelIcon';
-import { isAbsoluteRepoPath, getRepoPathHelpText, getRepoPathPlaceholder } from '@/lib/utils';
+import { isAbsoluteRepoPath, isCoarsePointer, getRepoPathHelpText, getRepoPathPlaceholder } from '@/lib/utils';
 import { AGENT_OPTIONS } from '@/lib/agent-config';
 import { PRIORITY_OPTIONS } from '@/lib/priority-config';
 import type { AgentType, CreateProjectRequest, Priority, Project, ProjectPathValidation, UpdateProjectRequest } from '@/types';
@@ -244,7 +244,7 @@ export function ProjectDialog({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[var(--overlay-bg)] backdrop-blur-sm"
+            className="fixed inset-0 z-[85] bg-[var(--overlay-bg)] backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
@@ -253,20 +253,21 @@ export function ProjectDialog({
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 sticker rounded-[1.75rem] bg-popover p-6"
+            className="fixed left-1/2 top-1/2 z-[85] flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col sticker rounded-[1.75rem] bg-popover p-6"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-5 flex shrink-0 items-center justify-between">
               <h2 className="text-base font-semibold">{mode === 'edit' ? 'Edit Project' : 'Create Project'}</h2>
               <button
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground pointer-coarse:h-10 pointer-coarse:w-10"
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+              <div className="min-h-0 space-y-4 overflow-y-auto">
               {mode === 'create' && (
                 <div>
                   <span className="mb-1.5 block font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">Project Source</span>
@@ -318,7 +319,7 @@ export function ProjectDialog({
                     setError('');
                   }}
                   placeholder={mode === 'create' ? 'Defaults to the folder/repo name' : 'Project name'}
-                  autoFocus
+                  autoFocus={!isCoarsePointer()}
                   className="w-full h-11 rounded-xl border-2 border-border bg-card px-3 text-sm placeholder:text-muted-foreground/50 focus:border-neon-pink focus:outline-none transition-colors"
                 />
               </div>
@@ -396,7 +397,7 @@ export function ProjectDialog({
                   <span className="ml-2 font-normal normal-case text-muted-foreground/50">applied to new tasks, overridable per task</span>
                 </p>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label htmlFor="project-default-agent" className="mb-1.5 block font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">
                       Default Agent
@@ -446,19 +447,20 @@ export function ProjectDialog({
 
                 </div>
               </div>
+              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex shrink-0 flex-wrap justify-end gap-2 pt-4">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-11 rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors [text-transform:lowercase]"
+                  className="h-11 w-full rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors [text-transform:lowercase] sm:w-auto"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="sticker-sm sticker-press h-11 rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 [text-transform:lowercase]"
+                  className="sticker-sm sticker-press h-11 w-full rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 [text-transform:lowercase] sm:w-auto"
                 >
                   {submitting
                     ? (mode === 'edit' ? 'Savingâ¦' : (sourceType === 'repo' ? 'Cloningâ¦' : 'Creatingâ¦'))
