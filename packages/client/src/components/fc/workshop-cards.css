@@ -43,6 +43,9 @@
   border-radius: 999px;
   border: 2px solid var(--color-ink);
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   background: color-mix(in srgb, var(--fc-color) 26%, var(--color-card));
   color: color-mix(in srgb, var(--fc-color) 72%, var(--color-foreground));
   box-shadow: 2px 2px 0 0 var(--color-ink);
@@ -116,11 +119,14 @@
 .dark .fc-card {
   border-color: color-mix(in srgb, var(--fc-color) 55%, var(--color-ink));
 }
-.fc-card:hover {
-  transform: translate(-2px, -3px) rotate(-0.6deg);
-  box-shadow:
-    6px 7px 0 0 var(--color-ink),
-    0 0 34px -4px color-mix(in srgb, var(--fc-color) 70%, transparent);
+/* Hover lift only on true hover devices — emulated tap-hover sticks on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .fc-card:hover {
+    transform: translate(-2px, -3px) rotate(-0.6deg);
+    box-shadow:
+      6px 7px 0 0 var(--color-ink),
+      0 0 34px -4px color-mix(in srgb, var(--fc-color) 70%, transparent);
+  }
 }
 
 /* state-specific motion keeps its personality on top of the sticker */

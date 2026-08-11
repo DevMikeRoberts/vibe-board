@@ -44,6 +44,11 @@ function isWindowsBrowser(): boolean {
   return /win/i.test(platform);
 }
 
+/** True on touch-primary devices (phones/tablets without a precise pointer). */
+export function isCoarsePointer(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+}
+
 export function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
   if (totalSec < 60) return `${totalSec}s`;
