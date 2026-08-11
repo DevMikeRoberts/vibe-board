@@ -20,6 +20,7 @@ import { Column } from './Column';
 import { TaskCard } from './TaskCard';
 import { TaskGroupCard } from './TaskGroupCard';
 import type { TaskGroupWithChildren } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 
 interface BoardProps {
@@ -155,7 +156,14 @@ export function Board({
       onDragCancel={handleDragCancel}
     >
       {/* Board area */}
-      <div className="flex h-full gap-4 p-4 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto max-md:pb-[max(1rem,env(safe-area-inset-bottom))] md:gap-6 md:p-7 md:overflow-x-auto md:overflow-y-hidden md:snap-x md:snap-mandatory md:overscroll-x-contain md:scroll-pl-7">
+      <div
+        className={cn(
+          'flex h-full gap-4 p-4 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto max-md:pb-[max(1rem,env(safe-area-inset-bottom))] md:gap-6 md:p-7 md:overflow-x-auto md:overflow-y-hidden md:overscroll-x-contain md:scroll-pl-7',
+          // Mandatory snap re-snaps after every programmatic scroll, which pins dnd-kit's
+          // auto-scroller in place — so snapping is suspended while a card is being dragged.
+          activeTask == null && 'md:snap-x md:snap-mandatory'
+        )}
+      >
         {columns.map((column, index) => (
           <motion.div
             key={column.id}

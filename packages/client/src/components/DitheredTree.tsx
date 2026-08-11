@@ -183,7 +183,7 @@ export function DitheredTree() {
         const rect = canvas.getBoundingClientRect();
         // Height-only deltas (mobile URL-bar chrome) just resize the buffer —
         // regenerating would make the whole tree vanish and re-fade.
-        if (Math.abs(rect.width - w) < 2 && Math.abs(rect.height - h) < 14) {
+        if (Math.abs(rect.width - w) < 2 && Math.abs(rect.height - h) < 120) {
           sizeCanvas();
         } else {
           rebuild();

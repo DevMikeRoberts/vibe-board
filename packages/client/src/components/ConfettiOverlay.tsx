@@ -133,5 +133,6 @@ export function ConfettiOverlay({ rect }: { rect: ConfettiRect }) {
     };
   }, [rect]);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[100]" />;
+  // h-full w-full stretches the dpr-scaled buffer back to viewport CSS size, keeping the 1:1 coordinate mapping
+  return <canvas ref={canvasRef} className="fixed inset-0 h-full w-full pointer-events-none z-[100]" />;
 }

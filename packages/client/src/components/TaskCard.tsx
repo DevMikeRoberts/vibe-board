@@ -132,7 +132,7 @@ function TaskCardComponent({ task, onClick, onEdit, onDelete, onArchive, onUnarc
         'group relative cursor-grab active:cursor-grabbing rounded-2xl max-md:p-3 md:p-3 lg:p-4',
         // Long-press drag (TouchSensor) must not fight iOS text selection,
         // the touch callout menu, or double-tap zoom.
-        'select-none touch-manipulation [-webkit-touch-callout:none]',
+        'pointer-coarse:select-none touch-manipulation [-webkit-touch-callout:none]',
         isDragging && 'z-50 rotate-2 scale-105 opacity-90',
         task.archived && 'opacity-60 saturate-50'
       )}

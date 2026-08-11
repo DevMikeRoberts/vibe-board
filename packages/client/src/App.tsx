@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { PixelIcon } from '@/components/PixelIcon';
 import type {
@@ -68,7 +69,9 @@ type TaskSubmitData = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function ErrorToast({ error, onDismiss }: { error: string | null; onDismiss: () => void }) {
-  return (
+  // Portaled to body so the toast's z-[90] escapes the content wrapper's z-10 stacking
+  // context and reliably paints above dialogs (85) and the mobile drawer (60).
+  return createPortal(
     <AnimatePresence>
       {error && (
         <motion.div
@@ -88,7 +91,8 @@ function ErrorToast({ error, onDismiss }: { error: string | null; onDismiss: () 
           </button>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
 
@@ -674,6 +678,11 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
   const openSidebar = useCallback(() => setSidebarOpen(true), []);
+
+  // Navigation unmounts/remounts the sidebar, so an open drawer must not survive route changes
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [route]);
 
   // The drawer lives outside BoardPage's keyboard-shortcut scope, so Escape is handled here
   useEffect(() => {
