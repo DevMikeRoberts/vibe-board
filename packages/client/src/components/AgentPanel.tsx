@@ -219,7 +219,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       onClick={handleCopy}
-      className="flex h-6 w-6 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+      className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-accent hover:text-foreground transition-colors before:absolute before:-inset-2"
     >
       {copied
         ? <PixelIcon name="iris-scan-approved" className="h-3 w-3 text-neon-green" />
@@ -270,7 +270,7 @@ function EventItem({ event }: { event: CoalescedEvent }) {
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-start gap-2 rounded-xl px-2 py-1.5 text-left hover:bg-accent/50 transition-colors"
+        className="flex w-full items-start gap-2 rounded-xl px-2 py-1.5 pointer-coarse:min-h-10 pointer-coarse:py-2.5 text-left hover:bg-accent/50 transition-colors"
       >
         <div className={cn('mt-0.5 shrink-0', color)}>
           <PixelIcon name={iconName} className="h-3.5 w-3.5" />
@@ -625,7 +625,7 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
             animate={{ x: 0, opacity: 1, rotate: 0 }}
             exit={{ x: '100%', opacity: 0 }}
             transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-            className="panel-neon panel-neon-glow fixed right-0 top-0 z-[60] flex h-full w-full flex-col overflow-hidden rounded-l-[1.75rem] bg-card shadow-2xl md:max-w-md md:w-[420px]"
+            className="panel-neon panel-neon-glow fixed right-0 top-0 z-[60] flex h-dvh w-full flex-col overflow-hidden rounded-none bg-card shadow-2xl md:w-[420px] md:rounded-l-[1.75rem]"
             style={{ '--panel': 'var(--color-neon-blue)' } as React.CSSProperties}
           >
           {/* Progress bar */}
@@ -685,7 +685,7 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
               {!isActive && task.agentStatus !== 'complete' && onRun && (
                 <button
                   onClick={() => onRun(task.id)}
-                  className="sticker-sm sticker-press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                  className="sticker-sm sticker-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
                   style={{ backgroundColor: 'var(--color-neon-green)', color: 'var(--color-ink)' }}
                   title={task.agentStatus === 'failed' ? 'Retry agent' : 'Run agent'}
                 >
@@ -697,17 +697,18 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
               {!isActive && task.agentStatus === 'failed' && onReconfigureRetry && (
                 <button
                   onClick={() => onReconfigureRetry(task.id)}
-                  className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl border-2 border-border bg-card px-3 font-display text-xs text-foreground/80 [text-transform:lowercase] hover:border-foreground/40 hover:text-foreground transition-colors"
+                  className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl border-2 border-border bg-card px-3 font-display text-xs text-foreground/80 [text-transform:lowercase] hover:border-foreground/40 hover:text-foreground transition-colors"
                   title="Reconfigure and retry"
+                  aria-label="Reconfigure and retry"
                 >
                   <PixelIcon name="cog-browser" className="h-3.5 w-3.5" />
-                  reconfigure
+                  <span className="hidden sm:inline">reconfigure</span>
                 </button>
               )}
               {isActive && onStop && (
                 <button
                   onClick={() => onStop(task.id)}
-                  className="sticker-sm sticker-press flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-destructive text-primary-foreground"
+                  className="sticker-sm sticker-press flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive text-primary-foreground"
                   title="Stop agent"
                 >
                   <span className="h-2.5 w-2.5 bg-current" aria-hidden="true" />
@@ -716,7 +717,7 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
               {onExpand && task && (
                 <button
                   onClick={() => onExpand(task)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors"
                   title="Expand to full page view"
                 >
                   <PixelIcon name="expand-1" className="h-4 w-4" />
@@ -724,7 +725,7 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
               )}
               <button
                 onClick={onClose}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-sm text-foreground/80 hover:border-destructive hover:text-destructive transition-colors"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-sm text-foreground/80 hover:border-destructive hover:text-destructive transition-colors"
                 title="Close panel (Esc)"
                 aria-label="Close panel"
               >
@@ -757,7 +758,7 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
                     transition={{ duration: 0.15 }}
                     className="overflow-hidden"
                   >
-                    <div className="max-h-[30vh] overflow-y-auto px-4 pb-3 prose prose-xs dark:prose-invert max-w-none text-xs text-muted-foreground leading-relaxed [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_a]:text-primary [&_a]:underline" style={{ '--tw-prose-code-bg': 'var(--prose-code-bg)' } as React.CSSProperties}>
+                    <div className="max-h-[30dvh] overflow-y-auto px-4 pb-3 prose prose-xs dark:prose-invert max-w-none text-xs text-muted-foreground leading-relaxed [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_a]:text-primary [&_a]:underline" style={{ '--tw-prose-code-bg': 'var(--prose-code-bg)' } as React.CSSProperties}>
                       <style>{`.prose code { background-color: var(--prose-code-bg); } .prose pre { background-color: var(--code-bg); padding: 0.5rem; border-radius: 0.375rem; }`}</style>
                       <Markdown
                         allowedElements={[
@@ -778,16 +779,16 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
           {/* Branch info bar */}
           {task.branchName && (
             <div className="shrink-0 border-b-2 border-border px-4 py-2.5 space-y-1.5">
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <PixelIcon name="hierarchy-2" className="h-3.5 w-3.5 text-neon-blue" />
-                <span className="font-mono text-foreground">{task.branchName}</span>
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <PixelIcon name="hierarchy-2" className="h-3.5 w-3.5 shrink-0 text-neon-blue" />
+                <span className="min-w-0 max-w-full truncate font-mono text-foreground" title={task.branchName}>{task.branchName}</span>
                 <span className="text-muted-foreground/50">from</span>
-                <span className="font-mono">{task.baseBranch || 'main'}</span>
+                <span className="min-w-0 max-w-full truncate font-mono">{task.baseBranch || 'main'}</span>
               </div>
 
               {/* PR / actions — show when task is done or complete */}
               {(task.agentStatus === 'complete' || task.columnId === 'done') && (
-                <div className="flex items-center gap-2 pt-1">
+                <div className="flex flex-wrap items-center gap-2 pt-1">
                   {!prUrl && !task.prUrl && onCreatePR && hasRemote === true && (
                     <button
                       onClick={async () => {
@@ -834,17 +835,19 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
                         setMergeLoading(false);
                       }}
                       disabled={mergeLoading}
-                      className="sticker-sm sticker-press flex items-center gap-1.5 rounded-full px-3 py-1.5 font-pixel text-[10px] disabled:opacity-50 [text-transform:lowercase]"
+                      className="sticker-sm sticker-press flex max-w-full items-center gap-1.5 rounded-full px-3 py-1.5 font-pixel text-[10px] disabled:opacity-50 [text-transform:lowercase]"
                       style={{ backgroundColor: 'var(--color-neon-purple)', color: 'var(--color-ink)' }}
                     >
-                      <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
-                      {mergeLoading ? 'merging…' : `merge to ${task.baseBranch || 'main'}`}
+                      <PixelIcon name="deal-handshake" className="h-3.5 w-3.5 shrink-0" />
+                      {mergeLoading
+                        ? 'merging…'
+                        : <>merge to <span className="max-w-[12ch] truncate" title={task.baseBranch || 'main'}>{task.baseBranch || 'main'}</span></>}
                     </button>
                   )}
                   {mergeResult && (
-                    <span className="flex items-center gap-1.5 rounded-full border-2 border-neon-green/40 bg-neon-green/10 px-3 py-1.5 font-pixel text-[10px] text-neon-green [text-transform:lowercase]">
-                      <PixelIcon name="deal-handshake" className="h-3.5 w-3.5" />
-                      merged to {mergeResult}
+                    <span className="flex max-w-full items-center gap-1.5 rounded-full border-2 border-neon-green/40 bg-neon-green/10 px-3 py-1.5 font-pixel text-[10px] text-neon-green [text-transform:lowercase]">
+                      <PixelIcon name="deal-handshake" className="h-3.5 w-3.5 shrink-0" />
+                      merged to <span className="max-w-[12ch] truncate" title={mergeResult}>{mergeResult}</span>
                     </span>
                   )}
                 </div>
@@ -1036,7 +1039,7 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
           )}
 
           {/* Follow-up message input — fixed at bottom */}
-          <div className="shrink-0 border-t-2 border-border bg-card/60 px-3 py-3 rounded-bl-[1.75rem]">
+          <div className="shrink-0 border-t-2 border-border bg-card/60 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:rounded-bl-[1.75rem]">
             {/* Image previews */}
             {followUpImages.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-2">
@@ -1046,7 +1049,8 @@ export function AgentPanel({ task, onClose, onExpand, onRun, onStop, onCreatePR,
                     <button
                       type="button"
                       onClick={() => setFollowUpImages(prev => prev.filter((_, j) => j !== i))}
-                      className="sticker-sm absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-destructive text-cream font-pixel text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove image"
+                      className="sticker-sm absolute -top-1.5 -right-1.5 w-5 h-5 pointer-coarse:w-7 pointer-coarse:h-7 rounded-full bg-destructive text-cream font-pixel text-[10px] leading-none flex items-center justify-center pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100 transition-opacity"
                     >
                       ✕
                     </button>

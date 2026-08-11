@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { prefersReducedMotion } from '@/lib/pixel-canvas';
 
 interface ConfettiPiece {
   x: number;
@@ -37,10 +38,16 @@ export function ConfettiOverlay({ rect }: { rect: ConfettiRect }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // 70 tumbling particles across the viewport is exactly the large-field
+    // motion the preference asks to avoid — skip the burst entirely.
+    if (prefersReducedMotion()) return;
+
     const W = window.innerWidth;
     const H = window.innerHeight;
-    canvas.width = W;
-    canvas.height = H;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
 
     const { x, y, width, height } = rect;
     const cx = x + width / 2;
@@ -104,12 +111,28 @@ export function ConfettiOverlay({ rect }: { rect: ConfettiRect }) {
 
     animate();
 
+    // The burst only lasts ~2s, but a rotation or URL-bar collapse mid-burst
+    // stretches the fixed buffer and smears the particles — end it early.
+    const stop = () => {
+      particlesRef.current = [];
+      ctx.clearRect(0, 0, W, H);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+    window.addEventListener('resize', stop);
+    window.addEventListener('orientationchange', stop);
+
     return () => {
+      window.removeEventListener('resize', stop);
+      window.removeEventListener('orientationchange', stop);
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
   }, [rect]);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-[100]" />;
+  // h-full w-full stretches the dpr-scaled buffer back to viewport CSS size, keeping the 1:1 coordinate mapping
+  return <canvas ref={canvasRef} className="fixed inset-0 h-full w-full pointer-events-none z-[100]" />;
 }

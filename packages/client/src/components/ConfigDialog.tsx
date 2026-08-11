@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { PixelIcon } from './PixelIcon';
 import type { ProjectConfig } from '@/types';
 import { api } from '@/lib/api';
+import { isCoarsePointer } from '@/lib/utils';
 import { resetGithubSetupDismissed } from './GitHubSetupModal';
 
 interface ConfigDialogProps {
@@ -23,13 +24,13 @@ function Toggle({ checked, onChange, id }: { checked: boolean; onChange: (v: boo
       id={id}
       aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-neon-pink/50 ${
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-neon-pink/50 pointer-coarse:h-7 pointer-coarse:w-12 pointer-coarse:before:absolute pointer-coarse:before:-inset-2 ${
         checked ? 'bg-primary' : 'bg-muted'
       }`}
     >
       <span
-        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-0.5'
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform pointer-coarse:h-6 pointer-coarse:w-6 ${
+          checked ? 'translate-x-5' : 'translate-x-0.5'
         }`}
       />
     </button>
@@ -156,7 +157,7 @@ export function ConfigDialog({ open, config, onClose, onSubmit, onProjectsImport
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[var(--overlay-bg)] backdrop-blur-sm"
+            className="fixed inset-0 z-[85] bg-[var(--overlay-bg)] backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
@@ -166,20 +167,21 @@ export function ConfigDialog({ open, config, onClose, onSubmit, onProjectsImport
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 sticker rounded-[1.75rem] bg-popover p-6"
+            className="fixed left-1/2 top-1/2 z-[85] flex max-h-[90dvh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col sticker rounded-[1.75rem] bg-popover p-6"
           >
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-5 flex shrink-0 items-center justify-between">
               <h2 className="text-base font-semibold">Settings</h2>
               <button
                 onClick={onClose}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground pointer-coarse:h-10 pointer-coarse:w-10"
                 aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+              <div className="min-h-0 space-y-5 overflow-y-auto">
               {/* ââ GitHub Integration ââ */}
               <div className="space-y-3 rounded-2xl border-2 border-border bg-card/50 p-3">
                 <div className="flex items-center gap-2">
@@ -247,7 +249,7 @@ export function ConfigDialog({ open, config, onClose, onSubmit, onProjectsImport
                         className="h-11 w-full rounded-xl border-2 border-border bg-card py-2 pl-8 pr-3 font-mono text-xs placeholder:text-muted-foreground/40 focus:border-neon-pink focus:outline-none transition-colors"
                       />
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <a
                         href="https://github.com/settings/tokens/new?scopes=repo&description=AgentBoard"
                         target="_blank"
@@ -302,7 +304,7 @@ export function ConfigDialog({ open, config, onClose, onSubmit, onProjectsImport
                   value={cloneRoot}
                   onChange={(e) => { setCloneRoot(e.target.value); setError(''); }}
                   placeholder="~/agentboard/projects"
-                  autoFocus
+                  autoFocus={!isCoarsePointer()}
                   className="w-full h-11 rounded-xl border-2 border-border bg-card px-3 font-mono text-sm placeholder:text-muted-foreground/50 focus:border-neon-pink focus:outline-none transition-colors"
                 />
                 <p className="mt-1 text-xs text-muted-foreground/60">
@@ -375,19 +377,20 @@ export function ConfigDialog({ open, config, onClose, onSubmit, onProjectsImport
                   {error}
                 </div>
               )}
+              </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex shrink-0 flex-wrap justify-end gap-2 pt-4">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="h-11 rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors [text-transform:lowercase]"
+                  className="h-11 w-full rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors [text-transform:lowercase] sm:w-auto"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="sticker-sm sticker-press h-11 rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 [text-transform:lowercase]"
+                  className="sticker-sm sticker-press h-11 w-full rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:cursor-not-allowed disabled:opacity-50 [text-transform:lowercase] sm:w-auto"
                 >
                   {submitting ? 'Savingâ¦' : 'Save'}
                 </button>

@@ -4,7 +4,8 @@ import {
   DragOverlay,
   DragStartEvent,
   DragEndEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   pointerWithin,
@@ -19,6 +20,7 @@ import { Column } from './Column';
 import { TaskCard } from './TaskCard';
 import { TaskGroupCard } from './TaskGroupCard';
 import type { TaskGroupWithChildren } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 
 interface BoardProps {
@@ -95,7 +97,11 @@ export function Board({
   }, [groups]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    // Touch drags need a long-press: without the 250ms delay every finger
+    // swipe that starts on a card would activate a drag (or get cancelled by
+    // native scrolling), making the stacked mobile board unscrollable.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
   );
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -150,15 +156,21 @@ export function Board({
       onDragCancel={handleDragCancel}
     >
       {/* Board area */}
-      <div className="flex h-full gap-5 overflow-hidden p-5 pb-5 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto md:gap-6 md:p-7">
+      <div
+        className={cn(
+          'flex h-full gap-4 p-4 max-md:flex-col max-md:overflow-x-hidden max-md:overflow-y-auto max-md:pb-[max(1rem,env(safe-area-inset-bottom))] md:gap-6 md:p-7 md:overflow-x-auto md:overflow-y-hidden md:overscroll-x-contain md:scroll-pl-7',
+          // Mandatory snap re-snaps after every programmatic scroll, which pins dnd-kit's
+          // auto-scroller in place — so snapping is suspended while a card is being dragged.
+          activeTask == null && 'md:snap-x md:snap-mandatory'
+        )}
+      >
         {columns.map((column, index) => (
           <motion.div
             key={column.id}
             initial={{ opacity: 0, y: 42, rotate: index % 2 === 0 ? -1.6 : 1.6, scale: 0.94 }}
             animate={{ opacity: 1, y: 0, rotate: 0, scale: 1 }}
             transition={{ delay: index * 0.09, type: 'spring', stiffness: 260, damping: 19 }}
-            className="flex h-full flex-col max-md:h-auto"
-            style={{ minWidth: 0 }}
+            className="flex h-full min-w-0 flex-col max-md:h-auto md:min-w-64"
           >
             <Column
               column={column}

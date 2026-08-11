@@ -14,8 +14,19 @@
      Silkscreen — pixel face for tiny labels, counters, statuses
    ========================================================================== */
 
-button, [role="button"] {
+button, [role="button"], a {
   cursor: pointer;
+  /* No double-tap-zoom ambiguity, no grey tap flash — the sticker :active squish is the press feedback. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iOS Safari zooms the page when focusing any control under 16px; the pixel-font
+   fields sit at 11px, so give touch devices a 16px floor instead of per-field fixes. */
+@media (pointer: coarse) {
+  input, select, textarea {
+    font-size: max(16px, 1em);
+  }
 }
 
 @theme {
@@ -147,13 +158,17 @@ body {
   box-shadow: 3px 3px 0 0 var(--color-ink);
 }
 
-/* Interactive sticker: lifts on hover, squishes flat on press. */
+/* Interactive sticker: lifts on hover, squishes flat on press.
+   Hover lifts only run on true hover devices — touch browsers emulate :hover on
+   tap and it sticks, leaving every tapped sticker stranded mid-lift. */
 .sticker-press {
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
-.sticker-press:hover {
-  transform: translate(-2px, -2px);
-  box-shadow: 6px 6px 0 0 var(--color-ink);
+@media (hover: hover) and (pointer: fine) {
+  .sticker-press:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--color-ink);
+  }
 }
 .sticker-press:active {
   transform: translate(3px, 3px);
@@ -164,9 +179,11 @@ body {
 .sticker-peel {
   transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease;
 }
-.sticker-peel:hover {
-  transform: translate(-2px, -3px) rotate(-0.6deg);
-  box-shadow: 6px 7px 0 0 var(--color-ink);
+@media (hover: hover) and (pointer: fine) {
+  .sticker-peel:hover {
+    transform: translate(-2px, -3px) rotate(-0.6deg);
+    box-shadow: 6px 7px 0 0 var(--color-ink);
+  }
 }
 
 /* ============================================================================
@@ -255,23 +272,27 @@ body {
    Scrollbars — square pixel bricks.
    ========================================================================== */
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: color-mix(in oklab, var(--color-foreground) 22%, transparent);
-  border: 3px solid transparent;
-  background-clip: padding-box;
-  border-radius: 0;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-neon-pink);
-  border: 3px solid transparent;
-  background-clip: padding-box;
+/* Mouse-only: defining ::-webkit-scrollbar on touch devices opts out of overlay
+   scrollbars, stealing 10px from every scroll container on a phone. */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--color-foreground) 22%, transparent);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+    border-radius: 0;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-neon-pink);
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
 }
 
 /* ============================================================================
@@ -283,7 +304,8 @@ body {
   .animate-px-spin-fast,
   .animate-px-bob,
   .animate-px-pop,
-  .animate-px-blink {
+  .animate-px-blink,
+  .animate-px-gradient {
     animation: none !important;
   }
   .sticker-press,

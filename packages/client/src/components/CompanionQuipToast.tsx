@@ -52,7 +52,7 @@ export function CompanionQuipToast({ open, onOpen }: CompanionQuipToastProps) {
   if (open) return null;
 
   return (
-    <div className="fixed bottom-20 right-5 z-[60] max-w-[260px]">
+    <div className="fixed bottom-[max(5.5rem,calc(env(safe-area-inset-bottom)+4.5rem))] right-[max(1.25rem,env(safe-area-inset-right))] z-[58] max-w-[260px]">
       <AnimatePresence>
         {visible && (
           <motion.button

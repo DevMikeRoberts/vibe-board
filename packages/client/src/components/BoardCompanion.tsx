@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { CompanionMessage } from '@/hooks/useCompanion';
-import { cn } from '@/lib/utils';
+import { cn, isCoarsePointer } from '@/lib/utils';
 import { TypewriterText } from '@/components/TypewriterText';
 
 interface BoardCompanionProps {
@@ -185,9 +185,9 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
     }
   }, [messages, streaming]);
 
-  // Focus input when panel opens
+  // Focus input when panel opens (not on touch — it would pop the keyboard)
   useEffect(() => {
-    if (open) {
+    if (open && !isCoarsePointer()) {
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [open]);
@@ -216,7 +216,7 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
       <motion.button
         onClick={onToggle}
         className={cn(
-          'fixed bottom-5 right-5 z-[65] flex items-center gap-2',
+          'fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] z-[58] flex items-center gap-2',
           'sticker-sm sticker-press rounded-full px-3 py-2',
           'font-display text-sm [text-transform:lowercase]',
           'bg-card hover:border-foreground/40 transition-colors'
@@ -256,11 +256,8 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
                 stiffness: 350,
                 mass: 0.8,
               }}
-              className="panel-neon panel-neon-glow fixed bottom-0 left-0 right-0 z-[64] flex flex-col overflow-hidden rounded-t-[1.75rem] bg-card shadow-2xl"
-              style={{
-                '--panel': 'var(--color-neon-purple)',
-                maxHeight: '65vh',
-              } as React.CSSProperties}
+              className="panel-neon panel-neon-glow fixed bottom-0 left-0 right-0 z-[64] flex max-h-[65dvh] flex-col overflow-hidden rounded-t-[1.75rem] bg-card shadow-2xl"
+              style={{ '--panel': 'var(--color-neon-purple)' } as React.CSSProperties}
             >
               {/* Header with character */}
               <div className="flex shrink-0 items-center gap-3 border-b-2 border-border px-4 py-3">
@@ -275,7 +272,7 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
                 </div>
                 <button
                   onClick={onToggle}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-sm text-foreground/80 hover:border-destructive hover:text-destructive transition-colors"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border bg-card font-pixel text-sm text-foreground/80 hover:border-destructive hover:text-destructive transition-colors"
                   title="Close Libby (Esc)"
                   aria-label="Close Libby"
                 >
@@ -337,7 +334,7 @@ export function BoardCompanion({ open, onToggle, messages, onSend, streaming }: 
               </div>
 
               {/* Input area */}
-              <div className="shrink-0 border-t-2 border-border bg-card/60 px-3 py-3 rounded-t-[1.75rem]">
+              <div className="shrink-0 border-t-2 border-border bg-card/60 px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 <div className="flex items-center gap-2">
                   <input
                     ref={inputRef}

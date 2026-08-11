@@ -43,7 +43,7 @@ export function GroupPanel({ group, onClose, onRunGroup, onStopGroup, onRetryChi
         animate={{ x: 0 }}
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 18, stiffness: 260, mass: 0.9 }}
-        className="panel-neon fixed right-0 top-0 z-[60] flex h-full w-full max-w-md flex-col overflow-hidden rounded-l-[1.75rem] bg-background shadow-2xl"
+        className="panel-neon fixed right-0 top-0 z-[60] flex h-dvh w-full flex-col overflow-hidden rounded-none bg-background shadow-2xl md:max-w-md md:rounded-l-[1.75rem]"
         style={{ '--panel': 'var(--color-neon-purple)' } as React.CSSProperties}
       >
         {/* Header */}
@@ -147,8 +147,8 @@ export function GroupPanel({ group, onClose, onRunGroup, onStopGroup, onRetryChi
                   <div className="flex items-center gap-2">
                     <span className="truncate text-base font-bold leading-snug tracking-tight text-foreground">{child.title}</span>
                   </div>
-                  <div className="mt-1 flex items-center gap-2 font-pixel text-[10px] text-muted-foreground">
-                    <span>{agentDisplay?.emoji} {agentDisplay?.label}</span>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 font-pixel text-[10px] text-muted-foreground">
+                    <span className="min-w-0 max-w-full truncate">{agentDisplay?.emoji} {agentDisplay?.label}</span>
                     <span>· {statusLabel(child.agentStatus)}</span>
                     {duration && <span>· {duration}</span>}
                     {elapsed && <span className="text-neon-blue">· {elapsed}</span>}
@@ -160,7 +160,7 @@ export function GroupPanel({ group, onClose, onRunGroup, onStopGroup, onRetryChi
                   {child.agentStatus === 'failed' && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onRetryChild(child.id); }}
-                      className="flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-yellow"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-yellow"
                       title="Retry"
                     >
                       <PixelIcon name="recycle" className="h-4 w-4" />
@@ -174,10 +174,10 @@ export function GroupPanel({ group, onClose, onRunGroup, onStopGroup, onRetryChi
         </div>
 
         {/* Footer info */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t-2 border-[color-mix(in_oklab,var(--panel)_35%,transparent)] px-5 py-3 font-pixel text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t-2 border-[color-mix(in_oklab,var(--panel)_35%,transparent)] px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] font-pixel text-[10px] text-muted-foreground">
           {group.repoPath && (
-            <span className="flex items-center gap-1.5">
-              <PixelIcon name="global-public" className="h-3.5 w-3.5" /> {group.repoPath}
+            <span className="flex min-w-0 max-w-full items-center gap-1.5 break-all">
+              <PixelIcon name="global-public" className="h-3.5 w-3.5 shrink-0" /> {group.repoPath}
             </span>
           )}
           {group.baseBranch && (

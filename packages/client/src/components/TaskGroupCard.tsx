@@ -35,7 +35,7 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
   return (
     <div
       className={cn(
-        'sticker sticker-peel group relative cursor-pointer rounded-2xl border-2 border-ink bg-card max-md:p-3 md:p-3 lg:p-4',
+        'sticker sticker-peel group relative cursor-pointer touch-manipulation rounded-2xl border-2 border-ink bg-card max-md:p-3 md:p-3 lg:p-4',
         isRunning && 'border-b-[6px] border-b-neon-blue',
       )}
       onClick={() => onClickGroup(group)}
@@ -56,40 +56,40 @@ export function TaskGroupCard({ group, onClickGroup, onRunGroup, onStopGroup, on
           <h3 className="font-display text-base leading-none text-foreground line-clamp-1 [text-transform:lowercase]">{group.title}</h3>
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5 opacity-100 md:opacity-0 transition-opacity md:group-hover:opacity-100" onPointerDown={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 items-center gap-0.5 pointer-coarse:gap-1.5 transition-opacity pointer-fine:opacity-0 pointer-fine:group-hover:opacity-100 pointer-fine:group-focus-within:opacity-100" onPointerDown={(e) => e.stopPropagation()}>
           {!isRunning && status.idle > 0 && group.columnId !== 'done' && (
             <button
               onClick={(e) => { e.stopPropagation(); onRunGroup(group.id); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-green"
+              className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-neon-green"
               title="Run group"
             >
-              <PixelIcon name="flash" className="h-3.5 w-3.5" />
+              <PixelIcon name="flash" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
             </button>
           )}
           {isRunning && (
             <button
               onClick={(e) => { e.stopPropagation(); onStopGroup(group.id); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+              className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
               title="Stop all"
             >
-              <span className="block h-3 w-3 bg-current" aria-hidden="true" />
+              <span className="block h-3 w-3 pointer-coarse:h-3.5 pointer-coarse:w-3.5 bg-current" aria-hidden="true" />
             </button>
           )}
           {onEditGroup && (
             <button
               onClick={(e) => { e.stopPropagation(); onEditGroup(group); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               title="Edit group"
             >
-              <PixelIcon name="quill-ink" className="h-3.5 w-3.5" />
+              <PixelIcon name="quill-ink" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
             </button>
           )}
           <button
             onClick={(e) => { e.stopPropagation(); onDeleteGroup(group.id); }}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
+            className="flex size-7 pointer-coarse:size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-destructive"
             title="Delete group"
           >
-            <PixelIcon name="bin" className="h-3.5 w-3.5" />
+            <PixelIcon name="bin" className="h-3.5 w-3.5 pointer-coarse:h-4 pointer-coarse:w-4" />
           </button>
         </div>
       </div>

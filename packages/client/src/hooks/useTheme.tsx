@@ -28,6 +28,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.classList.remove('dark', 'light');
     root.classList.add(theme);
     localStorage.setItem(SK_THEME, theme);
+    // Keep the browser chrome (status bar / toolbar tint) in sync with the app background
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', theme === 'dark' ? '#08070c' : '#ece3cb');
   }, [theme]);
 
   const toggleTheme = useCallback(() => {

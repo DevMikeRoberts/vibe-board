@@ -5,6 +5,7 @@ import { RetroRadio } from './RetroRadio';
 import { FilterChips, type StatusFilter } from './FilterChips';
 import { useConnectionStatus } from '@/hooks/useConnectionStatus';
 import { api } from '@/lib/api';
+import { isCoarsePointer } from '@/lib/utils';
 import type { AgentType } from '@/types';
 
 type SortBy = 'title' | 'priority' | 'created' | 'status';
@@ -31,6 +32,8 @@ interface HeaderProps {
   radio?: { on: boolean; volume: number; toggle: () => void; setVolume: (v: number) => void };
   title?: string;
   onBackToProjects?: () => void;
+  /** Opens the projects sidebar drawer (rendered as a md:hidden trigger). */
+  onOpenSidebar?: () => void;
 }
 
 const SORT_OPTIONS: { value: SortBy; label: string }[] = [
@@ -45,7 +48,7 @@ export function Header({
   showArchived, onToggleArchived, sortBy, sortDir,
   onSortByChange, onSortDirChange, activeAgentTypes, activeStatuses,
   onToggleAgentType, onToggleStatus, onClearFilters,
-  onNewTask, onSprintPlanner, radio, title = 'Vibe Board', onBackToProjects,
+  onNewTask, onSprintPlanner, radio, title = 'Vibe Board', onBackToProjects, onOpenSidebar,
 }: HeaderProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -71,17 +74,29 @@ export function Header({
   };
 
   useEffect(() => {
-    if (mobileMenuOpen) mobileMenuSearchRef.current?.focus();
+    // Don't pop the keyboard on touch devices — only autofocus on fine pointers
+    if (mobileMenuOpen && !isCoarsePointer()) mobileMenuSearchRef.current?.focus();
   }, [mobileMenuOpen]);
 
   const quietControl =
     'rounded-xl border-2 border-border bg-card text-foreground/80 transition-colors hover:border-foreground/40 hover:text-foreground';
 
   return (
-    <header className="sticky top-0 z-50 border-b-2 border-border bg-background/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-40 border-b-2 border-border bg-background/95 backdrop-blur-sm">
       <div className="flex h-16 items-center justify-between px-3 md:px-4 lg:px-5">
         {/* Logo + title */}
         <div className="flex min-w-0 items-center gap-2.5 md:gap-3">
+          {/* Mobile projects-drawer trigger */}
+          {onOpenSidebar && (
+            <button
+              onClick={onOpenSidebar}
+              className="sticker-sm sticker-press flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-card text-foreground md:hidden"
+              aria-label="Open projects"
+            >
+              <PixelIcon name="layer" className="h-4 w-4" />
+            </button>
+          )}
+
           {onBackToProjects && (
             <button
               onClick={onBackToProjects}
@@ -107,8 +122,27 @@ export function Header({
             </h1>
           </div>
 
-          {/* Connection badge */}
-          <div className="hidden items-center gap-1.5 md:flex">
+          {/* Compact connection dot (phones) */}
+          <span
+            role="status"
+            aria-label={
+              wsStatus === 'connected'
+                ? 'Connected'
+                : wsStatus === 'connecting'
+                  ? 'Connecting'
+                  : 'Disconnected'
+            }
+            className={`h-2.5 w-2.5 shrink-0 rounded-full lg:hidden ${
+              wsStatus === 'connected'
+                ? 'bg-neon-green'
+                : wsStatus === 'connecting'
+                  ? 'bg-neon-yellow'
+                  : 'bg-destructive'
+            }`}
+          />
+
+          {/* Connection badge — full pill needs lg; the dot covers narrower widths */}
+          <div className="hidden items-center gap-1.5 lg:flex">
             {wsStatus === 'connected' && (
               <span
                 className="sticker-sm flex items-center gap-1.5 rounded-full px-2.5 py-1 font-pixel text-[10px] lowercase"
@@ -140,7 +174,7 @@ export function Header({
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-1 md:gap-0">
+        <div className="flex items-center gap-1 md:gap-1.5">
           {/* ── Desktop controls ── */}
 
           {/* Group 1: Create */}
@@ -179,15 +213,15 @@ export function Header({
               onChange={(e) => onSearchChange(e.target.value)}
               placeholder="search tasks…"
               aria-label="Search tasks"
-              className="h-11 w-32 lg:w-48 rounded-xl border-2 border-border bg-card pl-9 pr-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors"
+              className="h-11 w-28 lg:w-48 rounded-xl border-2 border-border bg-card pl-9 pr-3 font-pixel text-[11px] text-foreground placeholder:text-muted-foreground focus:border-neon-pink focus:outline-none transition-colors"
             />
           </div>
 
           {/* Divider */}
-          <div className="hidden md:block mx-3 h-6 w-0.5 bg-border" />
+          <div className="hidden lg:block mx-3 h-6 w-0.5 bg-border" />
 
-          {/* Group 3: View controls */}
-          <div className="hidden md:flex items-center gap-1.5">
+          {/* Group 3: View controls — lg+; tablets with the in-flow sidebar use the menu */}
+          <div className="hidden lg:flex items-center gap-1.5">
             {/* Filter toggle */}
             <button
               onClick={() => setShowFilters(!showFilters)}
@@ -224,7 +258,7 @@ export function Header({
               </select>
               <button
                 onClick={() => onSortDirChange(sortDir === 'asc' ? 'desc' : 'asc')}
-                className="flex h-full w-8 items-center justify-center border-l-2 border-border font-pixel text-xs text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
+                className="flex h-full w-10 items-center justify-center border-l-2 border-border font-pixel text-xs text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
                 aria-label={`Sort ${sortDir === 'asc' ? 'descending' : 'ascending'}`}
               >
                 {sortDir === 'asc' ? '↑' : '↓'}
@@ -251,12 +285,12 @@ export function Header({
             </button>
           </div>
 
-          {/* Retro Radio */}
+          {/* Retro Radio — desktop only; the mobile menu carries its own copy */}
           {radio && (
-            <div className="hidden md:block mx-3 h-6 w-0.5 bg-border" />
+            <div className="hidden lg:block mx-3 h-6 w-0.5 bg-border" />
           )}
           {radio && (
-            <div className="hidden md:flex items-center">
+            <div className="hidden lg:flex items-center">
               <RetroRadio
                 on={radio.on}
                 volume={radio.volume}
@@ -266,16 +300,19 @@ export function Header({
             </div>
           )}
 
-          <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+          {/* Theme toggle — hidden on phones (the sidebar drawer footer has one) */}
+          <div className="hidden md:block">
+            <ThemeToggle theme={theme} toggleTheme={toggleTheme} />
+          </div>
 
-          {/* Restart button */}
+          {/* Restart button — desktop only; the mobile menu carries its own copy */}
           <button
             onClick={handleRestart}
             disabled={isRestarting}
             className={
               isRestarting
-                ? 'sticker-sm flex h-11 w-11 items-center justify-center rounded-xl font-pixel cursor-not-allowed opacity-70'
-                : `flex h-11 w-11 items-center justify-center ${quietControl}`
+                ? 'sticker-sm hidden h-11 w-11 items-center justify-center rounded-xl font-pixel cursor-not-allowed opacity-70 lg:flex'
+                : `hidden h-11 w-11 items-center justify-center lg:flex ${quietControl}`
             }
             style={
               isRestarting
@@ -296,8 +333,8 @@ export function Header({
             onClick={() => setMobileMenuOpen((v) => !v)}
             className={
               mobileMenuOpen || hasActiveFilters || showArchived
-                ? 'sticker-sm flex h-11 w-11 items-center justify-center rounded-xl font-pixel md:hidden'
-                : `flex h-11 w-11 items-center justify-center md:hidden ${quietControl}`
+                ? 'sticker-sm flex h-11 w-11 items-center justify-center rounded-xl font-pixel lg:hidden'
+                : `flex h-11 w-11 items-center justify-center lg:hidden ${quietControl}`
             }
             style={
               mobileMenuOpen || hasActiveFilters || showArchived
@@ -318,7 +355,7 @@ export function Header({
 
       {/* ── Mobile expanded panel ── */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t-2 border-border bg-background px-3 py-3 space-y-3">
+        <div className="lg:hidden max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t-2 border-border bg-background px-3 py-3 space-y-3">
           <div className="relative">
             <PixelIcon
               name="find-text"
@@ -457,7 +494,7 @@ export function Header({
 
       {/* Desktop filter chips row */}
       {showFilters && (
-        <div className="hidden md:flex items-center justify-end gap-2 px-5 pb-3">
+        <div className="hidden lg:flex items-center justify-end gap-2 px-5 pb-3">
           <FilterChips
             activeAgentTypes={activeAgentTypes}
             activeStatuses={activeStatuses}

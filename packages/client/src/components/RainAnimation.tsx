@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTheme } from '@/hooks/useTheme';
-import { prefersReducedMotion, sizePixelCanvas } from '@/lib/pixel-canvas';
+import { measurePixelViewport, prefersReducedMotion, sizePixelCanvas } from '@/lib/pixel-canvas';
 
 interface Drop {
   x: number;
@@ -189,7 +189,16 @@ export function RainAnimation() {
     const onResize = () => {
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
-        rebuild();
+        const next = measurePixelViewport(PIXEL);
+        if (Math.abs(next.w - W) < 2 && Math.abs(next.h - H) < 25) {
+          // Height-only delta (mobile URL-bar chrome) — resize the buffer so
+          // drops land at the new H; only re-seed on real width changes.
+          const size = sizePixelCanvas(canvas!, PIXEL);
+          W = size.w;
+          H = size.h;
+        } else {
+          rebuild();
+        }
         if (reduced) drawFrame(false);
       }, 150);
     };

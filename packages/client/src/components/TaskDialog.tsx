@@ -4,7 +4,7 @@ import { PixelIcon } from './PixelIcon';
 import type { Task, TaskAttachment, ColumnId, AgentType, AgentInfo, Priority } from '@/types';
 import { AGENT_OPTIONS } from '@/lib/agent-config';
 import { PRIORITY_OPTIONS } from '@/lib/priority-config';
-import { cn, getRepoPathHelpText, getRepoPathPlaceholder, isAbsoluteRepoPath, slugify } from '@/lib/utils';
+import { cn, getRepoPathHelpText, getRepoPathPlaceholder, isAbsoluteRepoPath, isCoarsePointer, slugify } from '@/lib/utils';
 import { getRecentRepoPaths, addRepoPath } from '@/lib/repo-history';
 import { api } from '@/lib/api';
 import ImageUpload from './ImageUpload';
@@ -77,7 +77,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
         setPathError('Local path is required to run the agent');
       }
     } else if (open && !editTask) {
-      // Opening in create mode â prefill from project defaults (each overridable)
+      // Opening in create mode — prefill from project defaults (each overridable)
       setPriority(defaultPriority);
       setAgentType(defaultAgent);
       setModel(undefined);
@@ -122,7 +122,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
 
         const selectedInfo = result.find((agent) => agent.name === agentType);
         const firstAvailable = result.find((agent) => agent.available);
-        // Don't auto-swap when the project configures a default agent â respect the choice.
+        // Don't auto-swap when the project configures a default agent — respect the choice.
         if (!editTask && !projectDefaults?.defaultAgentType && selectedInfo && !selectedInfo.available && firstAvailable) {
           setAgentType(firstAvailable.name);
         }
@@ -154,7 +154,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
     e.preventDefault();
     if (!title.trim() || submitting) return;
 
-    // Client-side path validation â required
+    // Client-side path validation — required
     const trimmedPath = (lockedRepoPath || repoPath).trim();
     if (!trimmedPath) {
       setPathError('Local path is required');
@@ -186,7 +186,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
           model: model || undefined,
           ...repoFields,
         });
-        if (result === undefined) return; // Server error â keep dialog open
+        if (result === undefined) return; // Server error — keep dialog open
       } else {
         if (!hasLockedRepoPath) addRepoPath(trimmedPath);
         const result = await onSubmit({
@@ -199,7 +199,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
           autoRun: autoRun || undefined,
           ...repoFields,
         }) as Task | undefined;
-        if (result === undefined) return; // Server error â keep dialog open
+        if (result === undefined) return; // Server error — keep dialog open
 
         // Upload pending images after task creation
         if (pendingImages.length > 0 && result?.id) {
@@ -211,7 +211,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
         }
       }
 
-      // Success â reset and close
+      // Success — reset and close
       setTitle('');
       setDescription('');
       setPriority(defaultPriority);
@@ -271,7 +271,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-[var(--overlay-bg)] backdrop-blur-sm"
+            className="fixed inset-0 z-[85] bg-[var(--overlay-bg)] backdrop-blur-sm"
             onClick={handleClose}
           />
 
@@ -283,7 +283,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
             animate={{ opacity: 1, scale: 1, y: 0, rotate: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 24 }}
             transition={{ type: 'spring', damping: 22, stiffness: 320 }}
-            className="sticker panel-neon fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[1.75rem] bg-popover p-6 max-h-[90vh] flex flex-col"
+            className="sticker panel-neon fixed left-1/2 top-4 z-[85] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 translate-y-0 sm:top-1/2 sm:-translate-y-1/2 rounded-[1.75rem] bg-popover p-6 max-h-[90dvh] flex flex-col"
             style={{ '--panel': 'var(--color-neon-blue)' } as React.CSSProperties}
           >
             {/* Header */}
@@ -297,7 +297,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border-2 border-border font-pixel text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
                 aria-label="Close"
               >
                 ✕
@@ -316,7 +316,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="What needs to be done?"
-                  autoFocus
+                  autoFocus={!isCoarsePointer()}
                   className="w-full h-11 rounded-xl border-2 border-border bg-card px-3 text-sm placeholder:text-muted-foreground/50 focus:border-neon-pink focus:outline-none transition-colors"
                 />
               </div>
@@ -332,7 +332,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                     onClick={handleImprovePrompt}
                     disabled={!description.trim() || improvingPrompt}
                     title="Improve description for agent comprehension"
-                    className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2 py-1 font-pixel text-[9px] text-muted-foreground transition-colors hover:border-neon-pink hover:text-neon-pink disabled:cursor-not-allowed disabled:opacity-40 [text-transform:lowercase]"
+                    className="flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1 font-pixel text-[10px] text-muted-foreground transition-colors hover:border-neon-pink hover:text-neon-pink disabled:cursor-not-allowed disabled:opacity-40 pointer-coarse:min-h-10 [text-transform:lowercase]"
                   >
                     {improvingPrompt ? (
                       <>
@@ -411,7 +411,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                             setShowPriority(false);
                           }}
                           className={cn(
-                            'flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors',
+                            'flex w-full items-center gap-2 px-3 py-2 text-sm pointer-coarse:min-h-11 hover:bg-accent transition-colors',
                             priority === p.value && 'bg-accent'
                           )}
                         >
@@ -465,7 +465,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                               setShowAgent(false);
                             }}
                             className={cn(
-                              'flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
+                              'flex w-full items-center gap-2 px-3 py-2 text-sm pointer-coarse:min-h-11 hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent',
                               agentType === a.value && 'bg-accent'
                             )}
                             title={unavailable ? info?.reason || `${a.label} is unavailable` : undefined}
@@ -490,15 +490,15 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
 
               {/* Auto-run (create mode only) */}
               {!isEditMode && (
-                <label className="flex cursor-pointer items-center gap-2.5">
+                <label className="flex cursor-pointer items-center gap-2.5 py-2">
                   <input
                     type="checkbox"
                     checked={autoRun}
                     onChange={(e) => setAutoRun(e.target.checked)}
-                    className="h-4 w-4 cursor-pointer rounded border-border accent-[var(--color-neon-pink)]"
+                    className="h-5 w-5 cursor-pointer rounded border-border accent-[var(--color-neon-pink)]"
                   />
                   <span className="text-sm text-muted-foreground">
-                    Auto-run â start agent immediately after creating
+                    Auto-run — start agent immediately after creating
                   </span>
                 </label>
               )}
@@ -577,7 +577,7 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
                       </datalist>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
                       <label className="mb-1 block font-pixel text-[10px] text-muted-foreground [text-transform:lowercase]">Base Branch</label>
                       <input
@@ -607,20 +607,20 @@ export function TaskDialog({ open, onClose, onSubmit, editTask, onEditSubmit, hi
               </div>
 
               {/* Actions */}
-              <div className="flex justify-end gap-2 pt-4 mt-2 border-t border-border shrink-0">
+              <div className="flex flex-wrap justify-end gap-2 pt-4 mt-2 border-t border-border shrink-0">
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="h-11 rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors [text-transform:lowercase]"
+                  className="h-11 w-full rounded-full border-2 border-border px-4 font-display text-sm text-foreground/80 hover:border-foreground/40 hover:text-foreground transition-colors sm:w-auto [text-transform:lowercase]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={!title.trim() || submitting}
-                  className="sticker-sm sticker-press h-11 rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed [text-transform:lowercase]"
+                  className="sticker-sm sticker-press h-11 w-full rounded-full bg-primary px-5 font-display text-sm text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed sm:w-auto [text-transform:lowercase]"
                 >
-                  {submitting ? 'Savingâ¦' : isEditMode ? 'Save Changes' : 'Create Task'}
+                  {submitting ? 'Saving…' : isEditMode ? 'Save Changes' : 'Create Task'}
                 </button>
               </div>
             </form>

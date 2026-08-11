@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '@/hooks/useTheme';
+import { prefersReducedMotion } from '@/lib/pixel-canvas';
 
 interface Pixel {
   x: number;
@@ -138,26 +139,64 @@ export function DitheredTree() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const resize = () => {
+    const reduced = prefersReducedMotion();
+    let w = 0;
+    let h = 0;
+    let fade = reduced ? 1 : 0; // global fade-in progress, mirrors the pixels' easing
+    let resizeTimer: ReturnType<typeof setTimeout>;
+
+    const sizeCanvas = () => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
+      w = rect.width;
+      h = rect.height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
       ctx.scale(dpr, dpr);
-      pixelsRef.current = generateTreePixels(rect.width, rect.height);
+    };
+
+    const rebuild = () => {
+      sizeCanvas();
+      pixelsRef.current = generateTreePixels(w, h);
+      // Carry the fade progress over so a rebuild doesn't restart the fade-in.
+      for (const pixel of pixelsRef.current) {
+        pixel.currentOpacity = pixel.targetOpacity * fade;
+      }
       particlesRef.current = [];
     };
 
-    resize();
-    window.addEventListener('resize', resize);
+    const drawSettled = () => {
+      ctx.clearRect(0, 0, w, h);
+      for (const pixel of pixelsRef.current) {
+        ctx.globalAlpha = pixel.targetOpacity;
+        ctx.fillStyle = pixel.color;
+        ctx.fillRect(pixel.x, pixel.y, 2, 2);
+      }
+      ctx.globalAlpha = 1;
+    };
+
+    rebuild();
+
+    const onResize = () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        const rect = canvas.getBoundingClientRect();
+        // Height-only deltas (mobile URL-bar chrome) just resize the buffer —
+        // regenerating would make the whole tree vanish and re-fade.
+        if (Math.abs(rect.width - w) < 2 && Math.abs(rect.height - h) < 120) {
+          sizeCanvas();
+        } else {
+          rebuild();
+        }
+        if (reduced) drawSettled();
+      }, 150);
+    };
+    window.addEventListener('resize', onResize);
 
     const animate = () => {
-      const rect = canvas.getBoundingClientRect();
-      const w = rect.width;
-      const h = rect.height;
-
       ctx.clearRect(0, 0, w, h);
       timeRef.current += 0.016;
+      fade += (1 - fade) * 0.02;
 
       // Animate pixels fading in
       for (const pixel of pixelsRef.current) {
@@ -197,10 +236,15 @@ export function DitheredTree() {
       animFrameRef.current = requestAnimationFrame(animate);
     };
 
-    animFrameRef.current = requestAnimationFrame(animate);
+    if (reduced) {
+      drawSettled();
+    } else {
+      animFrameRef.current = requestAnimationFrame(animate);
+    }
 
     return () => {
-      window.removeEventListener('resize', resize);
+      window.removeEventListener('resize', onResize);
+      clearTimeout(resizeTimer);
       cancelAnimationFrame(animFrameRef.current);
     };
   }, [generateTreePixels, spawnParticle]);
