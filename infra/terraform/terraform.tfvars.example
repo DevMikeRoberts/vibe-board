@@ -3,7 +3,7 @@
 
 # --- Required ---------------------------------------------------------------
 domain_name      = "board.example.com"
-hosted_zone_name = "example.com"
+hosted_zone_name = "example.com" # ignored when manage_dns = false
 acme_email       = "you@example.com"
 
 # --- Region / naming --------------------------------------------------------
@@ -21,9 +21,15 @@ data_volume_size      = 10       # 20 + 10 = the 30 GiB free-tier EBS allowance
 swap_size_gb          = 2
 
 # --- DNS --------------------------------------------------------------------
-# false reuses an existing hosted zone. Only set true if example.com has no
-# zone in this account yet — a second zone for the same domain costs another
-# $0.50/month and serves nothing.
+# Set manage_dns = false when the domain's nameservers live somewhere other
+# than Route 53 (Squarespace, Cloudflare, your registrar). Terraform then skips
+# Route 53 entirely — no hosted zone, no $0.50/month — and you point one A
+# record at the `instance_public_ip` output by hand.
+manage_dns = true
+
+# Only used when manage_dns = true. false reuses an existing hosted zone; only
+# set true if example.com has no zone in this account yet, since a second zone
+# for the same domain costs another $0.50/month and serves nothing.
 create_hosted_zone = false
 
 # --- Access -----------------------------------------------------------------

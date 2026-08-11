@@ -55,7 +55,20 @@ output "secret_parameters_to_populate" {
 
 output "hosted_zone_nameservers" {
   description = "Nameservers to set at your registrar. Only populated when this stack creates the hosted zone."
-  value       = var.create_hosted_zone ? aws_route53_zone.main[0].name_servers : []
+  value       = coalesce(one(aws_route53_zone.main[*].name_servers), [])
+}
+
+# When DNS is managed elsewhere this is the whole handover: one A record.
+output "dns_record_to_create" {
+  description = "The DNS record to create by hand. Null when Terraform manages Route 53 for you."
+  value = var.manage_dns ? null : {
+    type  = "A"
+    host  = split(".", var.domain_name)[0]
+    name  = var.domain_name
+    value = aws_eip.board.public_ip
+    ttl   = 300
+    note  = "Create this at your DNS provider before deploying. Caddy cannot obtain a certificate until the name resolves publicly."
+  }
 }
 
 output "github_actions_repo_variables" {

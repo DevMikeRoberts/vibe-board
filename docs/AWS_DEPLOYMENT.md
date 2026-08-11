@@ -116,11 +116,11 @@ and Terraform can replace it while the data stays put.
 
 ## Cost
 
-Two things cost money no matter what, on day one:
+One thing costs money on day one, and only if you let Terraform manage DNS:
 
 | Item | Cost | Notes |
 |------|------|-------|
-| Route 53 hosted zone | **$0.50/month** | Per zone. Reuse an existing zone — do not create a second one for the same domain. |
+| Route 53 hosted zone | **$0.50/month** | Per zone. Reuse an existing zone rather than creating a second one for the same domain — and with `manage_dns = false` this line disappears entirely. |
 | DNS queries | ~$0.00 | $0.40 per million; a private board will not register. |
 
 Everything else depends on how old the AWS account is. AWS has changed free-tier
@@ -158,8 +158,9 @@ in the stack cares.
 
 - An AWS account, and local credentials with permission to create the stack.
 - Terraform **1.10+** (S3-native state locking).
-- A domain in Route 53 — either an existing hosted zone, or a domain whose
-  registrar nameservers you can repoint.
+- A domain you control. It does **not** have to be in Route 53 — see
+  [DNS hosted elsewhere](#dns-hosted-elsewhere). It does have to resolve
+  publicly, because Let's Encrypt validates over public DNS.
 - Admin on the GitHub repository (to set Actions secrets and variables).
 
 ---
@@ -229,6 +230,34 @@ terraform -chdir=infra/terraform output -raw github_actions_role_arn
 # store as the AWS_DEPLOY_ROLE_ARN secret (and AWS_TERRAFORM_ROLE_ARN for infra),
 # then delete AWS_ACCESS_KEY / AWS_SECRET_ACCESS_KEY
 ```
+
+## DNS hosted elsewhere
+
+If your domain's nameservers live at Squarespace, Cloudflare, your registrar, or
+anywhere else, you do not need to move it — and you should not, if a live site
+depends on it. Set `manage_dns = false` (repository variable `MANAGE_DNS=false`)
+and Terraform skips Route 53 entirely: no hosted zone, no `$0.50`/month, no
+`hosted_zone_name` required.
+
+The handover is a single record. After the apply:
+
+```bash
+terraform -chdir=infra/terraform output -json dns_record_to_create
+```
+
+which prints the A record to create at your DNS provider, pointing at the
+instance's Elastic IP. Because the address is elastic, that record keeps working
+across instance replacement — you set it once.
+
+Only the subdomain you name in `BOARD_DOMAIN` is affected. The apex and every
+other record stay exactly as they are, so an existing site on the same domain is
+untouched.
+
+**Order matters:** create the record and let it propagate *before* the first
+deploy. Caddy requests its certificate on startup, and Let's Encrypt cannot
+validate a name that does not yet resolve. If you deploy first, Caddy retries
+with backoff — `docker compose restart caddy` forces a fresh attempt once DNS is
+live. Check with `dig +short board.example.com` before deploying.
 
 ## Step 3 — Populate the secrets
 

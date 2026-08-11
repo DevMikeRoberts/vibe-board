@@ -45,13 +45,25 @@ variable "domain_name" {
   }
 }
 
+variable "manage_dns" {
+  description = "Create the Route 53 A record for domain_name. Set false when the domain's DNS is hosted elsewhere (Squarespace, Cloudflare, a registrar) — then point an A record at the `instance_public_ip` output yourself. Nothing else depends on Route 53."
+  type        = bool
+  default     = true
+}
+
 variable "hosted_zone_name" {
-  description = "Route 53 hosted zone that owns domain_name, e.g. example.com (no trailing dot)."
+  description = "Route 53 hosted zone that owns domain_name, e.g. example.com (no trailing dot). Only used when manage_dns is true."
   type        = string
+  default     = ""
+
+  validation {
+    condition     = !var.manage_dns || length(trimspace(var.hosted_zone_name)) > 0
+    error_message = "hosted_zone_name is required when manage_dns is true. Set manage_dns = false if the domain's DNS lives outside Route 53."
+  }
 }
 
 variable "create_hosted_zone" {
-  description = "Create the Route 53 public hosted zone. Set false (default) to reuse an existing zone — a zone costs $0.50/month, so do not create a duplicate."
+  description = "Create the Route 53 public hosted zone. Set false (default) to reuse an existing zone — a zone costs $0.50/month, so do not create a duplicate. Ignored when manage_dns is false."
   type        = bool
   default     = false
 }

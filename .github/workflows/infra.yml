@@ -13,10 +13,10 @@
 #
 # Required repository variables for an apply:
 #   BOARD_DOMAIN       board.example.com
-#   HOSTED_ZONE_NAME   example.com
 #   ACME_EMAIL         you@example.com
-# Optional: AWS_REGION, AUTH_MODE, INSTANCE_TYPE, CREATE_HOSTED_ZONE,
-#           TF_STATE_BUCKET, TF_STATE_KEY
+#   HOSTED_ZONE_NAME   example.com   (only when MANAGE_DNS is not "false")
+# Optional: AWS_REGION, MANAGE_DNS, AUTH_MODE, INSTANCE_TYPE,
+#           CREATE_HOSTED_ZONE, TF_STATE_BUCKET, TF_STATE_KEY
 name: Terraform (infra)
 
 on:
@@ -49,6 +49,7 @@ env:
   TF_VAR_domain_name: ${{ vars.BOARD_DOMAIN }}
   TF_VAR_hosted_zone_name: ${{ vars.HOSTED_ZONE_NAME }}
   TF_VAR_acme_email: ${{ vars.ACME_EMAIL }}
+  TF_VAR_manage_dns: ${{ vars.MANAGE_DNS || 'true' }}
   TF_VAR_auth_mode: ${{ vars.AUTH_MODE || 'basic' }}
   TF_VAR_instance_type: ${{ vars.INSTANCE_TYPE || 't3.micro' }}
   TF_VAR_create_hosted_zone: ${{ vars.CREATE_HOSTED_ZONE || 'false' }}
@@ -95,8 +96,12 @@ jobs:
 
           missing=""
           if [ -z "${TF_VAR_domain_name}" ]; then missing="$missing BOARD_DOMAIN"; fi
-          if [ -z "${TF_VAR_hosted_zone_name}" ]; then missing="$missing HOSTED_ZONE_NAME"; fi
           if [ -z "${TF_VAR_acme_email}" ]; then missing="$missing ACME_EMAIL"; fi
+          # Only needed when Terraform manages Route 53; with DNS hosted
+          # elsewhere (MANAGE_DNS=false) there is no zone to look up.
+          if [ "${TF_VAR_manage_dns}" != "false" ] && [ -z "${TF_VAR_hosted_zone_name}" ]; then
+            missing="$missing HOSTED_ZONE_NAME"
+          fi
 
           if [ "$method" != "none" ] && [ -n "$missing" ]; then
             if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -213,4 +218,10 @@ jobs:
             echo '```'
             terraform output -json secret_parameters_to_populate | python3 -m json.tool
             echo '```'
+            if [ "$(terraform output -json dns_record_to_create)" != "null" ]; then
+              echo 'DNS is not managed here — create this record at your DNS provider first:'
+              echo '```'
+              terraform output -json dns_record_to_create | python3 -m json.tool
+              echo '```'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
