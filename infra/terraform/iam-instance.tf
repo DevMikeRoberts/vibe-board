@@ -57,7 +57,16 @@ resource "aws_iam_role_policy" "instance" {
           "ssm:GetParameters",
           "ssm:GetParametersByPath",
         ]
-        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/*"
+        # Two ARNs, and both are load-bearing. GetParameter and GetParameters
+        # authorize against the individual parameters, which the "/*" form
+        # covers. GetParametersByPath — how deploy.sh reads the whole prefix in
+        # one call — authorizes against the path itself, and "/*" does not match
+        # its own parent, so without the bare ARN it fails with AccessDenied on
+        # arn:...:parameter/agentboard/prod while the action looks granted.
+        Resource = [
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}",
+          "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.ssm_prefix}/*",
+        ]
       },
       {
         # Required to decrypt SecureString values under the AWS-managed key.
