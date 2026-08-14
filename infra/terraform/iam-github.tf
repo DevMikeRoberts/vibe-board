@@ -2,11 +2,27 @@
 # keys in the repository. The role can push images, refresh the deploy bundle
 # and run exactly one command on exactly one instance.
 
+# GitHub is migrating OIDC subject claims from the name form,
+# "repo:owner/repo:ref:...", to an immutable form that pins the numeric owner
+# and repository IDs, "repo:owner@1234/repo@5678:ref:...", so that renaming a
+# repository cannot hand its access to whoever claims the old name. Which form a
+# token carries depends on where the repository sits in that rollout, and it can
+# change without warning — a trust policy listing only one of them fails with
+# "Not authorized to perform sts:AssumeRoleWithWebIdentity" the moment it flips.
+# Both are listed, as exact strings rather than a wildcard, so no repository
+# beyond these two names can match.
 locals {
-  github_allowed_subjects = coalesce(var.github_allowed_subjects, [
-    "repo:${var.github_repository}:ref:refs/heads/main",
-    "repo:${var.github_repository}:environment:production",
+  github_subject_repos = compact([
+    var.github_repository,
+    var.github_repository_id,
   ])
+
+  github_allowed_subjects = coalesce(var.github_allowed_subjects, flatten([
+    for repo in local.github_subject_repos : [
+      "repo:${repo}:ref:refs/heads/main",
+      "repo:${repo}:environment:production",
+    ]
+  ]))
 }
 
 resource "aws_iam_openid_connect_provider" "github" {

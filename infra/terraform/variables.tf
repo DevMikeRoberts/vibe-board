@@ -213,6 +213,12 @@ variable "github_repository" {
   default     = "DevMikeRoberts/vibe-board"
 }
 
+variable "github_repository_id" {
+  description = "Immutable form of github_repository, 'owner@ownerid/repo@repoid'. GitHub issues OIDC subject claims in this form so that renaming a repository cannot hand its access to whoever claims the old name. Read it from `gh api repos/OWNER/REPO/actions/oidc/customization/sub` as sub_claim_prefix. Set null to allow only the name-based form."
+  type        = string
+  default     = "DevMikeRoberts@53668326/vibe-board@1275288985"
+}
+
 variable "github_allowed_subjects" {
   description = "OIDC `sub` claims allowed to assume the deploy role. Defaults to the default branch and the 'production' environment of github_repository."
   type        = list(string)
